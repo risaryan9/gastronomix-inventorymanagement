@@ -57,13 +57,19 @@ const SupervisorDashboard = () => {
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
       {/* Mobile Header */}
       <div className="lg:hidden bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Gastronomix</h1>
-          <p className="text-xs text-muted-foreground">Inventory Management</p>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-bold text-foreground truncate">
+            Welcome, {session?.full_name?.split(' ')[0] || 'User'}
+          </h2>
+          <p className="text-xs text-muted-foreground truncate">
+            {session ? titleCaseRole(session.role) : ''}
+            {(cloudKitchenName || session?.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
+          </p>
         </div>
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 rounded-lg hover:bg-accent/10 transition-colors"
+          className="p-2 rounded-lg hover:bg-accent/10 transition-colors flex-shrink-0 ml-2 touch-manipulation"
+          aria-label="Open menu"
         >
           <svg className="w-6 h-6 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -127,21 +133,21 @@ const SupervisorDashboard = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header - Mobile First: Compact on mobile */}
-        <header className="bg-card border-b border-border">
-          <div className="px-4 lg:px-8 py-4 lg:py-5">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        {/* Top Header - Desktop only (mobile shows in top bar) */}
+        <header className="hidden lg:block bg-card border-b border-border">
+          <div className="px-8 py-5">
+            <div className="flex flex-row items-center justify-between">
               <div className="flex-1 min-w-0">
-                <h2 className="text-xl lg:text-3xl font-bold text-foreground truncate">
+                <h2 className="text-3xl font-bold text-foreground truncate">
                   Welcome, {session.full_name.split(' ')[0]}
                 </h2>
-                <p className="mt-1 lg:mt-2 text-xs lg:text-base text-muted-foreground">
+                <p className="mt-2 text-base text-muted-foreground">
                   {titleCaseRole(session.role)}
                   {(cloudKitchenName || session.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
                 </p>
               </div>
-              <div className="text-left lg:text-right">
-                <p className="text-xs lg:text-sm text-muted-foreground truncate">{session.email}</p>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground truncate">{session.email}</p>
               </div>
             </div>
           </div>

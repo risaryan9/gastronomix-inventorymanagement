@@ -58,13 +58,19 @@ const PurchaseManagerDashboard = () => {
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
       {/* Mobile Header */}
       <div className="lg:hidden bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Gastronomix</h1>
-          <p className="text-xs text-muted-foreground">Inventory Management</p>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-bold text-foreground truncate">
+            Welcome, {session?.full_name?.split(' ')[0] || 'User'}
+          </h2>
+          <p className="text-xs text-muted-foreground truncate">
+            {session ? titleCaseRole(session.role) : ''}
+            {(cloudKitchenName || session?.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
+          </p>
         </div>
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 rounded-lg hover:bg-accent/10 transition-colors"
+          className="p-2 rounded-lg hover:bg-accent/10 transition-colors flex-shrink-0 ml-2 touch-manipulation"
+          aria-label="Open menu"
         >
           <svg className="w-6 h-6 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
