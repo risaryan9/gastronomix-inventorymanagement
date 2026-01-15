@@ -223,11 +223,29 @@ DROP POLICY IF EXISTS "Users can view own record" ON users;
 CREATE POLICY "Users can view own record" ON users
   FOR SELECT USING (auth.uid() = id);
 
+-- Create helper function to check admin status (avoids RLS recursion)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM users 
+    WHERE id = auth.uid() 
+    AND role = 'admin'
+    AND is_active = true
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION is_admin() TO authenticated, anon;
+
 DROP POLICY IF EXISTS "Admins can view all users" ON users;
 CREATE POLICY "Admins can view all users" ON users
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
-  );
+  FOR SELECT USING (is_admin());
 
 DROP POLICY IF EXISTS "Users can update own record" ON users;
 CREATE POLICY "Users can update own record" ON users
@@ -235,9 +253,7 @@ CREATE POLICY "Users can update own record" ON users
 
 DROP POLICY IF EXISTS "Admins can manage all users" ON users;
 CREATE POLICY "Admins can manage all users" ON users
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
-  );
+  FOR ALL USING (is_admin());
 
 -- Cloud Kitchens Table Policies
 DROP POLICY IF EXISTS "Users view own cloud kitchen" ON cloud_kitchens;
