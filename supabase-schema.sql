@@ -28,20 +28,27 @@ CREATE INDEX IF NOT EXISTS idx_cloud_kitchens_code ON cloud_kitchens(code);
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
+  login_key TEXT UNIQUE,
   full_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('supervisor', 'purchase_manager', 'admin')),
   cloud_kitchen_id UUID REFERENCES cloud_kitchens(id),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ,
+  -- Constraint: Admins must have email, non-admins must have login_key
+  CONSTRAINT users_login_constraint CHECK (
+    (role = 'admin' AND email IS NOT NULL AND login_key IS NULL) OR
+    (role != 'admin' AND login_key IS NOT NULL AND email IS NULL)
+  )
 );
 
 -- Indexes for users
 CREATE INDEX IF NOT EXISTS idx_users_cloud_kitchen_id ON users(cloud_kitchen_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_login_key ON users(login_key);
 
 -- Outlets Table
 CREATE TABLE IF NOT EXISTS outlets (
