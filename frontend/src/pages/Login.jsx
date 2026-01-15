@@ -49,8 +49,8 @@ const Login = () => {
       localStorage.setItem('user_session', JSON.stringify(sessionData))
       sessionStorage.setItem('user', JSON.stringify(sessionData))
 
-      // Redirect to admin dashboard
-      window.location.href = '/dashboard'
+      // Redirect to role-based dashboard
+      window.location.href = `/invmanagement/dashboard/${userData.role}`
     } catch (err) {
       setError(err.message || 'Failed to login')
     } finally {
@@ -102,8 +102,8 @@ const Login = () => {
       // Also set in sessionStorage for immediate access
       sessionStorage.setItem('user', JSON.stringify(sessionData))
 
-      // Redirect to dashboard
-      window.location.href = '/dashboard'
+      // Redirect to role-based dashboard
+      window.location.href = `/invmanagement/dashboard/${userData.role}`
     } catch (err) {
       setError(err.message || 'Failed to login')
     } finally {
