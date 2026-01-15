@@ -7,6 +7,9 @@ import Overview from './pages/purchase-manager/Overview'
 import StockIn from './pages/purchase-manager/StockIn'
 import Materials from './pages/purchase-manager/Materials'
 import Inventory from './pages/purchase-manager/Inventory'
+import Outlets from './pages/supervisor/Outlets'
+import Allocations from './pages/supervisor/Allocations'
+import SupervisorInventory from './pages/supervisor/Inventory'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
 import { getSession } from './lib/auth'
@@ -74,8 +77,13 @@ function App() {
             <ProtectedRoute allowedRoles={['supervisor']}>
               <SupervisorDashboard />
             </ProtectedRoute>
-          } 
-        />
+          }
+        >
+          <Route index element={<Navigate to="outlets" replace />} />
+          <Route path="outlets" element={<Outlets />} />
+          <Route path="allocations" element={<Allocations />} />
+          <Route path="inventory" element={<SupervisorInventory />} />
+        </Route>
 
         {/* Catch all - redirect to /invmanagement */}
         <Route path="*" element={<Navigate to="/invmanagement" replace />} />
