@@ -71,9 +71,9 @@ const SupervisorDashboard = () => {
         </button>
       </div>
 
-      {/* Left Sidebar */}
+      {/* Left Sidebar - Mobile First: Full width on mobile */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-72 bg-card border-r border-border flex flex-col
+        fixed lg:static inset-y-0 left-0 z-50 w-full lg:w-72 bg-card border-r border-border flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
@@ -83,16 +83,16 @@ const SupervisorDashboard = () => {
           <p className="text-sm text-muted-foreground mt-1">Inventory Management</p>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <ul className="space-y-2">
+        {/* Navigation - Mobile First: Larger touch targets */}
+        <nav className="flex-1 p-4 lg:p-4 overflow-y-auto">
+          <ul className="space-y-3">
             {navItems.map((item) => (
               <li key={item.path}>
                 <NavLink
                   to={item.path}
                   onClick={() => setIsSidebarOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center px-4 py-3.5 rounded-xl transition-all duration-200 ${
+                    `flex items-center px-5 py-4 lg:px-4 lg:py-3.5 rounded-xl transition-all duration-200 text-base lg:text-sm ${
                       isActive
                         ? 'bg-accent text-background font-bold shadow-lg'
                         : 'text-foreground hover:bg-accent/10 font-medium'
@@ -106,11 +106,11 @@ const SupervisorDashboard = () => {
           </ul>
         </nav>
 
-        {/* Logout Button */}
+        {/* Logout Button - Mobile First: Larger touch target */}
         <div className="p-4 border-t border-border">
           <button
             onClick={handleLogout}
-            className="w-full bg-destructive text-destructive-foreground font-bold px-4 py-3 rounded-xl hover:bg-destructive/90 transition-all duration-200 shadow-md hover:shadow-lg"
+            className="w-full bg-destructive text-destructive-foreground font-bold px-5 py-4 lg:px-4 lg:py-3 rounded-xl hover:bg-destructive/90 transition-all duration-200 shadow-md hover:shadow-lg text-base lg:text-sm"
           >
             Logout
           </button>
@@ -127,21 +127,21 @@ const SupervisorDashboard = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
+        {/* Top Header - Mobile First: Compact on mobile */}
         <header className="bg-card border-b border-border">
-          <div className="px-4 sm:px-6 lg:px-8 py-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="px-4 lg:px-8 py-4 lg:py-5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex-1 min-w-0">
-                <h2 className="text-2xl sm:text-3xl font-bold text-foreground truncate">
+                <h2 className="text-xl lg:text-3xl font-bold text-foreground truncate">
                   Welcome, {session.full_name.split(' ')[0]}
                 </h2>
-                <p className="mt-2 text-sm sm:text-base text-muted-foreground">
+                <p className="mt-1 lg:mt-2 text-xs lg:text-base text-muted-foreground">
                   {titleCaseRole(session.role)}
                   {(cloudKitchenName || session.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
                 </p>
               </div>
-              <div className="text-left sm:text-right">
-                <p className="text-sm text-muted-foreground truncate">{session.email}</p>
+              <div className="text-left lg:text-right">
+                <p className="text-xs lg:text-sm text-muted-foreground truncate">{session.email}</p>
               </div>
             </div>
           </div>
