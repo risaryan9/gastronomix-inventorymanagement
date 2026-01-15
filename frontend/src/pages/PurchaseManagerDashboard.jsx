@@ -14,34 +14,15 @@ const PurchaseManagerDashboard = () => {
     const currentSession = getSession()
     setSession(currentSession)
 
-    // Use cloud kitchen name from session if available (fetched during login)
-    // Otherwise try to fetch it (for existing sessions that don't have it)
+    // Use cloud kitchen name from session (fetched during login)
+    // No need to fetch again - it's already stored in the session
     if (currentSession?.cloud_kitchen_name) {
       setCloudKitchenName(currentSession.cloud_kitchen_name)
-      setLoading(false)
-    } else if (currentSession?.cloud_kitchen_id) {
-      // Fallback: try to fetch if not in session (may fail due to RLS)
-      const fetchCloudKitchen = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('cloud_kitchens')
-            .select('name')
-            .eq('id', currentSession.cloud_kitchen_id)
-            .single()
-
-          if (!error && data) {
-            setCloudKitchenName(data.name)
-          }
-        } catch (err) {
-          console.error('Error fetching cloud kitchen:', err)
-        } finally {
-          setLoading(false)
-        }
-      }
-      fetchCloudKitchen()
     } else {
-      setLoading(false)
+      // If not in session, set to null explicitly
+      setCloudKitchenName(null)
     }
+    setLoading(false)
   }, [])
 
   const handleLogout = () => {
@@ -157,7 +138,7 @@ const PurchaseManagerDashboard = () => {
                 </h2>
                 <p className="mt-2 text-sm sm:text-base text-muted-foreground">
                   {titleCaseRole(session.role)}
-                  {cloudKitchenName ? ` · ${cloudKitchenName}` : ''}
+                  {(cloudKitchenName || session.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
                 </p>
               </div>
               <div className="text-left sm:text-right">
