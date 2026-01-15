@@ -38,6 +38,8 @@ const Materials = () => {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   // Fetch materials with current prices
   const fetchMaterials = async () => {
@@ -130,7 +132,15 @@ const Materials = () => {
     }
 
     setFilteredMaterials(filtered)
+    // Reset to page 1 when filters change
+    setCurrentPage(1)
   }, [searchQuery, categoryFilter, statusFilter, materials])
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedMaterials = filteredMaterials.slice(startIndex, endIndex)
 
   // Get unique categories for filter dropdown
   const categories = ['all', ...new Set(materials.map(m => m.category).filter(Boolean))]
@@ -441,7 +451,7 @@ const Materials = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMaterials.map((material) => (
+                  {paginatedMaterials.map((material) => (
                     <tr
                       key={material.id}
                       className="border-b border-border hover:bg-background/30 transition-colors duration-200"
@@ -490,6 +500,46 @@ const Materials = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="border-t border-border px-4 py-4 flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredMaterials.length)} of {filteredMaterials.length} materials
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-2 rounded-lg font-semibold transition-all ${
+                        currentPage === page
+                          ? 'bg-accent text-background'
+                          : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -108,6 +108,50 @@ WITH CHECK (
   cloud_kitchen_id IS NOT NULL
 );
 
+-- Allow key-based users to view stock_in records for their cloud kitchen
+DROP POLICY IF EXISTS "Allow key-based users to view stock in by cloud kitchen" ON stock_in;
+CREATE POLICY "Allow key-based users to view stock in by cloud kitchen" 
+ON stock_in
+FOR SELECT
+TO public
+USING (
+  cloud_kitchen_id IS NOT NULL
+);
+
+-- Allow key-based users to create stock_in records
+DROP POLICY IF EXISTS "Allow key-based users to insert stock in by cloud kitchen" ON stock_in;
+CREATE POLICY "Allow key-based users to insert stock in by cloud kitchen" 
+ON stock_in
+FOR INSERT
+TO public
+WITH CHECK (
+  cloud_kitchen_id IS NOT NULL
+);
+
+-- Allow key-based users to view stock_in_items
+DROP POLICY IF EXISTS "Allow key-based users to view stock in items" ON stock_in_items;
+CREATE POLICY "Allow key-based users to view stock in items" 
+ON stock_in_items
+FOR SELECT
+TO public
+USING (
+  stock_in_id IN (
+    SELECT id FROM stock_in WHERE cloud_kitchen_id IS NOT NULL
+  )
+);
+
+-- Allow key-based users to create stock_in_items
+DROP POLICY IF EXISTS "Allow key-based users to insert stock in items" ON stock_in_items;
+CREATE POLICY "Allow key-based users to insert stock in items" 
+ON stock_in_items
+FOR INSERT
+TO public
+WITH CHECK (
+  stock_in_id IN (
+    SELECT id FROM stock_in WHERE cloud_kitchen_id IS NOT NULL
+  )
+);
+
 -- Note: These policies are less secure than auth.uid() checks, but necessary for
 -- key-based authentication. The application must ensure users only query/update
 -- their own cloud_kitchen_id from their session data.

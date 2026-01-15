@@ -12,6 +12,8 @@ const Inventory = () => {
   const [stockLevelFilter, setStockLevelFilter] = useState('all')
   const [editingItem, setEditingItem] = useState(null)
   const [editForm, setEditForm] = useState({ quantity: '', low_stock_threshold: '' })
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
   
   // Add inventory modal state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -476,6 +478,17 @@ const Inventory = () => {
     return matchesSearch && matchesCategory && matchesStockLevel
   })
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredInventory.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedInventory = filteredInventory.slice(startIndex, endIndex)
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, categoryFilter, stockLevelFilter])
+
   // Calculate stats
   const stats = {
     totalItems: inventory.length,
@@ -580,22 +593,23 @@ const Inventory = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-background border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInventory.map((item) => {
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-background border-b border-border">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedInventory.map((item) => {
                     const material = item.raw_materials
                     if (!material) return null
 
@@ -653,9 +667,50 @@ const Inventory = () => {
                       </tr>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="border-t border-border px-4 py-4 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredInventory.length)} of {filteredInventory.length} items
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-2 rounded-lg font-semibold transition-all ${
+                            currentPage === page
+                              ? 'bg-accent text-background'
+                              : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
