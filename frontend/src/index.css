@@ -15,6 +15,7 @@
 
 html {
   scroll-behavior: smooth;
+  font-size: 85%; /* Scale down UI by 15% */
 }
 
 body {

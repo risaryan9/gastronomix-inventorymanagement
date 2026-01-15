@@ -67,10 +67,15 @@ const Login = () => {
       // Use regular client - RLS policy allows login_key lookups
       const client = supabase
       
-      // Query users table for matching login_key
+      // Query users table with cloud kitchen join for matching login_key
       const { data: userData, error: userError } = await client
         .from('users')
-        .select('*')
+        .select(`
+          *,
+          cloud_kitchens:cloud_kitchen_id (
+            name
+          )
+        `)
         .eq('login_key', loginKey.trim())
         .eq('role', loginType)
         .eq('is_active', true)
@@ -85,6 +90,9 @@ const Login = () => {
         throw new Error('Invalid login key or user not found')
       }
 
+      // Extract cloud kitchen name from joined data
+      const cloudKitchenName = userData.cloud_kitchens?.name || null
+
       // Create a custom session for key-based users
       // Store in localStorage for persistence
       const sessionData = {
@@ -92,6 +100,7 @@ const Login = () => {
         full_name: userData.full_name,
         role: userData.role,
         cloud_kitchen_id: userData.cloud_kitchen_id,
+        cloud_kitchen_name: cloudKitchenName,
         email: userData.email,
         login_type: 'key',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
