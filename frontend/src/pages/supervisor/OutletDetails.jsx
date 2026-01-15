@@ -92,7 +92,7 @@ const OutletDetails = () => {
           )
         `)
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-        .gt('quantity', 0) // Only show items with stock
+        // Show all items, including those with 0 quantity
 
       if (error) throw error
       setInventory(inventoryData || [])
@@ -469,29 +469,51 @@ const OutletDetails = () => {
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
-                    {filteredInventory.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => handleAddItem(item)}
-                        className="w-full text-left px-4 py-4 lg:py-3 hover:bg-accent/10 active:bg-accent/20 transition-colors touch-manipulation"
-                        disabled={allocating}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-foreground text-base lg:text-sm">{item.raw_materials.name}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {item.raw_materials.code} • {item.raw_materials.category || 'N/A'}
+                    {filteredInventory.map((item) => {
+                      const quantity = parseFloat(item.quantity) || 0
+                      const isOutOfStock = quantity === 0
+                      
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => !isOutOfStock && handleAddItem(item)}
+                          disabled={allocating || isOutOfStock}
+                          className={`w-full text-left px-4 py-4 lg:py-3 transition-colors touch-manipulation ${
+                            isOutOfStock 
+                              ? 'opacity-60 cursor-not-allowed bg-muted/30' 
+                              : 'hover:bg-accent/10 active:bg-accent/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className={`font-semibold text-base lg:text-sm ${
+                                isOutOfStock ? 'text-muted-foreground' : 'text-foreground'
+                              }`}>
+                                {item.raw_materials.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {item.raw_materials.code} • {item.raw_materials.category || 'N/A'}
+                              </div>
+                            </div>
+                            <div className="text-right ml-3">
+                              {isOutOfStock ? (
+                                <>
+                                  <p className="text-sm font-bold text-destructive">0</p>
+                                  <p className="text-xs text-destructive">Out of stock</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-sm font-bold text-foreground">
+                                    {quantity.toFixed(3)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{item.raw_materials.unit} available</p>
+                                </>
+                              )}
                             </div>
                           </div>
-                          <div className="text-right ml-3">
-                            <p className="text-sm font-bold text-foreground">
-                              {parseFloat(item.quantity).toFixed(3)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{item.raw_materials.unit} available</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>

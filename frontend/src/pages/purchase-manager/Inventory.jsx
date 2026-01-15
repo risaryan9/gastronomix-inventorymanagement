@@ -1,6 +1,22 @@
 import { useState, useEffect } from 'react'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
+
+// All available categories (matching Materials.jsx)
+const CATEGORIES = [
+  'Meat',
+  'Grains',
+  'Vegetables',
+  'Oils',
+  'Spices',
+  'Dairy',
+  'Packaging',
+  'Sanitary',
+  'Misc'
+]
 
 const Inventory = () => {
   const [inventory, setInventory] = useState([])
@@ -23,6 +39,9 @@ const Inventory = () => {
   const [materialDetails, setMaterialDetails] = useState(null)
   const [newInventoryForm, setNewInventoryForm] = useState({ quantity: '', low_stock_threshold: '' })
   const [creating, setCreating] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
 
   // Fetch inventory with material details
   useEffect(() => {
@@ -123,14 +142,8 @@ const Inventory = () => {
 
         setInventory(inventoryWithMaterials)
 
-        // Extract unique categories from materials
-        const uniqueCategories = [...new Set(
-          materialsData
-            .map(m => m.category)
-            .filter(Boolean)
-        )].sort()
-        
-        setMaterials(uniqueCategories)
+        // Use all categories from CATEGORIES constant
+        setMaterials(CATEGORIES)
       } catch (err) {
         console.error('Error fetching data:', err)
       } finally {
@@ -500,6 +513,270 @@ const Inventory = () => {
     }, 0)
   }
 
+  // Export functions
+  const exportToCSV = () => {
+    const session = getSession()
+    const headers = ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Cost per Unit', 'Total Value']
+    const rows = filteredInventory.map(item => {
+      const material = item.raw_materials
+      const isLowStock = item.quantity <= item.low_stock_threshold
+      const isOutOfStock = item.quantity === 0
+      const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
+      const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+      
+      return [
+        material?.name || 'N/A',
+        material?.code || 'N/A',
+        material?.category || 'N/A',
+        parseFloat(item.quantity).toFixed(3),
+        material?.unit || 'N/A',
+        parseFloat(item.low_stock_threshold || 0).toFixed(3),
+        status,
+        `₹${(item.cost_per_unit || 0).toFixed(2)}`,
+        `₹${totalValue.toFixed(2)}`
+      ]
+    })
+
+    const csvContent = [
+      ['Gastronomix Inventory Management - Inventory Report'],
+      ['Generated:', new Date().toLocaleString()],
+      ['Cloud Kitchen:', session?.cloud_kitchen_name || session?.cloud_kitchen_id || 'N/A'],
+      ['User:', session?.full_name || 'N/A'],
+      ['Role:', session?.role || 'N/A'],
+      ['Email:', session?.email || 'N/A'],
+      [],
+      headers,
+      ...rows
+    ].map(row => row.join(',')).join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `inventory_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const exportToExcel = () => {
+    const session = getSession()
+    const workbook = XLSX.utils.book_new()
+    
+    // Summary sheet
+    const summaryData = [
+      ['Gastronomix Inventory Management - Inventory Report'],
+      ['Generated:', new Date().toLocaleString()],
+      [],
+      ['Cloud Kitchen Information'],
+      ['Name:', session?.cloud_kitchen_name || 'N/A'],
+      ['ID:', session?.cloud_kitchen_id || 'N/A'],
+      [],
+      ['User Information'],
+      ['Name:', session?.full_name || 'N/A'],
+      ['Role:', session?.role || 'N/A'],
+      ['Email:', session?.email || 'N/A'],
+      [],
+      ['Summary Statistics'],
+      ['Total Items:', stats.totalItems],
+      ['Low Stock Items:', stats.lowStockItems],
+      ['Total Inventory Value:', `₹${stats.totalValue.toFixed(2)}`]
+    ]
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+    // Inventory data sheet
+    const inventoryData = [
+      ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Cost per Unit', 'Total Value'],
+      ...filteredInventory.map(item => {
+        const material = item.raw_materials
+        const isLowStock = item.quantity <= item.low_stock_threshold
+        const isOutOfStock = item.quantity === 0
+        const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
+        const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+        
+        return [
+          material?.name || 'N/A',
+          material?.code || 'N/A',
+          material?.category || 'N/A',
+          parseFloat(item.quantity).toFixed(3),
+          material?.unit || 'N/A',
+          parseFloat(item.low_stock_threshold || 0).toFixed(3),
+          status,
+          item.cost_per_unit || 0,
+          totalValue
+        ]
+      })
+    ]
+    const inventorySheet = XLSX.utils.aoa_to_sheet(inventoryData)
+    XLSX.utils.book_append_sheet(workbook, inventorySheet, 'Inventory')
+
+    XLSX.writeFile(workbook, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  const exportToPDF = () => {
+    const session = getSession()
+    setExporting(true)
+    
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      let yPos = 20
+
+      // Header with logo and title
+      doc.setFontSize(20)
+      doc.setFont(undefined, 'bold')
+      doc.text('Gastronomix', pageWidth / 2, yPos, { align: 'center' })
+      yPos += 8
+      doc.setFontSize(14)
+      doc.setFont(undefined, 'normal')
+      doc.text('Inventory Management - Inventory Report', pageWidth / 2, yPos, { align: 'center' })
+      yPos += 10
+
+      // Report metadata
+      doc.setFontSize(10)
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPos)
+      yPos += 6
+
+      // Cloud Kitchen Information
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(12)
+      doc.text('Cloud Kitchen Information', 20, yPos)
+      yPos += 7
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(10)
+      doc.text(`Name: ${session?.cloud_kitchen_name || 'N/A'}`, 25, yPos)
+      yPos += 5
+      doc.text(`ID: ${session?.cloud_kitchen_id || 'N/A'}`, 25, yPos)
+      yPos += 8
+
+      // User Information
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(12)
+      doc.text('User Information', 20, yPos)
+      yPos += 7
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(10)
+      doc.text(`Name: ${session?.full_name || 'N/A'}`, 25, yPos)
+      yPos += 5
+      doc.text(`Role: ${session?.role ? session.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'N/A'}`, 25, yPos)
+      yPos += 5
+      doc.text(`Email: ${session?.email || 'N/A'}`, 25, yPos)
+      yPos += 8
+
+      // Summary Statistics
+      doc.setFont(undefined, 'bold')
+      doc.setFontSize(12)
+      doc.text('Summary Statistics', 20, yPos)
+      yPos += 7
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(10)
+      doc.text(`Total Items: ${stats.totalItems}`, 25, yPos)
+      yPos += 5
+      doc.text(`Low Stock Items: ${stats.lowStockItems}`, 25, yPos)
+      yPos += 5
+      doc.text(`Total Inventory Value: ₹${stats.totalValue.toFixed(2)}`, 25, yPos)
+      yPos += 10
+
+      // Check if we need a new page
+      if (yPos > pageHeight - 60) {
+        doc.addPage()
+        yPos = 20
+      }
+
+      // Inventory Table
+      const tableData = filteredInventory.map(item => {
+        const material = item.raw_materials
+        const isLowStock = item.quantity <= item.low_stock_threshold
+        const isOutOfStock = item.quantity === 0
+        const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
+        const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+        
+        return [
+          material?.name || 'N/A',
+          material?.code || 'N/A',
+          material?.category || 'N/A',
+          `${parseFloat(item.quantity).toFixed(3)} ${material?.unit || ''}`,
+          parseFloat(item.low_stock_threshold || 0).toFixed(3),
+          status,
+          `₹${(item.cost_per_unit || 0).toFixed(2)}`,
+          `₹${totalValue.toFixed(2)}`
+        ]
+      })
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Material Name', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Cost/Unit', 'Total Value']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 40 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 30 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 },
+          7: { cellWidth: 25 }
+        },
+        margin: { left: 20, right: 20 }
+      })
+
+      // Footer
+      const finalY = doc.lastAutoTable.finalY || yPos
+      doc.setFontSize(8)
+      doc.text(
+        `This report was generated on ${new Date().toLocaleString()} by ${session?.full_name || 'System'}`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: 'center' }
+      )
+
+      doc.save(`inventory_${new Date().toISOString().split('T')[0]}.pdf`)
+      setShowExportModal(false)
+      setAlert({ type: 'success', message: 'Inventory exported to PDF successfully!' })
+    } catch (err) {
+      console.error('Error exporting PDF:', err)
+      setAlert({ type: 'error', message: 'Failed to export PDF. Please try again.' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleExport = (format) => {
+    try {
+      if (!filteredInventory || filteredInventory.length === 0) {
+        setAlert({ type: 'warning', message: 'No inventory items to export. Please adjust your filters or add inventory items.' })
+        return
+      }
+
+      switch (format) {
+        case 'csv':
+          exportToCSV()
+          setShowExportModal(false)
+          setAlert({ type: 'success', message: 'Inventory exported to CSV successfully!' })
+          break
+        case 'excel':
+          exportToExcel()
+          setShowExportModal(false)
+          setAlert({ type: 'success', message: 'Inventory exported to Excel successfully!' })
+          break
+        case 'pdf':
+          exportToPDF()
+          break
+        default:
+          break
+      }
+    } catch (err) {
+      console.error('Error in handleExport:', err)
+      setAlert({ type: 'error', message: 'An error occurred during export. Please try again.' })
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
@@ -524,7 +801,10 @@ const Inventory = () => {
             >
               + Add Inventory
             </button>
-            <button className="bg-transparent text-accent font-semibold px-5 py-2.5 rounded-lg border-2 border-accent hover:bg-accent/10 transition-all">
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="bg-transparent text-accent font-semibold px-5 py-2.5 rounded-lg border-2 border-accent hover:bg-accent/10 transition-all touch-manipulation"
+            >
               Export
             </button>
           </div>
@@ -968,6 +1248,159 @@ const Inventory = () => {
                 className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating ? 'Creating...' : 'Create Inventory'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4">
+          <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl lg:text-2xl font-bold text-foreground">
+                Export Inventory
+              </h2>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
+                disabled={exporting}
+                aria-label="Close"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              Choose a format to export your inventory data. The export will include all filtered items.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => handleExport('csv')}
+                disabled={exporting}
+                className="w-full bg-accent text-background font-bold px-4 py-3.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export as CSV
+              </button>
+
+              <button
+                onClick={() => handleExport('excel')}
+                disabled={exporting}
+                className="w-full bg-green-500 text-white font-bold px-4 py-3.5 rounded-xl border-3 border-green-500 shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export as Excel
+              </button>
+
+              <button
+                onClick={() => handleExport('pdf')}
+                disabled={exporting}
+                className="w-full bg-red-500 text-white font-bold px-4 py-3.5 rounded-xl border-3 border-red-500 shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation flex items-center justify-center gap-2"
+              >
+                {exporting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating PDF...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    Export as PDF
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowExportModal(false)}
+              disabled={exporting}
+              className="w-full mt-4 bg-transparent text-foreground font-semibold px-4 py-3.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Modal */}
+      {alert && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center p-4">
+          <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-md w-full shadow-xl">
+            <div className="flex items-start gap-4">
+              {/* Icon */}
+              <div className={`flex-shrink-0 w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center ${
+                alert.type === 'error' ? 'bg-destructive/20' :
+                alert.type === 'success' ? 'bg-green-500/20' :
+                'bg-yellow-500/20'
+              }`}>
+                {alert.type === 'error' ? (
+                  <svg className="w-6 h-6 lg:w-7 lg:h-7 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : alert.type === 'success' ? (
+                  <svg className="w-6 h-6 lg:w-7 lg:h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 lg:w-7 lg:h-7 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
+              </div>
+
+              {/* Message */}
+              <div className="flex-1 min-w-0">
+                <h3 className={`text-base lg:text-lg font-bold mb-1 ${
+                  alert.type === 'error' ? 'text-destructive' :
+                  alert.type === 'success' ? 'text-green-500' :
+                  'text-yellow-500'
+                }`}>
+                  {alert.type === 'error' ? 'Error' :
+                   alert.type === 'success' ? 'Success' :
+                   'Warning'}
+                </h3>
+                <p className="text-sm lg:text-base text-foreground break-words">
+                  {alert.message}
+                </p>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setAlert(null)}
+                className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Action Button */}
+            <div className="mt-4">
+              <button
+                onClick={() => setAlert(null)}
+                className={`w-full font-bold px-4 py-3 rounded-xl transition-all duration-200 text-base touch-manipulation ${
+                  alert.type === 'error' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' :
+                  alert.type === 'success' ? 'bg-green-500 text-white hover:bg-green-600' :
+                  'bg-yellow-500 text-white hover:bg-yellow-600'
+                }`}
+              >
+                OK
               </button>
             </div>
           </div>
