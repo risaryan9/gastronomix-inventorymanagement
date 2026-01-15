@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import nippuKodiLogo from '../../assets/nippu-kodi-logo.png'
+import elChaapoLogo from '../../assets/el-chaapo-logo.png'
+import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 
 const OutletDetails = () => {
   const { outletId } = useParams()
@@ -251,9 +254,9 @@ const OutletDetails = () => {
   )
 
   const getBrandColor = (code) => {
-    if (code.startsWith('NK')) return 'bg-red-500'
-    if (code.startsWith('EC')) return 'bg-yellow-500'
-    if (code.startsWith('BP')) return 'bg-blue-500'
+    if (code.startsWith('NK')) return 'bg-black'
+    if (code.startsWith('EC')) return 'bg-green-500'
+    if (code.startsWith('BP')) return 'bg-red-500'
     return 'bg-gray-500'
   }
 
@@ -262,6 +265,13 @@ const OutletDetails = () => {
     if (code.startsWith('EC')) return 'El Chaapo'
     if (code.startsWith('BP')) return 'Boom Pizza'
     return 'Unknown'
+  }
+
+  const getBrandLogo = (code) => {
+    if (code.startsWith('NK')) return nippuKodiLogo
+    if (code.startsWith('EC')) return elChaapoLogo
+    if (code.startsWith('BP')) return boomPizzaLogo
+    return null
   }
 
   if (!outlet) {
@@ -297,9 +307,16 @@ const OutletDetails = () => {
               <h1 className="text-xl lg:text-3xl font-bold text-foreground mb-2">{outlet.name}</h1>
               <p className="text-sm lg:text-base text-muted-foreground font-mono">{outlet.code}</p>
             </div>
-            <span className={`${getBrandColor(outlet.code)} text-white text-xs lg:text-sm font-bold px-3 py-1.5 rounded-lg ml-2`}>
-              {getBrandName(outlet.code)}
-            </span>
+            <div className={`${getBrandColor(outlet.code)} text-white text-xs lg:text-sm font-bold px-2 py-1.5 rounded-lg ml-2 flex items-center gap-1.5`}>
+              {getBrandLogo(outlet.code) && (
+                <img 
+                  src={getBrandLogo(outlet.code)} 
+                  alt={getBrandName(outlet.code)} 
+                  className="h-4 lg:h-5 w-auto object-contain"
+                />
+              )}
+              <span>{getBrandName(outlet.code)}</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 text-sm lg:text-base">

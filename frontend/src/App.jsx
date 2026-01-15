@@ -9,7 +9,6 @@ import Materials from './pages/purchase-manager/Materials'
 import Inventory from './pages/purchase-manager/Inventory'
 import Outlets from './pages/supervisor/Outlets'
 import OutletDetails from './pages/supervisor/OutletDetails'
-import Allocations from './pages/supervisor/Allocations'
 import SupervisorInventory from './pages/supervisor/Inventory'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
@@ -83,7 +82,6 @@ function App() {
           <Route index element={<Navigate to="outlets" replace />} />
           <Route path="outlets" element={<Outlets />} />
           <Route path="outlets/:outletId" element={<OutletDetails />} />
-          <Route path="allocations" element={<Allocations />} />
           <Route path="inventory" element={<SupervisorInventory />} />
         </Route>
 

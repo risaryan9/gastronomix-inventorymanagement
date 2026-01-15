@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Outlet, NavLink } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import gastronomixLogo from '../assets/gastronomix-logo.png'
 
 const SupervisorDashboard = () => {
   const [session, setSession] = useState(null)
@@ -49,14 +50,29 @@ const SupervisorDashboard = () => {
   // Navigation items
   const navItems = [
     { path: 'outlets', label: 'Outlets' },
-    { path: 'allocations', label: 'Allocations' },
     { path: 'inventory', label: 'Inventory' },
   ]
 
   return (
     <div className="min-h-screen bg-background flex flex-col lg:flex-row">
       {/* Mobile Header */}
-      <div className="lg:hidden bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden bg-card border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <img 
+            src={gastronomixLogo} 
+            alt="Gastronomix" 
+            className="h-8 w-auto object-contain"
+          />
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 rounded-lg hover:bg-accent/10 transition-colors flex-shrink-0 touch-manipulation"
+            aria-label="Open menu"
+          >
+            <svg className="w-6 h-6 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-base font-bold text-foreground truncate">
             Welcome, {session?.full_name?.split(' ')[0] || 'User'}
@@ -66,15 +82,6 @@ const SupervisorDashboard = () => {
             {(cloudKitchenName || session?.cloud_kitchen_name) ? ` · ${cloudKitchenName || session.cloud_kitchen_name}` : ''}
           </p>
         </div>
-        <button
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 rounded-lg hover:bg-accent/10 transition-colors flex-shrink-0 ml-2 touch-manipulation"
-          aria-label="Open menu"
-        >
-          <svg className="w-6 h-6 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
       </div>
 
       {/* Left Sidebar - Mobile First: Full width on mobile */}
@@ -83,10 +90,14 @@ const SupervisorDashboard = () => {
         transform transition-transform duration-200 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        {/* Logo/Brand - Desktop only */}
-        <div className="hidden lg:block p-6 border-b border-border">
-          <h1 className="text-2xl font-bold text-foreground">Gastronomix</h1>
-          <p className="text-sm text-muted-foreground mt-1">Inventory Management</p>
+        {/* Logo/Brand - Desktop and Mobile Sidebar */}
+        <div className="p-4 lg:p-6 border-b border-border">
+          <img 
+            src={gastronomixLogo} 
+            alt="Gastronomix" 
+            className="h-8 lg:h-10 w-auto mb-2 object-contain"
+          />
+          <p className="text-xs lg:text-sm text-muted-foreground">Inventory Management</p>
         </div>
 
         {/* Navigation - Mobile First: Larger touch targets */}
@@ -136,6 +147,13 @@ const SupervisorDashboard = () => {
         {/* Top Header - Desktop only (mobile shows in top bar) */}
         <header className="hidden lg:block bg-card border-b border-border">
           <div className="px-8 py-5">
+            <div className="flex items-center gap-4 mb-4">
+              <img 
+                src={gastronomixLogo} 
+                alt="Gastronomix" 
+                className="h-12 w-auto object-contain"
+              />
+            </div>
             <div className="flex flex-row items-center justify-between">
               <div className="flex-1 min-w-0">
                 <h2 className="text-3xl font-bold text-foreground truncate">

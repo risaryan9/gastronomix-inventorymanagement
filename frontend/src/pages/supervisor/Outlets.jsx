@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import nippuKodiLogo from '../../assets/nippu-kodi-logo.png'
+import elChaapoLogo from '../../assets/el-chaapo-logo.png'
+import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 
 const BRANDS = [
-  { id: 'NK', name: 'Nippu Kodi', color: 'bg-red-500', hoverColor: 'hover:bg-red-600' },
-  { id: 'EC', name: 'El Chaapo', color: 'bg-yellow-500', hoverColor: 'hover:bg-yellow-600' },
-  { id: 'BP', name: 'Boom Pizza', color: 'bg-blue-500', hoverColor: 'hover:bg-blue-600' },
+  { id: 'NK', name: 'Nippu Kodi', color: 'bg-black', hoverColor: 'hover:bg-gray-900', logo: nippuKodiLogo },
+  { id: 'EC', name: 'El Chaapo', color: 'bg-green-500', hoverColor: 'hover:bg-green-600', logo: elChaapoLogo },
+  { id: 'BP', name: 'Boom Pizza', color: 'bg-red-500', hoverColor: 'hover:bg-red-600', logo: boomPizzaLogo },
 ]
 
 const Outlets = () => {
@@ -89,6 +92,10 @@ const Outlets = () => {
     return BRANDS.find(b => b.id === brandId)?.color || 'bg-gray-500'
   }
 
+  const getBrandLogo = (brandId) => {
+    return BRANDS.find(b => b.id === brandId)?.logo || null
+  }
+
   return (
     <div className="p-3 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -109,7 +116,12 @@ const Outlets = () => {
                   selectedBrand === brand.id ? 'ring-2 lg:ring-4 ring-white ring-offset-1 lg:ring-offset-2' : ''
                 }`}
               >
-                <div className="text-center">
+                <div className="text-center flex flex-col items-center">
+                  <img 
+                    src={brand.logo} 
+                    alt={brand.name} 
+                    className="h-6 lg:h-12 w-auto mb-1 lg:mb-2 object-contain"
+                  />
                   <div className="text-xs lg:text-2xl font-black mb-0.5 lg:mb-1 truncate">{brand.name}</div>
                   <div className="hidden lg:block text-xs lg:text-sm opacity-90">Tap to view outlets</div>
                 </div>
@@ -199,9 +211,16 @@ const Outlets = () => {
                           {outlet.code}
                         </p>
                       </div>
-                      <span className={`${getBrandColor(selectedBrand)} text-white text-xs font-bold px-3 py-1 rounded-lg ml-2`}>
-                        {BRANDS.find(b => b.id === selectedBrand)?.name}
-                      </span>
+                      <div className={`${getBrandColor(selectedBrand)} text-white text-xs font-bold px-2 py-1 rounded-lg ml-2 flex items-center gap-1.5`}>
+                        {getBrandLogo(selectedBrand) && (
+                          <img 
+                            src={getBrandLogo(selectedBrand)} 
+                            alt={BRANDS.find(b => b.id === selectedBrand)?.name} 
+                            className="h-4 w-auto object-contain"
+                          />
+                        )}
+                        <span>{BRANDS.find(b => b.id === selectedBrand)?.name}</span>
+                      </div>
                     </div>
 
                     <div className="space-y-2 text-sm lg:text-base">
