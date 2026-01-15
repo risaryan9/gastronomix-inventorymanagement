@@ -1,6 +1,6 @@
 -- =====================================================
 -- Migration: Update users table for key-based login
--- Run this if you already have the users table created
+-- Run this if you already have the users table createdd
 -- =====================================================
 
 -- Step 1: Add login_key column
