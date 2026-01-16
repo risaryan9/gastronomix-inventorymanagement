@@ -53,6 +53,7 @@ const PurchaseManagerDashboard = () => {
     { path: 'stock-in', label: 'Stock In' },
     { path: 'materials', label: 'Materials' },
     { path: 'inventory', label: 'Inventory' },
+    { path: 'outlets', label: 'Outlets' },
   ]
 
   return (

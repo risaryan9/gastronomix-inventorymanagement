@@ -7,8 +7,10 @@ import Overview from './pages/purchase-manager/Overview'
 import StockIn from './pages/purchase-manager/StockIn'
 import Materials from './pages/purchase-manager/Materials'
 import Inventory from './pages/purchase-manager/Inventory'
-import Outlets from './pages/supervisor/Outlets'
-import OutletDetails from './pages/supervisor/OutletDetails'
+import PMOutlets from './pages/purchase-manager/Outlets'
+import PMOutletDetails from './pages/purchase-manager/OutletDetails'
+import SupervisorOutlets from './pages/supervisor/Outlets'
+import SupervisorOutletDetails from './pages/supervisor/OutletDetails'
 import SupervisorInventory from './pages/supervisor/Inventory'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
@@ -69,6 +71,8 @@ function App() {
           <Route path="stock-in" element={<StockIn />} />
           <Route path="materials" element={<Materials />} />
           <Route path="inventory" element={<Inventory />} />
+          <Route path="outlets" element={<PMOutlets />} />
+          <Route path="outlets/:outletId" element={<PMOutletDetails />} />
         </Route>
         
         <Route 
@@ -80,8 +84,8 @@ function App() {
           }
         >
           <Route index element={<Navigate to="outlets" replace />} />
-          <Route path="outlets" element={<Outlets />} />
-          <Route path="outlets/:outletId" element={<OutletDetails />} />
+          <Route path="outlets" element={<SupervisorOutlets />} />
+          <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
           <Route path="inventory" element={<SupervisorInventory />} />
         </Route>
 
