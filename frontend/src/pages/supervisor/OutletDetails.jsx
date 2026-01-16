@@ -16,6 +16,8 @@ const OutletDetails = () => {
   const [showAllocateModal, setShowAllocateModal] = useState(false)
   const [inventory, setInventory] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [stockFilter, setStockFilter] = useState('all') // 'all', 'in_stock', 'low_stock', 'out_of_stock'
   const [selectedItems, setSelectedItems] = useState([]) // {raw_material_id, name, code, unit, available_quantity, allocated_quantity}
   const [allocating, setAllocating] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -105,6 +107,8 @@ const OutletDetails = () => {
     setShowAllocateModal(true)
     setSelectedItems([])
     setSearchTerm('')
+    setCategoryFilter('all')
+    setStockFilter('all')
   }
 
   const handleAddItem = (inventoryItem) => {
@@ -248,10 +252,69 @@ const OutletDetails = () => {
     }
   }
 
-  const filteredInventory = inventory.filter(item =>
-    item.raw_materials?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.raw_materials?.code.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // Get unique categories from inventory
+  const categories = ['all', ...new Set(inventory.map(item => item.raw_materials?.category).filter(Boolean))]
+
+  const filteredInventory = inventory
+    .filter(item => {
+      const material = item.raw_materials
+      if (!material) return false
+
+      // Search filter
+      const matchesSearch = searchTerm === '' || 
+        material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        material.code.toLowerCase().includes(searchTerm.toLowerCase())
+
+      // Category filter
+      const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
+
+      // Stock filter
+      const quantity = parseFloat(item.quantity) || 0
+      let matchesStock = true
+      if (stockFilter === 'in_stock') {
+        matchesStock = quantity > 0
+      } else if (stockFilter === 'low_stock') {
+        matchesStock = quantity > 0 && quantity <= (item.low_stock_threshold || 0)
+      } else if (stockFilter === 'out_of_stock') {
+        matchesStock = quantity === 0
+      }
+
+      return matchesSearch && matchesCategory && matchesStock
+    })
+    .sort((a, b) => {
+      // Sort priority: Low stock first, then in stock, then out of stock at the end
+      const quantityA = parseFloat(a.quantity) || 0
+      const quantityB = parseFloat(b.quantity) || 0
+      const thresholdA = parseFloat(a.low_stock_threshold) || 0
+      const thresholdB = parseFloat(b.low_stock_threshold) || 0
+
+      const isOutOfStockA = quantityA === 0
+      const isOutOfStockB = quantityB === 0
+      const isLowStockA = quantityA > 0 && quantityA <= thresholdA
+      const isLowStockB = quantityB > 0 && quantityB <= thresholdB
+
+      // Out of stock items at the end
+      if (isOutOfStockA && !isOutOfStockB) return 1
+      if (!isOutOfStockA && isOutOfStockB) return -1
+
+      // If both are out of stock, sort alphabetically
+      if (isOutOfStockA && isOutOfStockB) {
+        const nameA = a.raw_materials?.name || ''
+        const nameB = b.raw_materials?.name || ''
+        return nameA.localeCompare(nameB)
+      }
+
+      // Low stock items first (if neither is out of stock)
+      if (!isOutOfStockA && !isOutOfStockB) {
+        if (isLowStockA && !isLowStockB) return -1
+        if (!isLowStockA && isLowStockB) return 1
+      }
+
+      // Within same stock status, sort alphabetically by name
+      const nameA = a.raw_materials?.name || ''
+      const nameB = b.raw_materials?.name || ''
+      return nameA.localeCompare(nameB)
+    })
 
   const getBrandColor = (code) => {
     if (code.startsWith('NK')) return 'bg-black'
@@ -445,57 +508,140 @@ const OutletDetails = () => {
               <p className="text-xs text-muted-foreground">{outlet.code} • {outlet.address}</p>
             </div>
 
-            {/* Search Materials */}
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Search Materials from Inventory
-              </label>
-              <input
-                type="text"
-                placeholder="Type to search materials..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-input border border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
-                disabled={allocating}
-              />
+            {/* Search and Filter Bar */}
+            <div className="mb-4 space-y-3">
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-2">
+                  Search Materials
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by name or code..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-input border-2 border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-base"
+                  disabled={allocating}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
+                    disabled={allocating}
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.filter(c => c !== 'all').map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-2">
+                    Stock Status
+                  </label>
+                  <select
+                    value={stockFilter}
+                    onChange={(e) => setStockFilter(e.target.value)}
+                    className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
+                    disabled={allocating}
+                  >
+                    <option value="all">All Stock</option>
+                    <option value="in_stock">In Stock</option>
+                    <option value="low_stock">Low Stock</option>
+                    <option value="out_of_stock">Out of Stock</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
-            {/* Material Selection */}
-            {searchTerm && (
-              <div className="mb-4 max-h-64 lg:max-h-48 overflow-y-auto border border-border rounded-lg">
+            {/* Materials List - Always visible, sorted with low/out of stock first */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Available Materials ({filteredInventory.length})
+                </h3>
+                {filteredInventory.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Click to add to allocation
+                  </p>
+                )}
+              </div>
+              
+              <div className="max-h-80 overflow-y-auto border-2 border-border rounded-lg bg-background/30">
                 {filteredInventory.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground text-sm">
-                    No materials found matching your search
+                  <div className="p-6 text-center">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {inventory.length === 0 
+                        ? 'No materials in inventory'
+                        : 'No materials match your filters'}
+                    </p>
+                    {(searchTerm || categoryFilter !== 'all' || stockFilter !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setSearchTerm('')
+                          setCategoryFilter('all')
+                          setStockFilter('all')
+                        }}
+                        className="text-xs text-accent hover:text-accent/80 font-semibold"
+                      >
+                        Clear filters
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
                     {filteredInventory.map((item) => {
+                      const material = item.raw_materials
+                      if (!material) return null
+
                       const quantity = parseFloat(item.quantity) || 0
                       const isOutOfStock = quantity === 0
+                      const isLowStock = quantity > 0 && quantity <= (item.low_stock_threshold || 0)
+                      const isAlreadySelected = selectedItems.some(selected => selected.raw_material_id === material.id)
                       
                       return (
                         <button
                           key={item.id}
-                          onClick={() => !isOutOfStock && handleAddItem(item)}
-                          disabled={allocating || isOutOfStock}
-                          className={`w-full text-left px-4 py-4 lg:py-3 transition-colors touch-manipulation ${
-                            isOutOfStock 
-                              ? 'opacity-60 cursor-not-allowed bg-muted/30' 
-                              : 'hover:bg-accent/10 active:bg-accent/20'
+                          onClick={() => {
+                            if (!isOutOfStock && !isAlreadySelected) {
+                              handleAddItem(item)
+                            }
+                          }}
+                          disabled={allocating || isOutOfStock || isAlreadySelected}
+                          className={`w-full text-left px-4 py-4 lg:py-3 transition-all touch-manipulation ${
+                            isAlreadySelected
+                              ? 'bg-accent/20 cursor-not-allowed'
+                              : isOutOfStock 
+                                ? 'opacity-60 cursor-not-allowed bg-muted/30' 
+                                : 'hover:bg-accent/10 active:bg-accent/20'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
-                              <div className={`font-semibold text-base lg:text-sm ${
-                                isOutOfStock ? 'text-muted-foreground' : 'text-foreground'
-                              }`}>
-                                {item.raw_materials.name}
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`font-semibold text-base lg:text-sm ${
+                                  isOutOfStock || isAlreadySelected ? 'text-muted-foreground' : 'text-foreground'
+                                }`}>
+                                  {material.name}
+                                </div>
+                                {isAlreadySelected && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-accent text-background">
+                                    Added
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {item.raw_materials.code} • {item.raw_materials.category || 'N/A'}
+                              <div className="text-xs text-muted-foreground">
+                                {material.code} • {material.unit} • {material.category || 'No category'}
                               </div>
                             </div>
-                            <div className="text-right ml-3">
+                            <div className="text-right ml-3 flex-shrink-0">
                               {isOutOfStock ? (
                                 <>
                                   <p className="text-sm font-bold text-destructive">0</p>
@@ -503,10 +649,14 @@ const OutletDetails = () => {
                                 </>
                               ) : (
                                 <>
-                                  <p className="text-sm font-bold text-foreground">
+                                  <p className={`text-sm font-bold ${
+                                    isLowStock ? 'text-yellow-500' : 'text-foreground'
+                                  }`}>
                                     {quantity.toFixed(3)}
                                   </p>
-                                  <p className="text-xs text-muted-foreground">{item.raw_materials.unit} available</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {material.unit} {isLowStock && '• Low stock'}
+                                  </p>
                                 </>
                               )}
                             </div>
@@ -517,7 +667,7 @@ const OutletDetails = () => {
                   </div>
                 )}
               </div>
-            )}
+            </div>
 
             {/* Selected Items */}
             {selectedItems.length > 0 && (
