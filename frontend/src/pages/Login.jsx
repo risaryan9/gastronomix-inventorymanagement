@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 const Login = () => {
@@ -6,7 +6,10 @@ const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginKey, setLoginKey] = useState('')
+  const [selectedCloudKitchenId, setSelectedCloudKitchenId] = useState('')
+  const [cloudKitchens, setCloudKitchens] = useState([])
   const [loading, setLoading] = useState(false)
+  const [loadingCloudKitchens, setLoadingCloudKitchens] = useState(false)
   const [error, setError] = useState('')
 
   const handleAdminLogin = async (e) => {
@@ -58,38 +61,107 @@ const Login = () => {
     }
   }
 
+  // Fetch cloud kitchens when login type is purchase_manager or supervisor
+  useEffect(() => {
+    const fetchCloudKitchens = async () => {
+      if (loginType === 'purchase_manager' || loginType === 'supervisor') {
+        setLoadingCloudKitchens(true)
+        try {
+          const { data, error } = await supabase
+            .from('cloud_kitchens')
+            .select('id, name, code')
+            .eq('is_active', true)
+            .is('deleted_at', null)
+            .order('name', { ascending: true })
+
+          if (error) {
+            console.error('Error fetching cloud kitchens:', error)
+            setError('Failed to load cloud kitchens')
+            return
+          }
+
+          setCloudKitchens(data || [])
+        } catch (err) {
+          console.error('Error fetching cloud kitchens:', err)
+          setError('Failed to load cloud kitchens')
+        } finally {
+          setLoadingCloudKitchens(false)
+        }
+      }
+    }
+
+    fetchCloudKitchens()
+  }, [loginType])
+
   const handleKeyLogin = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
+    // Validate cloud kitchen selection
+    if (!selectedCloudKitchenId) {
+      setError('Please select a cloud kitchen')
+      setLoading(false)
+      return
+    }
+
+    if (!loginKey.trim()) {
+      setError('Please enter your login key')
+      setLoading(false)
+      return
+    }
+
     try {
-      // Use regular client - RLS policy allows login_key lookups
-      const client = supabase
+      console.log('Attempting login with:', {
+        loginKey: loginKey.trim(),
+        role: loginType,
+        selectedCloudKitchenId: selectedCloudKitchenId
+      })
       
-      // Query users table for matching login_key
-      const { data: userData, error: userError } = await client
-        .from('users')
-        .select('*')
-        .eq('login_key', loginKey.trim())
-        .eq('role', loginType)
-        .eq('is_active', true)
-        .maybeSingle()
+      // Use RPC function to authenticate user (bypasses RLS)
+      const { data: userDataArray, error: userError } = await supabase.rpc(
+        'authenticate_user_by_key',
+        {
+          p_login_key: loginKey.trim(),
+          p_role: loginType,
+          p_cloud_kitchen_id: selectedCloudKitchenId
+        }
+      )
+
+      console.log('RPC result:', { userDataArray, userError })
 
       if (userError) {
         console.error('Login error:', userError)
+        console.error('Error details:', {
+          code: userError.code,
+          message: userError.message,
+          details: userError.details,
+          hint: userError.hint
+        })
         throw new Error(userError.message || 'Failed to verify login key')
       }
 
+      // RPC returns an array, get first result
+      const userData = userDataArray && userDataArray.length > 0 ? userDataArray[0] : null
+
       if (!userData) {
-        throw new Error('Invalid login key or user not found')
+        console.error('No user found with login_key:', loginKey.trim(), 'for cloud kitchen:', selectedCloudKitchenId)
+        throw new Error('Invalid login key or user not found for this cloud kitchen')
       }
+
+      console.log('User found:', {
+        id: userData.id,
+        full_name: userData.full_name,
+        role: userData.role,
+        cloud_kitchen_id: userData.cloud_kitchen_id,
+        login_key: userData.login_key
+      })
 
       // Fetch cloud kitchen name separately (join might fail due to RLS)
       let cloudKitchenName = null
       if (userData.cloud_kitchen_id) {
         try {
-          const { data: cloudKitchenData, error: ckError } = await client
+          const { data: cloudKitchenData, error: ckError } = await supabase
             .from('cloud_kitchens')
             .select('name')
             .eq('id', userData.cloud_kitchen_id)
@@ -137,6 +209,8 @@ const Login = () => {
     setEmail('')
     setPassword('')
     setLoginKey('')
+    setSelectedCloudKitchenId('')
+    setCloudKitchens([])
     setError('')
   }
 
@@ -241,27 +315,69 @@ const Login = () => {
               </form>
             ) : (
               <form onSubmit={handleKeyLogin} className="space-y-4">
+                {/* Cloud Kitchen Selection */}
                 <div>
-                  <label htmlFor="loginKey" className="block text-sm font-semibold mb-2 text-foreground">
-                    Login Key
+                  <label htmlFor="cloudKitchen" className="block text-sm font-semibold mb-2 text-foreground">
+                    Cloud Kitchen <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    id="loginKey"
-                    type="text"
-                    value={loginKey}
-                    onChange={(e) => setLoginKey(e.target.value)}
-                    required
-                    className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
-                    placeholder="Enter your login key"
-                  />
+                  {loadingCloudKitchens ? (
+                    <div className="w-full bg-input border border-border rounded-lg px-4 py-3 text-muted-foreground">
+                      Loading cloud kitchens...
+                    </div>
+                  ) : cloudKitchens.length === 0 ? (
+                    <div className="w-full bg-input border border-destructive rounded-lg px-4 py-3 text-destructive text-sm">
+                      No cloud kitchens available. Please contact administrator.
+                    </div>
+                  ) : (
+                    <select
+                      id="cloudKitchen"
+                      value={selectedCloudKitchenId}
+                      onChange={(e) => {
+                        setSelectedCloudKitchenId(e.target.value)
+                        setLoginKey('') // Clear login key when cloud kitchen changes
+                        setError('') // Clear any previous errors
+                      }}
+                      required
+                      className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                    >
+                      <option value="">Select your cloud kitchen</option>
+                      {cloudKitchens.map((kitchen) => (
+                        <option key={kitchen.id} value={kitchen.id}>
+                          {kitchen.name} ({kitchen.code})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Enter your unique login key to access the system
+                    Select the cloud kitchen you belong to
                   </p>
                 </div>
 
+                {/* Login Key Input - Only show after cloud kitchen is selected */}
+                {selectedCloudKitchenId && (
+                  <div>
+                    <label htmlFor="loginKey" className="block text-sm font-semibold mb-2 text-foreground">
+                      Login Key <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      id="loginKey"
+                      type="text"
+                      value={loginKey}
+                      onChange={(e) => setLoginKey(e.target.value)}
+                      required
+                      className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                      placeholder="Enter your login key"
+                      autoFocus
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Enter your unique login key for {cloudKitchens.find(ck => ck.id === selectedCloudKitchenId)?.name || 'this cloud kitchen'}
+                    </p>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !selectedCloudKitchenId || !loginKey.trim() || loadingCloudKitchens}
                   className="w-full bg-accent text-background font-black text-lg px-5 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-button-active transition-all duration-300 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Logging in...' : 'Login'}

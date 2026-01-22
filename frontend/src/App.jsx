@@ -11,7 +11,7 @@ import PMOutlets from './pages/purchase-manager/Outlets'
 import PMOutletDetails from './pages/purchase-manager/OutletDetails'
 import SupervisorOutlets from './pages/supervisor/Outlets'
 import SupervisorOutletDetails from './pages/supervisor/OutletDetails'
-import SupervisorInventory from './pages/supervisor/Inventory'
+import SupervisorRawMaterials from './pages/supervisor/RawMaterials'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
 import { getSession } from './lib/auth'
@@ -86,7 +86,7 @@ function App() {
           <Route index element={<Navigate to="outlets" replace />} />
           <Route path="outlets" element={<SupervisorOutlets />} />
           <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
-          <Route path="inventory" element={<SupervisorInventory />} />
+          <Route path="raw-materials" element={<SupervisorRawMaterials />} />
         </Route>
 
         {/* Catch all - redirect to /invmanagement */}

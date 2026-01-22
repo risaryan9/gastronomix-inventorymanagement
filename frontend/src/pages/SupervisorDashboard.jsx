@@ -50,7 +50,7 @@ const SupervisorDashboard = () => {
   // Navigation items
   const navItems = [
     { path: 'outlets', label: 'Outlets' },
-    { path: 'inventory', label: 'Inventory' },
+    { path: 'raw-materials', label: 'Raw Materials' },
   ]
 
   return (

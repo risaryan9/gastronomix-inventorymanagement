@@ -11,15 +11,14 @@ const OutletDetails = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [outlet, setOutlet] = useState(location.state?.outlet || null)
-  const [allocations, setAllocations] = useState([])
+  const [allocationRequests, setAllocationRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAllocateModal, setShowAllocateModal] = useState(false)
-  const [inventory, setInventory] = useState([])
+  const [rawMaterials, setRawMaterials] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [stockFilter, setStockFilter] = useState('all') // 'all', 'in_stock', 'low_stock', 'out_of_stock'
-  const [selectedItems, setSelectedItems] = useState([]) // {raw_material_id, name, code, unit, available_quantity, allocated_quantity}
-  const [allocating, setAllocating] = useState(false)
+  const [selectedItems, setSelectedItems] = useState([]) // {raw_material_id, name, code, unit, requested_quantity}
+  const [requesting, setRequesting] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
 
@@ -27,8 +26,8 @@ const OutletDetails = () => {
     if (!outlet) {
       fetchOutlet()
     }
-    fetchAllocations()
-    fetchInventory()
+    fetchAllocationRequests()
+    fetchRawMaterials()
   }, [outletId])
 
   const fetchOutlet = async () => {
@@ -47,14 +46,14 @@ const OutletDetails = () => {
     }
   }
 
-  const fetchAllocations = async () => {
+  const fetchAllocationRequests = async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('allocations')
+        .from('allocation_requests')
         .select(`
           *,
-          allocation_items (
+          allocation_request_items (
             *,
             raw_materials (
               id,
@@ -65,41 +64,32 @@ const OutletDetails = () => {
           )
         `)
         .eq('outlet_id', outletId)
+        .order('request_date', { ascending: false })
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setAllocations(data || [])
+      setAllocationRequests(data || [])
     } catch (err) {
-      console.error('Error fetching allocations:', err)
+      console.error('Error fetching allocation requests:', err)
+      setAlert({ type: 'error', message: 'Failed to fetch allocation requests' })
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchInventory = async () => {
-    const session = getSession()
-    if (!session?.cloud_kitchen_id) return
-
+  const fetchRawMaterials = async () => {
     try {
-      const { data: inventoryData, error } = await supabase
-        .from('inventory')
-        .select(`
-          *,
-          raw_materials (
-            id,
-            name,
-            code,
-            unit,
-            category
-          )
-        `)
-        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-        // Show all items, including those with 0 quantity
+      const { data, error } = await supabase
+        .from('raw_materials')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
 
       if (error) throw error
-      setInventory(inventoryData || [])
+      setRawMaterials(data || [])
     } catch (err) {
-      console.error('Error fetching inventory:', err)
+      console.error('Error fetching raw materials:', err)
+      setAlert({ type: 'error', message: 'Failed to fetch raw materials' })
     }
   }
 
@@ -108,23 +98,21 @@ const OutletDetails = () => {
     setSelectedItems([])
     setSearchTerm('')
     setCategoryFilter('all')
-    setStockFilter('all')
   }
 
-  const handleAddItem = (inventoryItem) => {
-    const existing = selectedItems.find(item => item.raw_material_id === inventoryItem.raw_materials.id)
+  const handleAddItem = (material) => {
+    const existing = selectedItems.find(item => item.raw_material_id === material.id)
     if (existing) {
       setAlert({ type: 'warning', message: 'This material is already added' })
       return
     }
 
     setSelectedItems([...selectedItems, {
-      raw_material_id: inventoryItem.raw_materials.id,
-      name: inventoryItem.raw_materials.name,
-      code: inventoryItem.raw_materials.code,
-      unit: inventoryItem.raw_materials.unit,
-      available_quantity: parseFloat(inventoryItem.quantity),
-      allocated_quantity: ''
+      raw_material_id: material.id,
+      name: material.name,
+      code: material.code,
+      unit: material.unit,
+      requested_quantity: ''
     }])
     setSearchTerm('')
   }
@@ -132,7 +120,7 @@ const OutletDetails = () => {
   const handleUpdateQuantity = (raw_material_id, quantity) => {
     setSelectedItems(selectedItems.map(item =>
       item.raw_material_id === raw_material_id
-        ? { ...item, allocated_quantity: quantity }
+        ? { ...item, requested_quantity: quantity }
         : item
     ))
   }
@@ -149,18 +137,11 @@ const OutletDetails = () => {
     }
 
     for (const item of selectedItems) {
-      const qty = parseFloat(item.allocated_quantity)
+      const qty = parseFloat(item.requested_quantity)
       if (isNaN(qty) || qty <= 0) {
         setAlert({ 
           type: 'error', 
           message: `Please enter a valid quantity for ${item.name}` 
-        })
-        return
-      }
-      if (qty > item.available_quantity) {
-        setAlert({ 
-          type: 'error', 
-          message: `Allocated quantity for ${item.name} (${qty.toFixed(3)} ${item.unit}) exceeds available quantity (${item.available_quantity.toFixed(3)} ${item.unit})` 
         })
         return
       }
@@ -177,143 +158,69 @@ const OutletDetails = () => {
       return
     }
 
-    setAllocating(true)
+    setRequesting(true)
     setShowConfirmModal(false)
     try {
-      // Create allocation
-      const { data: allocation, error: allocationError } = await supabase
-        .from('allocations')
+      // Create allocation request
+      const { data: allocationRequest, error: allocationError } = await supabase
+        .from('allocation_requests')
         .insert({
           outlet_id: outletId,
           cloud_kitchen_id: session.cloud_kitchen_id,
-          allocated_by: session.id
+          requested_by: session.id,
+          request_date: new Date().toISOString().split('T')[0],
+          is_packed: false
         })
         .select()
         .single()
 
       if (allocationError) throw allocationError
 
-      // Create allocation items
-      const allocationItems = selectedItems.map(item => ({
-        allocation_id: allocation.id,
+      // Create allocation request items
+      const allocationRequestItems = selectedItems.map(item => ({
+        allocation_request_id: allocationRequest.id,
         raw_material_id: item.raw_material_id,
-        quantity: parseFloat(item.allocated_quantity)
+        quantity: parseFloat(item.requested_quantity)
       }))
 
       const { error: itemsError } = await supabase
-        .from('allocation_items')
-        .insert(allocationItems)
+        .from('allocation_request_items')
+        .insert(allocationRequestItems)
 
       if (itemsError) throw itemsError
 
-      // Update inventory - decrement quantities
-      for (const item of selectedItems) {
-        const { error: updateError } = await supabase.rpc('decrement_inventory', {
-          p_cloud_kitchen_id: session.cloud_kitchen_id,
-          p_raw_material_id: item.raw_material_id,
-          p_quantity: parseFloat(item.allocated_quantity)
-        })
-
-        if (updateError) {
-          // If RPC doesn't exist, do manual update
-          const { data: currentInventory } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-            .eq('raw_material_id', item.raw_material_id)
-            .single()
-
-          if (currentInventory) {
-            const newQuantity = parseFloat(currentInventory.quantity) - parseFloat(item.allocated_quantity)
-            await supabase
-              .from('inventory')
-              .update({
-                quantity: newQuantity,
-                last_updated_at: new Date().toISOString(),
-                updated_by: session.id
-              })
-              .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-              .eq('raw_material_id', item.raw_material_id)
-          }
-        }
-      }
-
-      setAlert({ type: 'success', message: 'Allocation created successfully!' })
+      setAlert({ type: 'success', message: 'Allocation request created successfully!' })
       setShowAllocateModal(false)
       setSelectedItems([])
       setSearchTerm('')
-      fetchAllocations()
-      fetchInventory()
+      fetchAllocationRequests()
     } catch (err) {
-      console.error('Error creating allocation:', err)
-      setAlert({ type: 'error', message: `Failed to create allocation: ${err.message}` })
+      console.error('Error creating allocation request:', err)
+      setAlert({ type: 'error', message: `Failed to create allocation request: ${err.message}` })
     } finally {
-      setAllocating(false)
+      setRequesting(false)
     }
   }
 
-  // Get unique categories from inventory
-  const categories = ['all', ...new Set(inventory.map(item => item.raw_materials?.category).filter(Boolean))]
+  // Get unique categories from raw materials
+  const categories = ['all', ...new Set(rawMaterials.map(material => material.category).filter(Boolean))]
 
-  const filteredInventory = inventory
-    .filter(item => {
-      const material = item.raw_materials
-      if (!material) return false
-
+  const filteredRawMaterials = rawMaterials
+    .filter(material => {
       // Search filter
       const matchesSearch = searchTerm === '' || 
         material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        material.code.toLowerCase().includes(searchTerm.toLowerCase())
+        material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (material.description && material.description.toLowerCase().includes(searchTerm.toLowerCase()))
 
       // Category filter
       const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
 
-      // Stock filter
-      const quantity = parseFloat(item.quantity) || 0
-      let matchesStock = true
-      if (stockFilter === 'in_stock') {
-        matchesStock = quantity > 0
-      } else if (stockFilter === 'low_stock') {
-        matchesStock = quantity > 0 && quantity <= (item.low_stock_threshold || 0)
-      } else if (stockFilter === 'out_of_stock') {
-        matchesStock = quantity === 0
-      }
-
-      return matchesSearch && matchesCategory && matchesStock
+      return matchesSearch && matchesCategory
     })
     .sort((a, b) => {
-      // Sort priority: Low stock first, then in stock, then out of stock at the end
-      const quantityA = parseFloat(a.quantity) || 0
-      const quantityB = parseFloat(b.quantity) || 0
-      const thresholdA = parseFloat(a.low_stock_threshold) || 0
-      const thresholdB = parseFloat(b.low_stock_threshold) || 0
-
-      const isOutOfStockA = quantityA === 0
-      const isOutOfStockB = quantityB === 0
-      const isLowStockA = quantityA > 0 && quantityA <= thresholdA
-      const isLowStockB = quantityB > 0 && quantityB <= thresholdB
-
-      // Out of stock items at the end
-      if (isOutOfStockA && !isOutOfStockB) return 1
-      if (!isOutOfStockA && isOutOfStockB) return -1
-
-      // If both are out of stock, sort alphabetically
-      if (isOutOfStockA && isOutOfStockB) {
-        const nameA = a.raw_materials?.name || ''
-        const nameB = b.raw_materials?.name || ''
-        return nameA.localeCompare(nameB)
-      }
-
-      // Low stock items first (if neither is out of stock)
-      if (!isOutOfStockA && !isOutOfStockB) {
-        if (isLowStockA && !isLowStockB) return -1
-        if (!isLowStockA && isLowStockB) return 1
-      }
-
-      // Within same stock status, sort alphabetically by name
-      const nameA = a.raw_materials?.name || ''
-      const nameB = b.raw_materials?.name || ''
-      return nameA.localeCompare(nameB)
+      // Sort alphabetically by name
+      return a.name.localeCompare(b.name)
     })
 
   const getBrandColor = (code) => {
@@ -413,52 +320,64 @@ const OutletDetails = () => {
             onClick={handleAllocate}
             className="w-full lg:w-auto bg-accent text-background font-bold px-6 py-4 lg:py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 text-base touch-manipulation"
           >
-            + Allocate Materials
+            + Create Allocation Request
           </button>
         </div>
 
-        {/* Allocations List */}
+        {/* Allocation Requests List */}
         <div>
-          <h2 className="text-lg lg:text-xl font-bold text-foreground mb-4">Previous Allocations</h2>
+          <h2 className="text-lg lg:text-xl font-bold text-foreground mb-4">Allocation Requests</h2>
 
           {loading ? (
             <div className="bg-card border-2 border-border rounded-xl p-8 lg:p-12">
               <div className="text-center">
-                <p className="text-muted-foreground">Loading allocations...</p>
+                <p className="text-muted-foreground">Loading allocation requests...</p>
               </div>
             </div>
-          ) : allocations.length === 0 ? (
+          ) : allocationRequests.length === 0 ? (
             <div className="bg-card border-2 border-border rounded-xl p-8 lg:p-12">
               <div className="text-center">
                 <svg className="w-16 h-16 lg:w-20 lg:h-20 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <h3 className="text-lg lg:text-xl font-bold text-foreground mb-2">No Allocations Yet</h3>
+                <h3 className="text-lg lg:text-xl font-bold text-foreground mb-2">No Allocation Requests Yet</h3>
                 <p className="text-sm lg:text-base text-muted-foreground">
-                  No materials have been allocated to this outlet yet.
+                  No allocation requests have been created for this outlet yet.
                 </p>
               </div>
             </div>
           ) : (
             <div className="space-y-3 lg:space-y-4">
-              {allocations.map((allocation) => (
-                <div key={allocation.id} className="bg-card border-2 border-border rounded-xl p-4 lg:p-5">
+              {allocationRequests.map((request) => (
+                <div key={request.id} className="bg-card border-2 border-border rounded-xl p-4 lg:p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-xs lg:text-sm text-muted-foreground">Allocation ID</p>
-                      <p className="text-sm lg:text-base font-mono text-foreground">{allocation.id.slice(0, 8)}...</p>
+                      <p className="text-xs lg:text-sm text-muted-foreground">Request ID</p>
+                      <p className="text-sm lg:text-base font-mono text-foreground">{request.id.slice(0, 8)}...</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs lg:text-sm text-muted-foreground">Date</p>
+                      <p className="text-xs lg:text-sm text-muted-foreground">Request Date</p>
                       <p className="text-sm lg:text-base font-semibold text-foreground">
-                        {new Date(allocation.created_at).toLocaleDateString()}
+                        {new Date(request.request_date).toLocaleDateString()}
                       </p>
+                      {request.is_packed && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-lg bg-green-500/20 text-green-500 text-xs font-bold mt-1">
+                          Packed
+                        </span>
+                      )}
                     </div>
                   </div>
 
+                  {request.notes && (
+                    <div className="mb-3 p-2 bg-background rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Notes:</p>
+                      <p className="text-sm text-foreground">{request.notes}</p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <p className="text-xs lg:text-sm font-semibold text-foreground mb-2">Items:</p>
-                    {allocation.allocation_items.map((item) => (
+                    {request.allocation_request_items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between bg-background rounded-lg p-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm lg:text-base font-semibold text-foreground truncate">
@@ -488,12 +407,12 @@ const OutletDetails = () => {
           <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl lg:text-2xl font-bold text-foreground">
-                Allocate Materials
+                Create Allocation Request
               </h2>
               <button
                 onClick={() => setShowAllocateModal(false)}
                 className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
-                disabled={allocating}
+                disabled={requesting}
                 aria-label="Close"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -512,82 +431,62 @@ const OutletDetails = () => {
             <div className="mb-4 space-y-3">
               <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">
-                  Search Materials
+                  Search Raw Materials
                 </label>
                 <input
                   type="text"
-                  placeholder="Search by name or code..."
+                  placeholder="Search by name, code, or description..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-input border-2 border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-base"
-                  disabled={allocating}
+                  disabled={requesting}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-2">
-                    Category
-                  </label>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
-                    disabled={allocating}
-                  >
-                    <option value="all">All Categories</option>
-                    {categories.filter(c => c !== 'all').map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-2">
-                    Stock Status
-                  </label>
-                  <select
-                    value={stockFilter}
-                    onChange={(e) => setStockFilter(e.target.value)}
-                    className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
-                    disabled={allocating}
-                  >
-                    <option value="all">All Stock</option>
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-2">
+                  Category
+                </label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
+                  disabled={requesting}
+                >
+                  <option value="all">All Categories</option>
+                  {categories.filter(c => c !== 'all').map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            {/* Materials List - Always visible, sorted with low/out of stock first */}
+            {/* Raw Materials List */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-foreground">
-                  Available Materials ({filteredInventory.length})
+                  Available Raw Materials ({filteredRawMaterials.length})
                 </h3>
-                {filteredInventory.length > 0 && (
+                {filteredRawMaterials.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Click to add to allocation
+                    Click to add to request
                   </p>
                 )}
               </div>
               
               <div className="max-h-80 overflow-y-auto border-2 border-border rounded-lg bg-background/30">
-                {filteredInventory.length === 0 ? (
+                {filteredRawMaterials.length === 0 ? (
                   <div className="p-6 text-center">
                     <p className="text-sm text-muted-foreground mb-2">
-                      {inventory.length === 0 
-                        ? 'No materials in inventory'
+                      {rawMaterials.length === 0 
+                        ? 'No raw materials available'
                         : 'No materials match your filters'}
                     </p>
-                    {(searchTerm || categoryFilter !== 'all' || stockFilter !== 'all') && (
+                    {(searchTerm || categoryFilter !== 'all') && (
                       <button
                         onClick={() => {
                           setSearchTerm('')
                           setCategoryFilter('all')
-                          setStockFilter('all')
                         }}
                         className="text-xs text-accent hover:text-accent/80 font-semibold"
                       >
@@ -597,37 +496,29 @@ const OutletDetails = () => {
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
-                    {filteredInventory.map((item) => {
-                      const material = item.raw_materials
-                      if (!material) return null
-
-                      const quantity = parseFloat(item.quantity) || 0
-                      const isOutOfStock = quantity === 0
-                      const isLowStock = quantity > 0 && quantity <= (item.low_stock_threshold || 0)
+                    {filteredRawMaterials.map((material) => {
                       const isAlreadySelected = selectedItems.some(selected => selected.raw_material_id === material.id)
                       
                       return (
                         <button
-                          key={item.id}
+                          key={material.id}
                           onClick={() => {
-                            if (!isOutOfStock && !isAlreadySelected) {
-                              handleAddItem(item)
+                            if (!isAlreadySelected) {
+                              handleAddItem(material)
                             }
                           }}
-                          disabled={allocating || isOutOfStock || isAlreadySelected}
+                          disabled={requesting || isAlreadySelected}
                           className={`w-full text-left px-4 py-4 lg:py-3 transition-all touch-manipulation ${
                             isAlreadySelected
                               ? 'bg-accent/20 cursor-not-allowed'
-                              : isOutOfStock 
-                                ? 'opacity-60 cursor-not-allowed bg-muted/30' 
-                                : 'hover:bg-accent/10 active:bg-accent/20'
+                              : 'hover:bg-accent/10 active:bg-accent/20'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <div className={`font-semibold text-base lg:text-sm ${
-                                  isOutOfStock || isAlreadySelected ? 'text-muted-foreground' : 'text-foreground'
+                                  isAlreadySelected ? 'text-muted-foreground' : 'text-foreground'
                                 }`}>
                                   {material.name}
                                 </div>
@@ -640,24 +531,10 @@ const OutletDetails = () => {
                               <div className="text-xs text-muted-foreground">
                                 {material.code} • {material.unit} • {material.category || 'No category'}
                               </div>
-                            </div>
-                            <div className="text-right ml-3 flex-shrink-0">
-                              {isOutOfStock ? (
-                                <>
-                                  <p className="text-sm font-bold text-destructive">0</p>
-                                  <p className="text-xs text-destructive">Out of stock</p>
-                                </>
-                              ) : (
-                                <>
-                                  <p className={`text-sm font-bold ${
-                                    isLowStock ? 'text-yellow-500' : 'text-foreground'
-                                  }`}>
-                                    {quantity.toFixed(3)}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {material.unit} {isLowStock && '• Low stock'}
-                                  </p>
-                                </>
+                              {material.description && (
+                                <div className="text-xs text-muted-foreground mt-1 truncate">
+                                  {material.description}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -679,12 +556,12 @@ const OutletDetails = () => {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{item.code} • Available: {item.available_quantity.toFixed(3)} {item.unit}</p>
+                          <p className="text-xs text-muted-foreground">{item.code} • {item.unit}</p>
                         </div>
                         <button
                           onClick={() => handleRemoveItem(item.raw_material_id)}
                           className="text-destructive hover:text-destructive/80 p-1 touch-manipulation"
-                          disabled={allocating}
+                          disabled={requesting}
                           aria-label="Remove"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -694,18 +571,17 @@ const OutletDetails = () => {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-foreground mb-1">
-                          Quantity to Allocate ({item.unit})
+                          Quantity to Request ({item.unit})
                         </label>
                         <input
                           type="number"
                           min="0"
-                          max={item.available_quantity}
                           step="0.001"
-                          value={item.allocated_quantity}
+                          value={item.requested_quantity}
                           onChange={(e) => handleUpdateQuantity(item.raw_material_id, e.target.value)}
                           className="w-full bg-input border border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
                           placeholder="0.000"
-                          disabled={allocating}
+                          disabled={requesting}
                         />
                       </div>
                     </div>
@@ -718,17 +594,17 @@ const OutletDetails = () => {
             <div className="flex flex-col lg:flex-row gap-3 mt-6">
               <button
                 onClick={() => setShowAllocateModal(false)}
-                disabled={allocating}
+                disabled={requesting}
                 className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
               >
                 Cancel
               </button>
               <button
                 onClick={handleFinalizeAllocation}
-                disabled={allocating || selectedItems.length === 0}
+                disabled={requesting || selectedItems.length === 0}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
-                {allocating ? 'Finalizing...' : 'Finalize Allocation'}
+                {requesting ? 'Creating Request...' : 'Create Request'}
               </button>
             </div>
           </div>
@@ -741,12 +617,12 @@ const OutletDetails = () => {
           <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl lg:text-2xl font-bold text-foreground">
-                Confirm Allocation
+                Confirm Allocation Request
               </h2>
               <button
                 onClick={() => setShowConfirmModal(false)}
                 className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
-                disabled={allocating}
+                disabled={requesting}
                 aria-label="Close"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -761,10 +637,10 @@ const OutletDetails = () => {
               <p className="text-xs text-muted-foreground">{outlet.code} • {outlet.address}</p>
             </div>
 
-            {/* Allocation Summary */}
+            {/* Request Summary */}
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">
-                Allocation Summary ({selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''})
+                Request Summary ({selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''})
               </h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {selectedItems.map((item) => (
@@ -776,10 +652,7 @@ const OutletDetails = () => {
                       </div>
                       <div className="text-right ml-3">
                         <p className="text-base font-bold text-foreground">
-                          {parseFloat(item.allocated_quantity).toFixed(3)} {item.unit}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Available: {item.available_quantity.toFixed(3)} {item.unit}
+                          {parseFloat(item.requested_quantity).toFixed(3)} {item.unit}
                         </p>
                       </div>
                     </div>
@@ -788,10 +661,10 @@ const OutletDetails = () => {
               </div>
             </div>
 
-            {/* Warning Message */}
-            <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+            {/* Info Message */}
+            <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/50 rounded-lg">
               <p className="text-xs lg:text-sm text-foreground">
-                <span className="font-semibold">⚠️ Warning:</span> This will decrement the inventory quantities for all selected items. This action cannot be undone.
+                <span className="font-semibold">ℹ️ Note:</span> This will create an allocation request. The inventory will not be decremented until the request is processed and packed.
               </p>
             </div>
 
@@ -799,17 +672,17 @@ const OutletDetails = () => {
             <div className="flex flex-col lg:flex-row gap-3">
               <button
                 onClick={() => setShowConfirmModal(false)}
-                disabled={allocating}
+                disabled={requesting}
                 className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmAllocation}
-                disabled={allocating}
+                disabled={requesting}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
-                {allocating ? 'Finalizing...' : 'Confirm & Finalize'}
+                {requesting ? 'Creating Request...' : 'Confirm & Create Request'}
               </button>
             </div>
           </div>
