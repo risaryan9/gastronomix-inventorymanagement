@@ -8,7 +8,9 @@ const Overview = () => {
     totalMaterials: 0,
     stockInThisMonth: 0,
     lowStockItems: 0,
-    totalValue: 0
+    totalValue: 0,
+    stockOutToday: 0,
+    pendingAllocationsToday: 0
   })
   const [recentStockIn, setRecentStockIn] = useState([])
   const [recentAllocations, setRecentAllocations] = useState([])
@@ -29,43 +31,48 @@ const Overview = () => {
     try {
       setLoading(true)
 
+      const today = new Date()
+      const todayStr = today.toISOString().split('T')[0]
+      const firstOfMonthStr = new Date(today.getFullYear(), today.getMonth(), 1)
+        .toISOString()
+        .split('T')[0]
+
       // Fetch all data in parallel
       const [
         inventoryResult,
         stockInResult,
-        allocationsResult
+        stockOutResult,
+        batchesResult,
+        pendingAllocationsResult
       ] = await Promise.all([
-        // Inventory data for low stock, total value, and total materials count
+        // Inventory data with raw material details (for low stock and total materials count)
         supabase
           .from('inventory')
           .select(`
             quantity,
-            low_stock_threshold,
             raw_material_id,
             raw_materials!inner (
               id,
-              material_costs (
-                cost_per_unit,
-                created_at
-              )
+              low_stock_threshold
             )
           `)
           .eq('cloud_kitchen_id', session.cloud_kitchen_id),
         
-        // Stock In for this month
+        // Stock In for this month (recent records)
         supabase
           .from('stock_in')
           .select('id, receipt_date, total_cost')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .gte('receipt_date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0])
+          .gte('receipt_date', firstOfMonthStr)
           .order('receipt_date', { ascending: false })
           .limit(5),
         
-        // Recent allocations
+        // Recent stock out / allocations to outlets
         supabase
-          .from('allocations')
+          .from('stock_out')
           .select(`
             id,
+            allocation_date,
             created_at,
             outlet_id,
             outlets (
@@ -74,63 +81,73 @@ const Overview = () => {
             )
           `)
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .order('allocation_date', { ascending: false })
           .order('created_at', { ascending: false })
-          .limit(5)
+          .limit(5),
+
+        // Stock-in batches for FIFO-based valuation
+        supabase
+          .from('stock_in_batches')
+          .select('quantity_remaining, unit_cost')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .gt('quantity_remaining', 0),
+
+        // Pending allocation requests for today
+        supabase
+          .from('allocation_requests')
+          .select('id')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .eq('request_date', todayStr)
+          .eq('is_packed', false)
       ])
 
       // Calculate total materials (unique materials in inventory)
       const totalMaterials = inventoryResult.data ? new Set(inventoryResult.data.map(item => item.raw_material_id)).size : 0
 
-      // Calculate low stock items and total value from inventory
+      // Calculate low stock items from inventory (using raw_materials.low_stock_threshold)
       let lowStockItems = 0
-      let totalValue = 0
-
       if (inventoryResult.data) {
-        // Get latest costs for each material
-        const materialIds = [...new Set(inventoryResult.data.map(item => item.raw_material_id))]
-        const { data: costsData } = await supabase
-          .from('material_costs')
-          .select('raw_material_id, cost_per_unit, created_at')
-          .in('raw_material_id', materialIds)
-          .order('created_at', { ascending: false })
-
-        // Create a map of latest cost per material
-        const costMap = new Map()
-        if (costsData) {
-          costsData.forEach(cost => {
-            if (!costMap.has(cost.raw_material_id)) {
-              costMap.set(cost.raw_material_id, parseFloat(cost.cost_per_unit) || 0)
-            }
-          })
-        }
-
         inventoryResult.data.forEach(item => {
           const quantity = parseFloat(item.quantity) || 0
-          const threshold = parseFloat(item.low_stock_threshold) || 0
+          const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
           
-          // Check if low stock
           if (quantity > 0 && quantity <= threshold) {
             lowStockItems++
           }
+        })
+      }
 
-          // Calculate total value
-          const costPerUnit = costMap.get(item.raw_material_id) || 0
-          totalValue += quantity * costPerUnit
+      // Total inventory value using FIFO batches (sum of quantity_remaining * unit_cost)
+      let totalValue = 0
+      if (batchesResult.data) {
+        batchesResult.data.forEach(batch => {
+          const qty = parseFloat(batch.quantity_remaining) || 0
+          const cost = parseFloat(batch.unit_cost) || 0
+          totalValue += qty * cost
         })
       }
 
       // Calculate stock in this month (count of records)
       const stockInThisMonth = stockInResult.data?.length || 0
 
+      // Stock out today (count of stock_out records for today)
+      const stockOutToday =
+        stockOutResult.data?.filter(record => record.allocation_date === todayStr).length || 0
+
+      // Pending allocation requests for today
+      const pendingAllocationsToday = pendingAllocationsResult.data?.length || 0
+
       setStats({
         totalMaterials,
         stockInThisMonth,
         lowStockItems,
-        totalValue
+        totalValue,
+        stockOutToday,
+        pendingAllocationsToday
       })
 
       setRecentStockIn(stockInResult.data || [])
-      setRecentAllocations(allocationsResult.data || [])
+      setRecentAllocations(stockOutResult.data || [])
     } catch (err) {
       console.error('Error fetching overview data:', err)
     } finally {
@@ -234,6 +251,41 @@ const Overview = () => {
               className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
             >
               View inventory →
+            </button>
+          </div>
+        </div>
+
+        {/* Additional Analytics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground font-semibold">Stock Out (Today)</p>
+              <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18v-6m0 0V6m0 6h6m-6 0H6" />
+              </svg>
+            </div>
+            <p className="text-3xl font-bold text-foreground mt-2">{stats.stockOutToday}</p>
+            <button
+              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/stock-out')}
+              className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
+            >
+              View stock out →
+            </button>
+          </div>
+
+          <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground font-semibold">Pending Requests (Today)</p>
+              <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-3xl font-bold text-foreground mt-2">{stats.pendingAllocationsToday}</p>
+            <button
+              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/stock-out')}
+              className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
+            >
+              View requests →
             </button>
           </div>
         </div>

@@ -21,6 +21,7 @@ const OutletDetails = () => {
   const [requesting, setRequesting] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
+  const [editingRequest, setEditingRequest] = useState(null) // The allocation request being edited
 
   useEffect(() => {
     if (!outlet) {
@@ -93,9 +94,38 @@ const OutletDetails = () => {
     }
   }
 
+  // Check if there's an existing allocation request for today with is_packed = false
+  const existingTodayRequest = allocationRequests.find(request => {
+    const today = new Date().toISOString().split('T')[0]
+    const requestDate = new Date(request.request_date).toISOString().split('T')[0]
+    return requestDate === today && !request.is_packed
+  })
+
   const handleAllocate = () => {
+    if (existingTodayRequest) {
+      // If editing, load the existing request
+      handleEditRequest(existingTodayRequest)
+    } else {
+      setShowAllocateModal(true)
+      setSelectedItems([])
+      setSearchTerm('')
+      setCategoryFilter('all')
+      setEditingRequest(null)
+    }
+  }
+
+  const handleEditRequest = (request) => {
+    setEditingRequest(request)
+    // Load existing items into selectedItems
+    const items = request.allocation_request_items.map(item => ({
+      raw_material_id: item.raw_materials.id,
+      name: item.raw_materials.name,
+      code: item.raw_materials.code,
+      unit: item.raw_materials.unit,
+      requested_quantity: parseFloat(item.quantity).toString()
+    }))
+    setSelectedItems(items)
     setShowAllocateModal(true)
-    setSelectedItems([])
     setSearchTerm('')
     setCategoryFilter('all')
   }
@@ -136,6 +166,17 @@ const OutletDetails = () => {
       return
     }
 
+    // Check for duplicate materials
+    const materialIds = selectedItems.map(item => item.raw_material_id)
+    const uniqueMaterialIds = new Set(materialIds)
+    if (materialIds.length !== uniqueMaterialIds.size) {
+      setAlert({ 
+        type: 'error', 
+        message: 'Duplicate materials detected. Please remove duplicates before proceeding.' 
+      })
+      return
+    }
+
     for (const item of selectedItems) {
       const qty = parseFloat(item.requested_quantity)
       if (isNaN(qty) || qty <= 0) {
@@ -161,42 +202,181 @@ const OutletDetails = () => {
     setRequesting(true)
     setShowConfirmModal(false)
     try {
-      // Create allocation request
-      const { data: allocationRequest, error: allocationError } = await supabase
-        .from('allocation_requests')
-        .insert({
-          outlet_id: outletId,
-          cloud_kitchen_id: session.cloud_kitchen_id,
-          requested_by: session.id,
-          request_date: new Date().toISOString().split('T')[0],
-          is_packed: false
+      if (editingRequest) {
+        // Validate no duplicate materials before proceeding
+        const materialIds = selectedItems.map(item => item.raw_material_id)
+        const uniqueMaterialIds = new Set(materialIds)
+        if (materialIds.length !== uniqueMaterialIds.size) {
+          throw new Error('Duplicate materials detected. Please remove duplicates.')
+        }
+
+        // Update existing allocation request
+        const { error: updateError } = await supabase
+          .from('allocation_requests')
+          .update({
+            notes: editingRequest.notes // Preserve notes if any
+          })
+          .eq('id', editingRequest.id)
+
+        if (updateError) throw updateError
+
+        // Get existing items from the request
+        const existingItems = editingRequest.allocation_request_items || []
+        const existingItemsMap = new Map(
+          existingItems.map(item => [item.raw_materials.id, item])
+        )
+
+        // Create maps for efficient lookup
+        const newItemsMap = new Map(
+          selectedItems.map(item => [item.raw_material_id, item])
+        )
+
+        // Separate items into: update, insert, and delete
+        const itemsToUpdate = []
+        const itemsToInsert = []
+        const itemsToDelete = []
+
+        // Check each existing item
+        existingItems.forEach(existingItem => {
+          const materialId = existingItem.raw_materials.id
+          const newItem = newItemsMap.get(materialId)
+
+          if (newItem) {
+            // Item exists in both - check if quantity changed (use tolerance for floating point)
+            const existingQty = parseFloat(existingItem.quantity)
+            const newQty = parseFloat(newItem.requested_quantity)
+            // Compare with small tolerance for floating point precision
+            if (Math.abs(existingQty - newQty) > 0.0001) {
+              itemsToUpdate.push({
+                id: existingItem.id,
+                quantity: newQty
+              })
+            }
+            // If quantity is same, no update needed
+          } else {
+            // Item exists in old but not in new - delete it
+            itemsToDelete.push(existingItem.id)
+          }
         })
-        .select()
-        .single()
 
-      if (allocationError) throw allocationError
+        // Check for new items that don't exist in old
+        selectedItems.forEach(newItem => {
+          if (!existingItemsMap.has(newItem.raw_material_id)) {
+            itemsToInsert.push({
+              allocation_request_id: editingRequest.id,
+              raw_material_id: newItem.raw_material_id,
+              quantity: parseFloat(newItem.requested_quantity)
+            })
+          }
+        })
 
-      // Create allocation request items
-      const allocationRequestItems = selectedItems.map(item => ({
-        allocation_request_id: allocationRequest.id,
-        raw_material_id: item.raw_material_id,
-        quantity: parseFloat(item.requested_quantity)
-      }))
+        console.log('Update operations:', {
+          itemsToUpdate,
+          itemsToInsert,
+          itemsToDelete,
+          existingItems: existingItems.map(i => ({ id: i.id, material: i.raw_materials.id, qty: i.quantity })),
+          selectedItems: selectedItems.map(i => ({ material: i.raw_material_id, qty: i.requested_quantity }))
+        })
 
-      const { error: itemsError } = await supabase
-        .from('allocation_request_items')
-        .insert(allocationRequestItems)
+        // Perform updates, deletes, and inserts
+        // Update existing items
+        if (itemsToUpdate.length > 0) {
+          for (const item of itemsToUpdate) {
+            console.log('Updating item:', item.id, 'with quantity:', item.quantity)
+            const { data, error } = await supabase
+              .from('allocation_request_items')
+              .update({ quantity: item.quantity })
+              .eq('id', item.id)
+              .select()
+            
+            console.log('Update result:', { data, error })
+            if (error) throw error
+            if (!data || data.length === 0) {
+              console.warn('Update returned no rows for item:', item.id)
+            }
+          }
+        }
 
-      if (itemsError) throw itemsError
+        // Delete removed items
+        if (itemsToDelete.length > 0) {
+          console.log('Deleting items:', itemsToDelete)
+          const { data, error: deleteError } = await supabase
+            .from('allocation_request_items')
+            .delete()
+            .in('id', itemsToDelete)
+            .select()
+          
+          console.log('Delete result:', { data, error: deleteError })
+          if (deleteError) throw deleteError
+        }
 
-      setAlert({ type: 'success', message: 'Allocation request created successfully!' })
+        // Insert new items
+        if (itemsToInsert.length > 0) {
+          console.log('Inserting items:', itemsToInsert)
+          const { data, error: insertError } = await supabase
+            .from('allocation_request_items')
+            .insert(itemsToInsert)
+            .select()
+          
+          console.log('Insert result:', { data, error: insertError })
+          if (insertError) throw insertError
+        }
+
+        setAlert({ type: 'success', message: 'Allocation request updated successfully!' })
+        // Refresh the allocation requests to show updated data
+        await fetchAllocationRequests()
+      } else {
+        // Validate no duplicate materials before proceeding
+        const materialIds = selectedItems.map(item => item.raw_material_id)
+        const uniqueMaterialIds = new Set(materialIds)
+        if (materialIds.length !== uniqueMaterialIds.size) {
+          throw new Error('Duplicate materials detected. Please remove duplicates.')
+        }
+
+        // Create new allocation request
+        const { data: allocationRequest, error: allocationError } = await supabase
+          .from('allocation_requests')
+          .insert({
+            outlet_id: outletId,
+            cloud_kitchen_id: session.cloud_kitchen_id,
+            requested_by: session.id,
+            request_date: new Date().toISOString().split('T')[0],
+            is_packed: false
+          })
+          .select()
+          .single()
+
+        if (allocationError) throw allocationError
+
+        // Remove any duplicate materials from selectedItems before inserting
+        const uniqueItems = selectedItems.filter((item, index, self) =>
+          index === self.findIndex(t => t.raw_material_id === item.raw_material_id)
+        )
+
+        // Create allocation request items
+        const allocationRequestItems = uniqueItems.map(item => ({
+          allocation_request_id: allocationRequest.id,
+          raw_material_id: item.raw_material_id,
+          quantity: parseFloat(item.requested_quantity)
+        }))
+
+        const { error: itemsError } = await supabase
+          .from('allocation_request_items')
+          .insert(allocationRequestItems)
+
+        if (itemsError) throw itemsError
+
+        setAlert({ type: 'success', message: 'Allocation request created successfully!' })
+      }
+
       setShowAllocateModal(false)
       setSelectedItems([])
       setSearchTerm('')
+      setEditingRequest(null)
       fetchAllocationRequests()
     } catch (err) {
-      console.error('Error creating allocation request:', err)
-      setAlert({ type: 'error', message: `Failed to create allocation request: ${err.message}` })
+      console.error('Error saving allocation request:', err)
+      setAlert({ type: 'error', message: `Failed to save allocation request: ${err.message}` })
     } finally {
       setRequesting(false)
     }
@@ -318,10 +498,21 @@ const OutletDetails = () => {
         <div className="mb-4 lg:mb-6">
           <button
             onClick={handleAllocate}
-            className="w-full lg:w-auto bg-accent text-background font-bold px-6 py-4 lg:py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 text-base touch-manipulation"
+            className={`w-full lg:w-auto font-bold px-6 py-4 lg:py-3 rounded-xl border-3 transition-all duration-200 text-base touch-manipulation ${
+              existingTodayRequest && !existingTodayRequest.is_packed
+                ? 'bg-yellow-500 text-black border-yellow-500 shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
+                : 'bg-accent text-background border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
+            }`}
           >
-            + Create Allocation Request
+            {existingTodayRequest && !existingTodayRequest.is_packed
+              ? 'Edit Today\'s Allocation Request'
+              : '+ Create Allocation Request'}
           </button>
+          {existingTodayRequest && !existingTodayRequest.is_packed && (
+            <p className="text-xs text-muted-foreground mt-2">
+              You already have an allocation request for today. Click to edit it.
+            </p>
+          )}
         </div>
 
         {/* Allocation Requests List */}
@@ -394,6 +585,25 @@ const OutletDetails = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Edit Button - only show if not packed and is today's request */}
+                  {!request.is_packed && (() => {
+                    const today = new Date().toISOString().split('T')[0]
+                    const requestDate = new Date(request.request_date).toISOString().split('T')[0]
+                    if (requestDate === today) {
+                      return (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <button
+                            onClick={() => handleEditRequest(request)}
+                            className="w-full bg-accent text-background font-semibold px-4 py-2.5 rounded-lg border-2 border-accent hover:bg-accent/90 transition-all text-sm touch-manipulation"
+                          >
+                            Edit Request
+                          </button>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               ))}
             </div>
@@ -407,10 +617,14 @@ const OutletDetails = () => {
           <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl lg:text-2xl font-bold text-foreground">
-                Create Allocation Request
+                {editingRequest ? 'Edit Allocation Request' : 'Create Allocation Request'}
               </h2>
               <button
-                onClick={() => setShowAllocateModal(false)}
+                onClick={() => {
+                  setShowAllocateModal(false)
+                  setEditingRequest(null)
+                  setSelectedItems([])
+                }}
                 className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
                 disabled={requesting}
                 aria-label="Close"
@@ -593,7 +807,11 @@ const OutletDetails = () => {
             {/* Actions */}
             <div className="flex flex-col lg:flex-row gap-3 mt-6">
               <button
-                onClick={() => setShowAllocateModal(false)}
+                onClick={() => {
+                  setShowAllocateModal(false)
+                  setEditingRequest(null)
+                  setSelectedItems([])
+                }}
                 disabled={requesting}
                 className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
               >
@@ -604,7 +822,9 @@ const OutletDetails = () => {
                 disabled={requesting || selectedItems.length === 0}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
-                {requesting ? 'Creating Request...' : 'Create Request'}
+                {requesting 
+                  ? (editingRequest ? 'Updating Request...' : 'Creating Request...')
+                  : (editingRequest ? 'Update Request' : 'Create Request')}
               </button>
             </div>
           </div>
@@ -617,7 +837,7 @@ const OutletDetails = () => {
           <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl lg:text-2xl font-bold text-foreground">
-                Confirm Allocation Request
+                {editingRequest ? 'Confirm Update' : 'Confirm Allocation Request'}
               </h2>
               <button
                 onClick={() => setShowConfirmModal(false)}
@@ -682,7 +902,9 @@ const OutletDetails = () => {
                 disabled={requesting}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
-                {requesting ? 'Creating Request...' : 'Confirm & Create Request'}
+                {requesting 
+                  ? (editingRequest ? 'Updating Request...' : 'Creating Request...')
+                  : (editingRequest ? 'Confirm & Update Request' : 'Confirm & Create Request')}
               </button>
             </div>
           </div>
