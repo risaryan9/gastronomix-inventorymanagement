@@ -57,11 +57,11 @@ const StockIn = () => {
           .from('stock_in')
           .select(`
             *,
-            stock_in_items (
+            stock_in_batches (
               id,
-              quantity,
+              quantity_purchased,
+              quantity_remaining,
               unit_cost,
-              total_cost,
               raw_materials:raw_material_id (
                 id,
                 name,
@@ -133,22 +133,26 @@ const StockIn = () => {
       return
     }
 
-    // Fetch the latest cost from material_costs
+    // Fetch the latest unit cost from the most recent batch for this material
     let unitCost = 0
-    try {
-      const { data: costData, error } = await supabase
-        .from('material_costs')
-        .select('cost_per_unit, created_at')
-        .eq('raw_material_id', material.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    const session = getSession()
+    if (session?.cloud_kitchen_id) {
+      try {
+        const { data: latestBatch, error } = await supabase
+          .from('stock_in_batches')
+          .select('unit_cost, created_at')
+          .eq('raw_material_id', material.id)
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-      if (!error && costData) {
-        unitCost = parseFloat(costData.cost_per_unit) || 0
+        if (!error && latestBatch) {
+          unitCost = parseFloat(latestBatch.unit_cost) || 0
+        }
+      } catch (err) {
+        console.error('Error fetching latest batch cost:', err)
       }
-    } catch (err) {
-      console.error('Error fetching material cost:', err)
     }
 
     setPurchaseItems(prev => [...prev, {
@@ -168,16 +172,16 @@ const StockIn = () => {
   }
 
   // Update item quantity
-  const handleUpdateItem = (index, value) => {
+  const handleUpdateItem = (index, field, value) => {
     setPurchaseItems(prev => {
       const updated = [...prev]
       updated[index] = {
         ...updated[index],
-        quantity: value
+        [field]: value
       }
 
       // Calculate total cost
-      const quantity = parseFloat(value) || 0
+      const quantity = parseFloat(updated[index].quantity) || 0
       const unitCost = parseFloat(updated[index].unit_cost) || 0
       updated[index].total_cost = quantity * unitCost
 
@@ -241,8 +245,8 @@ const StockIn = () => {
         alert(`Please enter a valid quantity for ${item.material.name}`)
         return
       }
-      if (!item.unit_cost || item.unit_cost <= 0) {
-        alert(`No cost found for ${item.material.name}. Please add a cost in the Materials section first.`)
+      if (!item.unit_cost || parseFloat(item.unit_cost) <= 0) {
+        alert(`Please enter a valid unit cost for ${item.material.name}`)
         return
       }
     }
@@ -268,10 +272,8 @@ const StockIn = () => {
       if (stockInError) throw stockInError
 
       // Check if materials exist in inventory, create entries if they don't
-      // This must happen BEFORE creating stock_in_items so the trigger can update quantity
+      // This must happen BEFORE creating stock_in_batches
       for (const item of purchaseItems) {
-        const quantity = parseFloat(item.quantity)
-        
         // Check if inventory entry exists
         const { data: existingInventory } = await supabase
           .from('inventory')
@@ -280,17 +282,15 @@ const StockIn = () => {
           .eq('raw_material_id', item.raw_material_id)
           .maybeSingle()
 
-        // If inventory entry doesn't exist, create it with low_stock_threshold = 15% of quantity
+        // If inventory entry doesn't exist, create it with quantity 0
+        // (The trigger should handle this, but we ensure it exists)
         if (!existingInventory) {
-          const lowStockThreshold = Math.max(0, quantity * 0.15)
-          
           const { error: inventoryError } = await supabase
             .from('inventory')
             .insert({
               cloud_kitchen_id: session.cloud_kitchen_id,
               raw_material_id: item.raw_material_id,
-              quantity: 0, // Will be updated by the trigger when stock_in_items are created
-              low_stock_threshold: lowStockThreshold,
+              quantity: 0, // Will be updated when batches are created
               updated_by: session.id
             })
 
@@ -301,23 +301,26 @@ const StockIn = () => {
         }
       }
 
-      // Create stock_in_items (this will trigger inventory quantity update)
-      const stockInItems = purchaseItems.map(item => ({
-        stock_in_id: stockInData.id,
-        raw_material_id: item.raw_material_id,
-        quantity: parseFloat(item.quantity),
-        unit_cost: parseFloat(item.unit_cost),
-        total_cost: item.total_cost
-      }))
+      // Create stock_in_batches (FIFO tracking)
+      const stockInBatches = purchaseItems.map(item => {
+        const quantity = parseFloat(item.quantity)
+        return {
+          stock_in_id: stockInData.id,
+          raw_material_id: item.raw_material_id,
+          cloud_kitchen_id: session.cloud_kitchen_id,
+          quantity_purchased: quantity,
+          quantity_remaining: quantity, // Initially, all purchased quantity is remaining
+          unit_cost: parseFloat(item.unit_cost)
+        }
+      })
 
-      const { error: itemsError } = await supabase
-        .from('stock_in_items')
-        .insert(stockInItems)
+      const { error: batchesError } = await supabase
+        .from('stock_in_batches')
+        .insert(stockInBatches)
 
-      if (itemsError) throw itemsError
+      if (batchesError) throw batchesError
 
-      // Manually update inventory quantities
-      // (This ensures inventory is updated even if the database trigger doesn't exist)
+      // Update inventory quantities by incrementing with the new batch quantities
       for (const item of purchaseItems) {
         const quantity = parseFloat(item.quantity)
         
@@ -346,6 +349,21 @@ const StockIn = () => {
           if (updateError) {
             console.error('Error updating inventory quantity:', updateError)
           }
+        } else {
+          // If inventory entry still doesn't exist, create it with the quantity
+          const { error: insertError } = await supabase
+            .from('inventory')
+            .insert({
+              cloud_kitchen_id: session.cloud_kitchen_id,
+              raw_material_id: item.raw_material_id,
+              quantity: quantity,
+              last_updated_at: new Date().toISOString(),
+              updated_by: session.id
+            })
+
+          if (insertError) {
+            console.error('Error creating inventory entry:', insertError)
+          }
         }
       }
 
@@ -358,11 +376,11 @@ const StockIn = () => {
         .from('stock_in')
         .select(`
           *,
-          stock_in_items (
+          stock_in_batches (
             id,
-            quantity,
+            quantity_purchased,
+            quantity_remaining,
             unit_cost,
-            total_cost,
             raw_materials:raw_material_id (
               id,
               name,
@@ -396,7 +414,7 @@ const StockIn = () => {
     }
 
     // Item count filter
-    const itemCount = record.stock_in_items?.length || 0
+    const itemCount = record.stock_in_batches?.length || 0
     if (itemCountFilter === '1-5' && (itemCount < 1 || itemCount > 5)) return false
     if (itemCountFilter === '6-10' && (itemCount < 6 || itemCount > 10)) return false
     if (itemCountFilter === '11+' && itemCount < 11) return false
@@ -642,7 +660,7 @@ const StockIn = () => {
                           {record.invoice_number || '—'}
                         </td>
                         <td className="px-4 py-3 text-foreground">
-                          {record.stock_in_items?.length || 0} item(s)
+                          {record.stock_in_batches?.length || 0} item(s)
                         </td>
                         <td className="px-4 py-3 text-foreground font-semibold">
                           ₹{parseFloat(record.total_cost || 0).toFixed(2)}
@@ -786,7 +804,7 @@ const StockIn = () => {
                     If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
                   </p>
                   <p className="text-xs text-muted-foreground mb-4">
-                    <strong>Note:</strong> Unit costs are automatically fetched from the Materials section. To update costs, go to the Materials section.
+                    <strong>Note:</strong> Unit costs are pre-filled from the most recent purchase batch. You can edit the unit cost for this purchase.
                   </p>
                 </div>
 
@@ -868,29 +886,25 @@ const StockIn = () => {
                               min="0.001"
                               step="0.001"
                               value={item.quantity}
-                              onChange={(e) => handleUpdateItem(index, e.target.value)}
+                              onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value)}
                               className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                               placeholder="0.000"
                             />
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1">
-                              Unit Cost (₹)
+                              Unit Cost (₹) <span className="text-destructive">*</span>
                             </label>
-                            {item.unit_cost > 0 ? (
-                              <input
-                                type="text"
-                                value={item.unit_cost.toFixed(2)}
-                                disabled
-                                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-foreground opacity-60 cursor-not-allowed"
-                              />
-                            ) : (
-                              <div className="w-full bg-destructive/10 border border-destructive rounded-lg px-3 py-2">
-                                <p className="text-xs text-destructive font-semibold">
-                                  No cost found. Add cost in Materials section.
-                                </p>
-                              </div>
-                            )}
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={item.unit_cost}
+                              onChange={(e) => handleUpdateItem(index, 'unit_cost', e.target.value)}
+                              className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                              placeholder="0.00"
+                              required
+                            />
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1">
@@ -986,7 +1000,7 @@ const StockIn = () => {
                         <div>
                           <p className="font-semibold text-foreground">{item.material.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {item.quantity} {item.material.unit} × ₹{parseFloat(item.unit_cost).toFixed(2)} = ₹{item.total_cost.toFixed(2)}
+                            {item.quantity} {item.material.unit} × ₹{parseFloat(item.unit_cost || 0).toFixed(2)} = ₹{item.total_cost.toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -1076,39 +1090,46 @@ const StockIn = () => {
 
               {/* Items Table */}
               <div className="mb-6">
-                <h3 className="text-lg font-bold text-foreground mb-3">Items ({selectedRecord.stock_in_items?.length || 0})</h3>
-                {selectedRecord.stock_in_items && selectedRecord.stock_in_items.length > 0 ? (
+                <h3 className="text-lg font-bold text-foreground mb-3">Items ({selectedRecord.stock_in_batches?.length || 0})</h3>
+                {selectedRecord.stock_in_batches && selectedRecord.stock_in_batches.length > 0 ? (
                   <div className="border border-border rounded-lg overflow-hidden">
                     <table className="w-full">
                       <thead className="bg-background border-b border-border">
                         <tr>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
-                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Purchased</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Remaining</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit Cost</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Total Cost</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {selectedRecord.stock_in_items.map((item, index) => (
-                          <tr key={item.id || index} className="border-b border-border hover:bg-accent/5 transition-colors">
-                            <td className="px-4 py-3 text-foreground">
-                              {item.raw_materials?.name || 'N/A'}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground font-mono text-sm">
-                              {item.raw_materials?.code || 'N/A'}
-                            </td>
-                            <td className="px-4 py-3 text-foreground">
-                              {parseFloat(item.quantity).toFixed(3)} {item.raw_materials?.unit || ''}
-                            </td>
-                            <td className="px-4 py-3 text-foreground">
-                              ₹{parseFloat(item.unit_cost || 0).toFixed(2)}
-                            </td>
-                            <td className="px-4 py-3 text-foreground font-semibold">
-                              ₹{parseFloat(item.total_cost || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
+                        {selectedRecord.stock_in_batches.map((batch, index) => {
+                          const totalCost = parseFloat(batch.quantity_purchased) * parseFloat(batch.unit_cost || 0)
+                          return (
+                            <tr key={batch.id || index} className="border-b border-border hover:bg-accent/5 transition-colors">
+                              <td className="px-4 py-3 text-foreground">
+                                {batch.raw_materials?.name || 'N/A'}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground font-mono text-sm">
+                                {batch.raw_materials?.code || 'N/A'}
+                              </td>
+                              <td className="px-4 py-3 text-foreground">
+                                {parseFloat(batch.quantity_purchased).toFixed(3)} {batch.raw_materials?.unit || ''}
+                              </td>
+                              <td className="px-4 py-3 text-foreground">
+                                {parseFloat(batch.quantity_remaining).toFixed(3)} {batch.raw_materials?.unit || ''}
+                              </td>
+                              <td className="px-4 py-3 text-foreground">
+                                ₹{parseFloat(batch.unit_cost || 0).toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-foreground font-semibold">
+                                ₹{totalCost.toFixed(2)}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
