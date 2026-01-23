@@ -5,6 +5,7 @@ import PurchaseManagerDashboard from './pages/PurchaseManagerDashboard'
 import SupervisorDashboard from './pages/SupervisorDashboard'
 import Overview from './pages/purchase-manager/Overview'
 import StockIn from './pages/purchase-manager/StockIn'
+import StockOut from './pages/purchase-manager/StockOut'
 import Materials from './pages/purchase-manager/Materials'
 import Inventory from './pages/purchase-manager/Inventory'
 import PMOutlets from './pages/purchase-manager/Outlets'
@@ -69,6 +70,7 @@ function App() {
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<Overview />} />
           <Route path="stock-in" element={<StockIn />} />
+          <Route path="stock-out" element={<StockOut />} />
           <Route path="materials" element={<Materials />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="outlets" element={<PMOutlets />} />

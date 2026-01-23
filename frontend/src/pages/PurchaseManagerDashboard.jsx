@@ -51,6 +51,7 @@ const PurchaseManagerDashboard = () => {
   const navItems = [
     { path: 'overview', label: 'Overview' },
     { path: 'stock-in', label: 'Stock In' },
+    { path: 'stock-out', label: 'Stock Out' },
     { path: 'materials', label: 'Materials' },
     { path: 'inventory', label: 'Inventory' },
     { path: 'outlets', label: 'Outlets' },
