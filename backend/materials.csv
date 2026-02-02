@@ -1,0 +1,58 @@
+name,unit,description,category,low_stock_threshold,is_active,brand,vendor
+Amul Butter,kg,Premium quality butter,Dairy,45.000,TRUE,Amul,Hyperpure
+Amul Fresh Cream,kg,Fresh dairy cream,Dairy,30.000,TRUE,Amul,Hyperpure
+Amul Process Cheese,kg,Processed cheese block,Dairy,25.000,TRUE,Amul,Hyperpure
+Balck Papper,kg,Black pepper spice,Spices,15.000,TRUE,East Made,Hyperpure
+Black Salt,kg,Rock salt for seasoning,Spices,20.000,TRUE,Sparsh,Hyperpure
+Chat Masala,kg,Tangy spice blend,Spices,18.000,TRUE,East Made,Hyperpure
+Chicken Breast Boneless,kg,Fresh boneless chicken breast,Meat,12.000,TRUE,Local,Fresko Choice
+Chicken Thigh Boneless,kg,Fresh boneless chicken thigh,Meat,10.000,TRUE,Local,Fresko Choice
+Chilli powder (Eastera),kg,Red chilli powder,Spices,22.000,TRUE,Eastern,Hyperpure
+Cinnamon sticks,kg,Aromatic cinnamon bark,Spices,8.000,TRUE,East Made,Hyperpure
+Cloves,kg,Dried flower buds spice,Spices,12.000,TRUE,East Made,Hyperpure
+Coriander Powder,kg,Ground coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure
+Corn Flour,kg,Fine cornstarch,Grains,35.000,TRUE,ATC,Hyperpure
+Deggi mirch,kg,Kashmiri red chilli powder,Spices,16.000,TRUE,MDH,Hyperpure
+Dry coconut,kg,Desiccated coconut,Misc,14.000,TRUE,Minar,Hyperpure
+Dry mango powder,kg,Amchur powder,Spices,11.000,TRUE,East Made,Hyperpure
+Garlic Powder,kg,Dehydrated garlic powder,Spices,19.000,TRUE,Bakers,Punjab Store
+Green Cardamon,kg,Premium green cardamom pods,Spices,7.000,TRUE,East Made,Hyperpure
+Guntur Chilli Whole,kg,Whole dried red chillies,Spices,24.000,TRUE,East Made,Hyperpure
+Jeera Powder,kg,Cumin powder,Spices,26.000,TRUE,East Made,Hyperpure
+Jeera rice,kg,Aromatic jeera rice,Grains,40.000,TRUE,Malik Deenar,Hyperpure
+Kaju,kg,Cashew nuts,Misc,9.000,TRUE,Bolas,Hyperpure
+Kasoori Methi,kg,Dried fenugreek leaves,Spices,13.000,TRUE,MDH,Hyperpure
+Mayonnaise,kg,Creamy mayonnaise,Misc,32.000,TRUE,Foodrite,Hyperpure
+Meethi Seed,kg,Fenugreek seeds,Spices,17.000,TRUE,East Made,Hyperpure
+Mix Veg Pickel,kg,Mixed vegetable pickle,Misc,21.000,TRUE,Swastiks,Hyperpure
+MSG,kg,Monosodium glutamate,Misc,23.000,TRUE,Springburst,Hyperpure
+Mustard oil,liter,Cooking mustard oil,Oils,38.000,TRUE,Fortune,Hyperpure
+Mustard Seed,kg,Yellow mustard seeds,Spices,27.000,TRUE,East Made,Hyperpure
+Nutmeg,kg,Whole nutmeg spice,Spices,6.000,TRUE,East Made,Hyperpure
+Red chilli powder (Tikhalal ),kg,Spicy red chilli powder,Spices,29.000,TRUE,Everest,Hyperpure
+Rostated chana,kg,Roasted chickpeas,Grains,33.000,TRUE,ZKP,Hyperpure
+Saunf,kg,Fennel seeds,Spices,31.000,TRUE,East Made,Hyperpure
+Soxin wine,btl,Cooking wine,Misc,15.000,TRUE,No Brand,Punjab Store
+Soya Chaap Trinity,kg,Soya chaap chunks,Vegetables,18.000,TRUE,Maharaja,SB Interprice
+Star anis,kg,Star anise spice,Spices,10.000,TRUE,Minar,Hyperpure
+Stone flower,kg,Dried lichen spice,Spices,8.000,TRUE,East Made,Hyperpure
+Sugar,kg,White granulated sugar,Misc,50.000,TRUE,ZKP,Hyperpure
+Sunpure Refine Oil,kg,Refined cooking oil,Oils,42.000,TRUE,Sunpure,Hyperpure
+Tamarind,kg,Tamarind pulp,Misc,25.000,TRUE,Eastern,Hyperpure
+Tata Salt,kg,Iodized table salt,Misc,60.000,TRUE,Tata,Hyperpure
+Tomato ketchup,kg,Tomato sauce,Misc,36.000,TRUE,Kissan,Hyperpure
+Turmeric Powder MDH,kg,Ground turmeric powder,Spices,34.000,TRUE,MDH,Hyperpure
+Viniger Synthetic,btl,Synthetic vinegar,Misc,20.000,TRUE,Golden Corn,Hyperpure
+VKL Peri Peri Marinated,kg,Peri peri marinade,Misc,12.000,TRUE,VKL,Hyperpure
+White pepper powder,kg,White pepper spice,Spices,14.000,TRUE,East Made,Hyperpure
+Whole Coriander Seed,kg,Whole coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure
+Whole Jeera,kg,Whole cumin seeds,Spices,30.000,TRUE,East Made,Hyperpure
+MDH Chat Masala,liter,Chat masala blend,Spices,16.000,TRUE,MDH,Hyperpure
+Ghee,liter,Clarified butter,Dairy,22.000,TRUE,Nandini,Hyperpure
+Sahi Jeera,kg,Premium cumin seeds,Spices,11.000,TRUE,East Made,Hyperpure
+Burger Patty,kg,Frozen burger patties,Meat,15.000,TRUE,Roi Poltry,Rai Poltry
+Rumali Roti,nos,Thin flatbread,Grains,100.000,TRUE,Local,Local
+Gungra Pickel,kg,Gongura pickle,Misc,18.000,TRUE,Priya,Priya Foods
+Amul Cheese slice,nos,Cheese slices,Dairy,50.000,TRUE,Amul,Hyperpure
+barguer bun,kg,Burger buns,Grains,45.000,TRUE,English Oven,English Oven
+Bamboo Skewer,kg,Wooden skewers,Misc,24.000,TRUE,Local,

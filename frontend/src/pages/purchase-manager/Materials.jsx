@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 
 // Unit options
-const UNITS = ['nos', 'kg', 'liter', 'packets']
+const UNITS = ['nos', 'kg', 'liter', 'packets', 'btl']
 
 // Category options with their short forms for code generation
 const CATEGORIES = [
@@ -33,8 +33,10 @@ const Materials = () => {
     unit: '',
     category: '',
     description: '',
-    low_stock_threshold: ''
+    low_stock_threshold: '',
+    vendor_id: ''
   })
+  const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
@@ -47,10 +49,10 @@ const Materials = () => {
       setLoading(true)
       setError(null)
 
-      // Fetch raw materials (excluding soft-deleted)
+      // Fetch raw materials with vendor info (excluding soft-deleted)
       const { data: rawMaterials, error: materialsError } = await supabase
         .from('raw_materials')
-        .select('*')
+        .select('*, vendors(name)')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
@@ -66,8 +68,24 @@ const Materials = () => {
     }
   }
 
+  // Fetch vendors for dropdown
+  const fetchVendors = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vendors')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name')
+      if (error) throw error
+      setVendors(data || [])
+    } catch (err) {
+      console.error('Error fetching vendors:', err)
+    }
+  }
+
   useEffect(() => {
     fetchMaterials()
+    fetchVendors()
   }, [])
 
   // Filter materials based on search and filters
@@ -168,7 +186,8 @@ const Materials = () => {
       unit: '',
       category: '',
       description: '',
-      low_stock_threshold: ''
+      low_stock_threshold: '',
+      vendor_id: ''
     })
     setError(null)
     setIsModalOpen(true)
@@ -184,7 +203,8 @@ const Materials = () => {
       unit: material.unit || '',
       category: material.category || '',
       description: material.description || '',
-      low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : ''
+      low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
+      vendor_id: material.vendor_id || ''
     })
     setError(null)
     setIsModalOpen(true)
@@ -211,6 +231,10 @@ const Materials = () => {
     }
     if (!formData.code.trim()) {
       setError('Material code is required')
+      return
+    }
+    if (!formData.vendor_id) {
+      setError('Vendor is required')
       return
     }
 
@@ -244,6 +268,7 @@ const Materials = () => {
           category: formData.category.trim() || null,
           description: formData.description.trim() || null,
           low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
+          vendor_id: formData.vendor_id || null,
           updated_at: new Date().toISOString()
         }
 
@@ -306,7 +331,8 @@ const Materials = () => {
             unit: formData.unit.trim(),
             category: formData.category.trim() || null,
             description: formData.description.trim() || null,
-            low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0
+            low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
+            vendor_id: formData.vendor_id || null
           })
           .select()
           .single()
@@ -439,6 +465,7 @@ const Materials = () => {
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Code</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">UOM</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Brand</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
                   </tr>
@@ -453,6 +480,7 @@ const Materials = () => {
                       <td className="px-4 py-3 text-foreground font-mono text-sm">{material.code}</td>
                       <td className="px-4 py-3 text-foreground">{material.unit}</td>
                       <td className="px-4 py-3 text-muted-foreground">{material.category || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{material.brand || '—'}</td>
                       <td className="px-4 py-3 text-foreground">
                         {material.low_stock_threshold !== null && material.low_stock_threshold !== undefined
                           ? parseFloat(material.low_stock_threshold).toFixed(3)
@@ -631,6 +659,25 @@ const Materials = () => {
                         Category cannot be modified
                       </p>
                     )}
+                  </div>
+
+                  {/* Vendor */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Vendor <span className="text-destructive">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.vendor_id}
+                      onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
+                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                      disabled={saving}
+                    >
+                      <option value="">Select vendor</option>
+                      {vendors.map(vendor => (
+                        <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Low Stock Threshold */}

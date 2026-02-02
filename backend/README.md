@@ -6,12 +6,28 @@ This folder contains backend scripts and Supabase Edge Functions for the Gastron
 
 ```
 backend/
-├── setup-admin-user.js    # Script to create admin user in Supabase Auth
-└── functions/             # Supabase Edge Functions (to be created)
+├── setup-admin-user.js      # Script to create admin user in Supabase Auth
+├── seed-raw-materials.js    # Script to seed raw materials from CSV
+├── materials.csv            # Raw materials data for seeding
+└── functions/               # Supabase Edge Functions (to be created)
     └── ...
 ```
 
 ## Setup Scripts
+
+### Prerequisites
+
+Install dependencies first:
+```bash
+npm install
+```
+
+Required `.env` file in project root with:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_USER_ID`
 
 ### setup-admin-user.js
 
@@ -19,18 +35,51 @@ Creates the admin user in Supabase Auth and links it to the users table.
 
 **Prerequisites:**
 - Admin user must exist in `users` table (from seed-data.sql)
-- `.env` file in project root with:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - `ADMIN_EMAIL`
-  - `ADMIN_PASSWORD`
-  - `ADMIN_USER_ID`
 
 **Usage:**
 ```bash
-npm install dotenv @supabase/supabase-js
+npm run setup-admin
+# or
 node backend/setup-admin-user.js
 ```
+
+### seed-raw-materials.js
+
+Seeds raw materials from a CSV file. Automatically generates material codes and creates inventory entries for all active cloud kitchens.
+
+**CSV Format:**
+The `materials.csv` file should have these columns (tab or comma separated):
+- `name` - Material name (required)
+- `unit` - Unit of measurement: nos, kg, liter, packets, btl (required)
+- `description` - Description of the material
+- `category` - One of: Meat, Grains, Vegetables, Oils, Spices, Dairy, Packaging, Sanitary, Misc (required)
+- `low_stock_threshold` - Low stock alert threshold (e.g., 45.000)
+- `is_active` - TRUE or FALSE
+- `brand` - Brand name
+- `vendor` - Vendor name
+
+**Example CSV:**
+```
+name	unit	description	category	low_stock_threshold	is_active	brand	vendor
+Amul Butter	kg	Premium quality butter	Dairy	45.000	TRUE	Amul	Hyperpure
+Chicken Breast	kg	Fresh boneless chicken	Meat	12.000	TRUE	Local	Fresko Choice
+```
+
+**Usage:**
+```bash
+npm run seed-materials
+# or
+node backend/seed-raw-materials.js
+```
+
+**What happens:**
+1. Reads materials from `backend/materials.csv`
+2. Auto-generates material codes (e.g., RM-DARY-001, RM-MEAT-042)
+3. Inserts materials into `raw_materials` table
+4. Trigger automatically creates inventory entries for all active cloud kitchens
+5. Shows progress and summary
+
+**Note:** Material codes are auto-generated based on category and existing codes to avoid duplicates.
 
 ## Supabase Edge Functions
 

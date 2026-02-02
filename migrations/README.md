@@ -32,7 +32,14 @@ Run these migrations in the following order in your Supabase SQL Editor:
 - Adds login_key column and constraints
 - **Skip if you're starting fresh** (supabase-schema.sql already includes this)
 
-### 5. Seed Data
+### 5. Vendors Table (Required for raw materials)
+**File:** `create-vendors-table.sql`
+- Creates `vendors` table with predefined vendor list
+- Seeds: Hyperpure, Fresko Choice, Punjab Store, SB Interprice, Rai Poltry, Local, Priya Foods, English Oven
+- Alters `raw_materials` to use `vendor_id` (FK) instead of `vendor` text
+- **Run before seeding raw materials** - purchase managers select vendor from dropdown
+
+### 6. Seed Data
 **File:** `seed-data.sql`
 - Creates initial cloud kitchens, users, and outlets
 - **Run last** - after all schema is set up

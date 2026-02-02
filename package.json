@@ -1,0 +1,15 @@
+{
+  "name": "gastronomix-inventorymanagement-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend scripts for Gastronomix Inventory Management",
+  "scripts": {
+    "setup-admin": "node backend/setup-admin-user.js",
+    "seed-materials": "node backend/seed-raw-materials.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "csv-parse": "^5.5.3",
+    "dotenv": "^16.3.1"
+  }
+}

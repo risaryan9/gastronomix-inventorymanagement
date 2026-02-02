@@ -35,6 +35,9 @@ const StockIn = () => {
   const [availableMaterials, setAvailableMaterials] = useState([])
   const [materialSearchTerm, setMaterialSearchTerm] = useState('')
 
+  // Vendors for supplier dropdown
+  const [vendors, setVendors] = useState([])
+
   const fetchingRef = useRef(false)
 
   // Fetch stock in records
@@ -89,6 +92,24 @@ const StockIn = () => {
     }
 
     fetchStockInRecords()
+  }, [])
+
+  // Fetch vendors for supplier dropdown
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('vendors')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name')
+        if (error) throw error
+        setVendors(data || [])
+      } catch (err) {
+        console.error('Error fetching vendors:', err)
+      }
+    }
+    fetchVendors()
   }, [])
 
   // Fetch available materials from raw_materials when modal opens
@@ -228,6 +249,10 @@ const StockIn = () => {
     }
 
     // Validate purchase slip
+    if (!purchaseSlip.supplier_name?.trim()) {
+      alert('Please select a supplier')
+      return
+    }
     if (!purchaseSlip.receipt_date) {
       alert('Please select a receipt date')
       return
@@ -745,15 +770,19 @@ const StockIn = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-semibold text-foreground mb-2">
-                    Supplier Name
+                    Supplier <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
+                    required
                     value={purchaseSlip.supplier_name}
                     onChange={(e) => setPurchaseSlip({ ...purchaseSlip, supplier_name: e.target.value })}
                     className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    placeholder="Supplier name"
-                  />
+                  >
+                    <option value="">Select vendor</option>
+                    {vendors.map(vendor => (
+                      <option key={vendor.id} value={vendor.name}>{vendor.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
