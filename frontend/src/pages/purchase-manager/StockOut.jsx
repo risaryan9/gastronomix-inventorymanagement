@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 
@@ -14,6 +15,18 @@ const StockOut = () => {
   const [alert, setAlert] = useState(null)
   const [dateFilter, setDateFilter] = useState('today')
   const [statusFilter, setStatusFilter] = useState('all')
+  
+  // Self stock out states
+  const [showSelfStockOutModal, setShowSelfStockOutModal] = useState(false)
+  const [selfStockOutItems, setSelfStockOutItems] = useState([])
+  const [selfStockOutReason, setSelfStockOutReason] = useState('')
+  const [allMaterials, setAllMaterials] = useState([])
+  const [isSelfStockOut, setIsSelfStockOut] = useState(false)
+  // Material search popup (same design as Stock In / OutletDetails)
+  const [openMaterialDropdownRow, setOpenMaterialDropdownRow] = useState(-1)
+  const [materialDropdownSearchTerm, setMaterialDropdownSearchTerm] = useState('')
+  const [materialDropdownPosition, setMaterialDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const materialDropdownSearchRef = useRef(null)
 
   // Fetch allocation requests
   useEffect(() => {
@@ -91,8 +104,155 @@ const StockOut = () => {
     }
   }
 
+  // Open self stock out modal
+  const openSelfStockOutModal = async () => {
+    setIsSelfStockOut(true)
+    const session = getSession()
+
+    try {
+      // Fetch all active raw materials
+      const { data: materials, error: matError } = await supabase
+        .from('raw_materials')
+        .select('id, name, code, unit, category')
+        .eq('is_active', true)
+        .order('name')
+
+      if (matError) throw matError
+
+      setAllMaterials(materials || [])
+      setSelfStockOutItems([])
+      setSelfStockOutReason('')
+      setOpenMaterialDropdownRow(-1)
+      setMaterialDropdownSearchTerm('')
+      setShowSelfStockOutModal(true)
+    } catch (err) {
+      console.error('Error loading materials:', err)
+      setAlert({ type: 'error', message: 'Failed to load materials' })
+    }
+  }
+
+  // Add new empty row for self stock out
+  const addSelfStockOutRow = () => {
+    setSelfStockOutItems(prev => [...prev, {
+      raw_material_id: '',
+      name: '',
+      code: '',
+      unit: '',
+      allocated_quantity: 0,
+      current_inventory: 0
+    }])
+  }
+
+  // Remove material from self stock out
+  const removeMaterialFromSelfStockOut = (index) => {
+    setSelfStockOutItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Update material selection in self stock out
+  const handleSelfStockOutMaterialChange = async (index, materialId) => {
+    const session = getSession()
+    
+    // Check if material already selected in another row
+    if (selfStockOutItems.some((item, i) => i !== index && item.raw_material_id === materialId)) {
+      setAlert({ type: 'error', message: 'Material already selected in another row' })
+      return
+    }
+
+    const material = allMaterials.find(m => m.id === materialId)
+    if (!material) return
+
+    // Fetch current inventory for this material
+    try {
+      const { data: invData, error: invError } = await supabase
+        .from('inventory')
+        .select('quantity')
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .eq('raw_material_id', materialId)
+        .single()
+
+      const currentInventory = invData ? parseFloat(invData.quantity || 0) : 0
+
+      setSelfStockOutItems(prev => {
+        const updated = [...prev]
+        updated[index] = {
+          raw_material_id: materialId,
+          name: material.name,
+          code: material.code,
+          unit: material.unit,
+          allocated_quantity: 0,
+          current_inventory: currentInventory
+        }
+        return updated
+      })
+    } catch (err) {
+      console.error('Error fetching inventory:', err)
+      // Still update the material info even if inventory fetch fails
+      setSelfStockOutItems(prev => {
+        const updated = [...prev]
+        updated[index] = {
+          raw_material_id: materialId,
+          name: material.name,
+          code: material.code,
+          unit: material.unit,
+          allocated_quantity: 0,
+          current_inventory: 0
+        }
+        return updated
+      })
+    }
+  }
+
+  // Update self stock out quantity
+  const handleUpdateSelfStockOutQuantity = (index, value) => {
+    setSelfStockOutItems(prev => {
+      const updated = [...prev]
+      updated[index].allocated_quantity = value
+      return updated
+    })
+  }
+
+  // Filter materials for self stock out search popup (same design as Stock In / OutletDetails)
+  const getFilteredMaterialsForSelfStockOut = (rowIndex) => {
+    const search = openMaterialDropdownRow === rowIndex ? materialDropdownSearchTerm : ''
+    const usedIds = selfStockOutItems
+      .filter((item, i) => i !== rowIndex && item.raw_material_id)
+      .map(item => item.raw_material_id)
+    return allMaterials.filter(material => {
+      if (usedIds.includes(material.id)) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return material.name.toLowerCase().includes(q) || material.code.toLowerCase().includes(q)
+    })
+  }
+
+  // Focus search input and update position when material dropdown opens
+  useEffect(() => {
+    if (openMaterialDropdownRow >= 0 && showSelfStockOutModal) {
+      const trigger = document.querySelector(`[data-self-stock-out-trigger="${openMaterialDropdownRow}"]`)
+      if (trigger) {
+        const rect = trigger.getBoundingClientRect()
+        setMaterialDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+      }
+      const t = setTimeout(() => materialDropdownSearchRef.current?.focus(), 50)
+      return () => clearTimeout(t)
+    }
+  }, [openMaterialDropdownRow, showSelfStockOutModal])
+
+  // Close material dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (openMaterialDropdownRow >= 0 && !e.target.closest('.material-dropdown-container')) {
+        setOpenMaterialDropdownRow(-1)
+        setMaterialDropdownSearchTerm('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openMaterialDropdownRow])
+
   // Open allocation modal
   const openAllocationModal = async (request) => {
+    setIsSelfStockOut(false)
     setSelectedRequest(request)
     const session = getSession()
 
@@ -224,7 +384,7 @@ const StockOut = () => {
     return true
   }
 
-  // Handle allocation submission
+  // Handle allocation submission (both regular and self stock out)
   const handleAllocateStock = async () => {
     const session = getSession()
     if (!session?.id || !session?.cloud_kitchen_id) {
@@ -232,20 +392,63 @@ const StockOut = () => {
       return
     }
 
-    // Validate allocated quantities
-    for (const item of allocationItems) {
-      if (item.allocated_quantity <= 0) {
-        setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+    // Determine which items to process
+    const itemsToProcess = isSelfStockOut ? selfStockOutItems : allocationItems
+
+    // Validate for self stock out
+    if (isSelfStockOut) {
+      if (!selfStockOutReason || selfStockOutReason.trim() === '') {
+        setAlert({ type: 'error', message: 'Please provide a reason for self stock out' })
         return
       }
 
-      const availableInventory = inventoryData[item.raw_material_id] || 0
-      if (item.allocated_quantity > availableInventory) {
-        setAlert({ 
-          type: 'error', 
-          message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
-        })
+      if (itemsToProcess.length === 0) {
+        setAlert({ type: 'error', message: 'Please add at least one material' })
         return
+      }
+
+      // Check if all rows have materials selected
+      for (let i = 0; i < itemsToProcess.length; i++) {
+        const item = itemsToProcess[i]
+        if (!item.raw_material_id) {
+          setAlert({ type: 'error', message: `Please select a material for row ${i + 1}` })
+          return
+        }
+      }
+
+      // Validate quantities
+      for (const item of itemsToProcess) {
+        if (item.allocated_quantity <= 0) {
+          setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+          return
+        }
+
+        // Use the current_inventory already fetched when material was selected
+        const availableInventory = item.current_inventory || 0
+        if (item.allocated_quantity > availableInventory) {
+          setAlert({ 
+            type: 'error', 
+            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
+          })
+          return
+        }
+      }
+    } else {
+      // Validate allocated quantities for regular stock out
+      for (const item of itemsToProcess) {
+        if (item.allocated_quantity <= 0) {
+          setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+          return
+        }
+
+        const availableInventory = inventoryData[item.raw_material_id] || 0
+        if (item.allocated_quantity > availableInventory) {
+          setAlert({ 
+            type: 'error', 
+            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
+          })
+          return
+        }
       }
     }
 
@@ -253,23 +456,34 @@ const StockOut = () => {
 
     try {
       // Create stock_out record
+      const stockOutPayload = {
+        cloud_kitchen_id: session.cloud_kitchen_id,
+        allocated_by: session.id,
+        allocation_date: new Date().toISOString().split('T')[0],
+        self_stock_out: isSelfStockOut
+      }
+
+      if (isSelfStockOut) {
+        // Self stock out
+        stockOutPayload.reason = selfStockOutReason.trim()
+        stockOutPayload.notes = `Self stock out: ${selfStockOutReason.trim()}`
+      } else {
+        // Regular stock out
+        stockOutPayload.allocation_request_id = selectedRequest.id
+        stockOutPayload.outlet_id = selectedRequest.outlet_id
+        stockOutPayload.notes = `Allocated from request #${selectedRequest.id.substring(0, 8)}`
+      }
+
       const { data: stockOutData, error: stockOutError } = await supabase
         .from('stock_out')
-        .insert({
-          allocation_request_id: selectedRequest.id,
-          outlet_id: selectedRequest.outlet_id,
-          cloud_kitchen_id: session.cloud_kitchen_id,
-          allocated_by: session.id,
-          allocation_date: new Date().toISOString().split('T')[0],
-          notes: `Allocated from request #${selectedRequest.id.substring(0, 8)}`
-        })
+        .insert(stockOutPayload)
         .select()
         .single()
 
       if (stockOutError) throw stockOutError
 
       // Process each item with FIFO allocation
-      for (const item of allocationItems) {
+      for (const item of itemsToProcess) {
         // Allocate stock using FIFO
         await allocateStockFIFO(
           item.raw_material_id,
@@ -313,16 +527,54 @@ const StockOut = () => {
         if (invUpdateError) throw invUpdateError
       }
 
-      // Mark allocation request as packed
-      const { error: updateRequestError } = await supabase
-        .from('allocation_requests')
-        .update({ is_packed: true })
-        .eq('id', selectedRequest.id)
+      // Create audit log
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          user_id: session.id,
+          action: 'stock_out',
+          entity_type: 'stock_out',
+          entity_id: stockOutData.id,
+          new_values: {
+            self_stock_out: isSelfStockOut,
+            reason: isSelfStockOut ? selfStockOutReason.trim() : null,
+            allocation_request_id: isSelfStockOut ? null : selectedRequest.id,
+            outlet_id: isSelfStockOut ? null : selectedRequest.outlet_id,
+            items: itemsToProcess.map(item => ({
+              raw_material_id: item.raw_material_id,
+              name: item.name,
+              quantity: item.allocated_quantity,
+              unit: item.unit
+            }))
+          }
+        })
 
-      if (updateRequestError) throw updateRequestError
+      if (auditError) {
+        console.error('Error creating audit log:', auditError)
+        // Don't fail the operation if audit log fails
+      }
 
-      setAlert({ type: 'success', message: 'Stock allocated successfully!' })
-      setShowAllocationModal(false)
+      // Mark allocation request as packed (only for regular stock out)
+      if (!isSelfStockOut) {
+        const { error: updateRequestError } = await supabase
+          .from('allocation_requests')
+          .update({ is_packed: true })
+          .eq('id', selectedRequest.id)
+
+        if (updateRequestError) throw updateRequestError
+      }
+
+      setAlert({ 
+        type: 'success', 
+        message: isSelfStockOut ? 'Self stock out completed successfully!' : 'Stock allocated successfully!' 
+      })
+      
+      if (isSelfStockOut) {
+        setShowSelfStockOutModal(false)
+      } else {
+        setShowAllocationModal(false)
+      }
+      
       fetchAllocationRequests()
     } catch (err) {
       console.error('Error allocating stock:', err)
@@ -358,6 +610,29 @@ const StockOut = () => {
           <p className="text-sm sm:text-base text-muted-foreground">
             Allocate stock to outlets based on allocation requests
           </p>
+        </div>
+
+        {/* Self Stock Out Card */}
+        <div className="bg-gradient-to-br from-accent/10 to-accent/5 border-2 border-accent/30 rounded-xl p-6 mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
+                <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                Self Stock Out
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Allocate inventory for internal cloud kitchen use (R&D, testing, etc.)
+              </p>
+            </div>
+            <button
+              onClick={openSelfStockOutModal}
+              className="px-6 py-3 bg-accent text-background font-bold rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 whitespace-nowrap"
+            >
+              + Self Stock Out
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -575,6 +850,216 @@ const StockOut = () => {
                   className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {allocating ? 'Allocating...' : 'Confirm Allocation'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Self Stock Out Modal */}
+        {showSelfStockOutModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Self Stock Out</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Allocate inventory for internal cloud kitchen use
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowSelfStockOutModal(false)}
+                  disabled={allocating}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Reason Field */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-foreground mb-2">
+                  Reason <span className="text-destructive">*</span>
+                </label>
+                <textarea
+                  value={selfStockOutReason}
+                  onChange={(e) => setSelfStockOutReason(e.target.value)}
+                  placeholder="Enter reason for self stock out (e.g., R&D, testing, quality check, etc.)"
+                  disabled={allocating}
+                  rows={3}
+                  className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all resize-none"
+                />
+              </div>
+
+              {/* Materials Table */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-foreground">Materials</h3>
+                  <button
+                    onClick={addSelfStockOutRow}
+                    disabled={allocating}
+                    className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-sm font-semibold disabled:opacity-50"
+                  >
+                    + Add Row
+                  </button>
+                </div>
+                
+                {selfStockOutItems.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border border-border rounded-lg">
+                      <thead className="bg-background border-b border-border">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Current Stock</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selfStockOutItems.map((item, index) => (
+                          <tr key={index} className="border-b border-border">
+                            <td className="px-4 py-3 relative material-dropdown-container">
+                              <div className="min-w-[180px]">
+                                <button
+                                  type="button"
+                                  data-self-stock-out-trigger={index}
+                                  onClick={() => {
+                                    setOpenMaterialDropdownRow(openMaterialDropdownRow === index ? -1 : index)
+                                    setMaterialDropdownSearchTerm('')
+                                  }}
+                                  disabled={allocating}
+                                  className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate disabled:opacity-50"
+                                >
+                                  {item.raw_material_id ? (
+                                    <span>{item.name} <span className="text-muted-foreground text-xs">({item.unit})</span></span>
+                                  ) : (
+                                    <span className="text-muted-foreground">Select material...</span>
+                                  )}
+                                </button>
+                                {openMaterialDropdownRow === index && ReactDOM.createPortal(
+                                  <div
+                                    className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
+                                    style={{
+                                      top: materialDropdownPosition.top,
+                                      left: materialDropdownPosition.left,
+                                      width: materialDropdownPosition.width,
+                                      minWidth: 280
+                                    }}
+                                  >
+                                    <input
+                                      ref={materialDropdownSearchRef}
+                                      type="text"
+                                      value={materialDropdownSearchTerm}
+                                      onChange={(e) => setMaterialDropdownSearchTerm(e.target.value)}
+                                      placeholder="Search material..."
+                                      className="w-full px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                                    />
+                                    <div className="max-h-44 overflow-y-auto bg-card">
+                                      {getFilteredMaterialsForSelfStockOut(index).length === 0 ? (
+                                        <div className="p-4 text-center text-sm text-muted-foreground">
+                                          No materials found. Add in Materials first.
+                                        </div>
+                                      ) : (
+                                        getFilteredMaterialsForSelfStockOut(index).map((m) => (
+                                          <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={() => {
+                                              handleSelfStockOutMaterialChange(index, m.id)
+                                              setOpenMaterialDropdownRow(-1)
+                                              setMaterialDropdownSearchTerm('')
+                                            }}
+                                            className="w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 last:border-0 font-medium text-foreground"
+                                          >
+                                            <div className="text-sm">{m.name}</div>
+                                            <div className="text-xs text-muted-foreground">{m.code} • {m.unit}</div>
+                                          </button>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>,
+                                  document.body
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.raw_material_id ? (
+                                <div className={`font-semibold ${
+                                  item.current_inventory === 0 ? 'text-destructive' :
+                                  item.current_inventory < 10 ? 'text-yellow-600' :
+                                  'text-foreground'
+                                }`}>
+                                  {item.current_inventory.toFixed(3)} {item.unit}
+                                  {item.current_inventory === 0 && (
+                                    <p className="text-xs text-destructive mt-1">⚠ Out of stock</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0.001"
+                                  step="0.001"
+                                  value={item.allocated_quantity}
+                                  onChange={(e) => handleUpdateSelfStockOutQuantity(index, parseFloat(e.target.value) || 0)}
+                                  disabled={allocating || !item.raw_material_id}
+                                  placeholder="0.000"
+                                  className="w-32 bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all disabled:opacity-50"
+                                />
+                                {item.unit && (
+                                  <span className="text-sm text-muted-foreground">{item.unit}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={() => removeMaterialFromSelfStockOut(index)}
+                                disabled={allocating}
+                                className="text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-background/50 rounded-lg border border-border">
+                    <p className="text-muted-foreground text-sm">No materials added yet. Click "+ Add Row" to start.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSelfStockOutModal(false)}
+                  disabled={allocating}
+                  className="flex-1 bg-transparent text-foreground font-semibold px-4 py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAllocateStock}
+                  disabled={
+                    allocating || 
+                    selfStockOutItems.length === 0 || 
+                    !selfStockOutReason.trim() ||
+                    selfStockOutItems.some(item => !item.raw_material_id)
+                  }
+                  className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {allocating ? 'Processing...' : 'Confirm Self Stock Out'}
                 </button>
               </div>
             </div>
