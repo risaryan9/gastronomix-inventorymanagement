@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import ReactDOM from 'react-dom'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
@@ -15,9 +16,12 @@ const OutletDetails = () => {
   const [loading, setLoading] = useState(true)
   const [showAllocateModal, setShowAllocateModal] = useState(false)
   const [rawMaterials, setRawMaterials] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [selectedItems, setSelectedItems] = useState([]) // {raw_material_id, name, code, unit, requested_quantity}
+  const [allocationRows, setAllocationRows] = useState([])
+  const [selectedRows, setSelectedRows] = useState(new Set())
+  const [openDropdownRow, setOpenDropdownRow] = useState(-1)
+  const [dropdownSearchTerm, setDropdownSearchTerm] = useState('')
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const dropdownSearchRef = useRef(null)
   const [requesting, setRequesting] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
@@ -101,94 +105,124 @@ const OutletDetails = () => {
     return requestDate === today && !request.is_packed
   })
 
+  // Convert allocationRows to selectedItems format for submit
+  const getSelectedItemsForSubmit = () =>
+    allocationRows
+      .filter(r => r.raw_material_id && r.material)
+      .map(r => ({
+        raw_material_id: r.raw_material_id,
+        name: r.material.name,
+        code: r.material.code,
+        unit: r.material.unit,
+        requested_quantity: r.quantity
+      }))
+
   const handleAllocate = () => {
     if (existingTodayRequest) {
-      // If editing, load the existing request
       handleEditRequest(existingTodayRequest)
     } else {
       setShowAllocateModal(true)
-      setSelectedItems([])
-      setSearchTerm('')
-      setCategoryFilter('all')
+      setAllocationRows([])
+      setSelectedRows(new Set())
+      setOpenDropdownRow(-1)
       setEditingRequest(null)
     }
   }
 
   const handleEditRequest = (request) => {
     setEditingRequest(request)
-    // Load existing items into selectedItems
-    const items = request.allocation_request_items.map(item => ({
+    const rows = request.allocation_request_items.map(item => ({
+      id: `row-${item.id}`,
       raw_material_id: item.raw_materials.id,
-      name: item.raw_materials.name,
-      code: item.raw_materials.code,
-      unit: item.raw_materials.unit,
-      requested_quantity: parseFloat(item.quantity).toString()
+      material: item.raw_materials,
+      quantity: parseFloat(item.quantity).toString()
     }))
-    setSelectedItems(items)
+    setAllocationRows(rows)
     setShowAllocateModal(true)
-    setSearchTerm('')
-    setCategoryFilter('all')
+    setSelectedRows(new Set())
   }
 
-  const handleAddItem = (material) => {
-    const existing = selectedItems.find(item => item.raw_material_id === material.id)
-    if (existing) {
-      setAlert({ type: 'warning', message: 'This material is already added' })
-      return
-    }
-
-    setSelectedItems([...selectedItems, {
-      raw_material_id: material.id,
-      name: material.name,
-      code: material.code,
-      unit: material.unit,
-      requested_quantity: ''
-    }])
-    setSearchTerm('')
+  const getFilteredMaterialsForRow = (rowIndex) => {
+    const search = openDropdownRow === rowIndex ? dropdownSearchTerm : ''
+    const usedIds = allocationRows
+      .filter((r, i) => i !== rowIndex && r.raw_material_id)
+      .map(r => r.raw_material_id)
+    return rawMaterials.filter(m => {
+      if (usedIds.includes(m.id)) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return m.name.toLowerCase().includes(q) || (m.code || '').toLowerCase().includes(q)
+    })
   }
 
-  const handleUpdateQuantity = (raw_material_id, quantity) => {
-    setSelectedItems(selectedItems.map(item =>
-      item.raw_material_id === raw_material_id
-        ? { ...item, requested_quantity: quantity }
-        : item
-    ))
+  const handleAddRow = () => {
+    const rowId = `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setAllocationRows(prev => [...prev, { id: rowId, raw_material_id: null, material: null, quantity: '' }])
   }
 
-  const handleRemoveItem = (raw_material_id) => {
-    setSelectedItems(selectedItems.filter(item => item.raw_material_id !== raw_material_id))
+  const handleSelectMaterial = (rowIndex, material) => {
+    setAllocationRows(prev => {
+      const updated = [...prev]
+      updated[rowIndex] = { ...updated[rowIndex], raw_material_id: material.id, material, quantity: updated[rowIndex].quantity || '' }
+      return updated
+    })
+    setOpenDropdownRow(-1)
+    setDropdownSearchTerm('')
+  }
+
+  const handleRemoveRow = (index) => {
+    setAllocationRows(prev => prev.filter((_, i) => i !== index))
+    setSelectedRows(prev => { const n = new Set(prev); n.delete(index); return n })
+  }
+
+  const handleToggleRowSelect = (index) => {
+    setSelectedRows(prev => {
+      const n = new Set(prev)
+      if (n.has(index)) n.delete(index)
+      else n.add(index)
+      return n
+    })
+  }
+
+  const handleToggleSelectAll = (checked) => {
+    setSelectedRows(checked ? new Set(allocationRows.map((_, i) => i)) : new Set())
+  }
+
+  const handleRemoveSelectedRows = () => {
+    if (selectedRows.size === 0) return
+    setAllocationRows(prev => prev.filter((_, i) => !selectedRows.has(i)))
+    setSelectedRows(new Set())
+  }
+
+  const handleUpdateQuantity = (index, quantity) => {
+    setAllocationRows(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], quantity }
+      return updated
+    })
   }
 
   const handleFinalizeAllocation = () => {
-    // Validate
-    if (selectedItems.length === 0) {
-      setAlert({ type: 'warning', message: 'Please add at least one item' })
+    const items = getSelectedItemsForSubmit()
+    if (items.length === 0) {
+      setAlert({ type: 'warning', message: 'Please add at least one item with a material selected' })
       return
     }
 
-    // Check for duplicate materials
-    const materialIds = selectedItems.map(item => item.raw_material_id)
-    const uniqueMaterialIds = new Set(materialIds)
-    if (materialIds.length !== uniqueMaterialIds.size) {
-      setAlert({ 
-        type: 'error', 
-        message: 'Duplicate materials detected. Please remove duplicates before proceeding.' 
-      })
+    const materialIds = items.map(item => item.raw_material_id)
+    if (materialIds.length !== new Set(materialIds).size) {
+      setAlert({ type: 'error', message: 'Duplicate materials detected. Please remove duplicates before proceeding.' })
       return
     }
 
-    for (const item of selectedItems) {
+    for (const item of items) {
       const qty = parseFloat(item.requested_quantity)
       if (isNaN(qty) || qty <= 0) {
-        setAlert({ 
-          type: 'error', 
-          message: `Please enter a valid quantity for ${item.name}` 
-        })
+        setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
         return
       }
     }
 
-    // Show confirmation modal
     setShowConfirmModal(true)
   }
 
@@ -199,6 +233,7 @@ const OutletDetails = () => {
       return
     }
 
+    const selectedItems = getSelectedItemsForSubmit()
     setRequesting(true)
     setShowConfirmModal(false)
     try {
@@ -370,8 +405,7 @@ const OutletDetails = () => {
       }
 
       setShowAllocateModal(false)
-      setSelectedItems([])
-      setSearchTerm('')
+      setAllocationRows([])
       setEditingRequest(null)
       fetchAllocationRequests()
     } catch (err) {
@@ -382,26 +416,29 @@ const OutletDetails = () => {
     }
   }
 
-  // Get unique categories from raw materials
-  const categories = ['all', ...new Set(rawMaterials.map(material => material.category).filter(Boolean))]
+  // Focus dropdown and update position when it opens
+  useEffect(() => {
+    if (openDropdownRow >= 0) {
+      const trigger = document.querySelector(`[data-dropdown-trigger="${openDropdownRow}"]`)
+      if (trigger) {
+        const rect = trigger.getBoundingClientRect()
+        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+      }
+      const t = setTimeout(() => dropdownSearchRef.current?.focus(), 50)
+      return () => clearTimeout(t)
+    }
+  }, [openDropdownRow])
 
-  const filteredRawMaterials = rawMaterials
-    .filter(material => {
-      // Search filter
-      const matchesSearch = searchTerm === '' || 
-        material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (material.description && material.description.toLowerCase().includes(searchTerm.toLowerCase()))
-
-      // Category filter
-      const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
-
-      return matchesSearch && matchesCategory
-    })
-    .sort((a, b) => {
-      // Sort alphabetically by name
-      return a.name.localeCompare(b.name)
-    })
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (openDropdownRow >= 0 && !e.target.closest('.material-dropdown-container')) {
+        setOpenDropdownRow(-1)
+        setDropdownSearchTerm('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openDropdownRow])
 
   const getBrandColor = (code) => {
     if (code.startsWith('NK')) return 'bg-black'
@@ -623,7 +660,7 @@ const OutletDetails = () => {
                 onClick={() => {
                   setShowAllocateModal(false)
                   setEditingRequest(null)
-                  setSelectedItems([])
+                  setAllocationRows([])
                 }}
                 className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
                 disabled={requesting}
@@ -641,168 +678,151 @@ const OutletDetails = () => {
               <p className="text-xs text-muted-foreground">{outlet.code} • {outlet.address}</p>
             </div>
 
-            {/* Search and Filter Bar */}
-            <div className="mb-4 space-y-3">
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  Search Raw Materials
-                </label>
-                <input
-                  type="text"
-                  placeholder="Search by name, code, or description..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-input border-2 border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-base"
-                  disabled={requesting}
-                />
-              </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
+            </p>
 
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-2">
-                  Category
-                </label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full bg-input border-2 border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all text-sm"
-                  disabled={requesting}
-                >
-                  <option value="all">All Categories</option>
-                  {categories.filter(c => c !== 'all').map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Raw Materials List */}
+            {/* Spreadsheet-style allocation rows */}
             <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-foreground">
-                  Available Raw Materials ({filteredRawMaterials.length})
-                </h3>
-                {filteredRawMaterials.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Click to add to request
-                  </p>
+              <div className="flex items-center justify-between mb-3">
+                {selectedRows.size > 0 && (
+                  <button
+                    onClick={handleRemoveSelectedRows}
+                    className="px-3 py-1.5 text-sm font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded-lg hover:bg-destructive/20 transition-all"
+                  >
+                    Remove Selected ({selectedRows.size})
+                  </button>
                 )}
+                <button
+                  onClick={handleAddRow}
+                  disabled={requesting}
+                  className="ml-auto px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm disabled:opacity-50"
+                >
+                  + Add Row
+                </button>
               </div>
-              
-              <div className="max-h-80 overflow-y-auto border-2 border-border rounded-lg bg-background/30">
-                {filteredRawMaterials.length === 0 ? (
-                  <div className="p-6 text-center">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {rawMaterials.length === 0 
-                        ? 'No raw materials available'
-                        : 'No materials match your filters'}
-                    </p>
-                    {(searchTerm || categoryFilter !== 'all') && (
-                      <button
-                        onClick={() => {
-                          setSearchTerm('')
-                          setCategoryFilter('all')
-                        }}
-                        className="text-xs text-accent hover:text-accent/80 font-semibold"
-                      >
-                        Clear filters
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {filteredRawMaterials.map((material) => {
-                      const isAlreadySelected = selectedItems.some(selected => selected.raw_material_id === material.id)
-                      
-                      return (
-                        <button
-                          key={material.id}
-                          onClick={() => {
-                            if (!isAlreadySelected) {
-                              handleAddItem(material)
-                            }
-                          }}
-                          disabled={requesting || isAlreadySelected}
-                          className={`w-full text-left px-4 py-4 lg:py-3 transition-all touch-manipulation ${
-                            isAlreadySelected
-                              ? 'bg-accent/20 cursor-not-allowed'
-                              : 'hover:bg-accent/10 active:bg-accent/20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className={`font-semibold text-base lg:text-sm ${
-                                  isAlreadySelected ? 'text-muted-foreground' : 'text-foreground'
-                                }`}>
-                                  {material.name}
-                                </div>
-                                {isAlreadySelected && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-accent text-background">
-                                    Added
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {material.code} • {material.unit} • {material.category || 'No category'}
-                              </div>
-                              {material.description && (
-                                <div className="text-xs text-muted-foreground mt-1 truncate">
-                                  {material.description}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Selected Items */}
-            {selectedItems.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-foreground mb-2">Selected Items ({selectedItems.length})</h3>
-                <div className="space-y-2">
-                  {selectedItems.map((item) => (
-                    <div key={item.raw_material_id} className="bg-background border border-border rounded-lg p-3">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{item.code} • {item.unit}</p>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveItem(item.raw_material_id)}
-                          className="text-destructive hover:text-destructive/80 p-1 touch-manipulation"
-                          disabled={requesting}
-                          aria-label="Remove"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-foreground mb-1">
-                          Quantity to Request ({item.unit})
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          value={item.requested_quantity}
-                          onChange={(e) => handleUpdateQuantity(item.raw_material_id, e.target.value)}
-                          className="w-full bg-input border border-border rounded-lg px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
-                          placeholder="0.000"
-                          disabled={requesting}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="overflow-x-auto border-2 border-border rounded-xl">
+                <table className="w-full min-w-[500px]">
+                  <thead>
+                    <tr className="bg-background border-b-2 border-border select-none">
+                      <th className="px-3 py-2 w-10"></th>
+                      <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
+                      <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Quantity</th>
+                      <th className="px-3 py-2 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allocationRows.map((row, index) => (
+                      <tr
+                        key={row.id || index}
+                        className={`border-b border-border hover:bg-accent/5 ${selectedRows.has(index) ? 'bg-accent/10' : ''}`}
+                      >
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedRows.has(index)}
+                            onChange={() => handleToggleRowSelect(index)}
+                            className="rounded border-border"
+                            disabled={requesting}
+                          />
+                        </td>
+                        <td className="px-3 py-2 relative material-dropdown-container">
+                          <div className="min-w-[180px]">
+                            <button
+                              type="button"
+                              data-dropdown-trigger={index}
+                              onClick={() => {
+                                setOpenDropdownRow(openDropdownRow === index ? -1 : index)
+                                setDropdownSearchTerm('')
+                              }}
+                              disabled={requesting}
+                              className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate disabled:opacity-50"
+                            >
+                              {row.material ? (
+                                <span>{row.material.name} <span className="text-muted-foreground text-xs">({row.material.unit})</span></span>
+                              ) : (
+                                <span className="text-muted-foreground">Select material...</span>
+                              )}
+                            </button>
+                            {openDropdownRow === index && ReactDOM.createPortal(
+                              <div
+                                className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
+                                style={{
+                                  top: dropdownPosition.top,
+                                  left: dropdownPosition.left,
+                                  width: dropdownPosition.width,
+                                  minWidth: 280
+                                }}
+                              >
+                                <input
+                                  ref={dropdownSearchRef}
+                                  type="text"
+                                  value={dropdownSearchTerm}
+                                  onChange={(e) => setDropdownSearchTerm(e.target.value)}
+                                  placeholder="Search material..."
+                                  className="w-full px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                                />
+                                <div className="max-h-44 overflow-y-auto bg-card">
+                                  {getFilteredMaterialsForRow(index).length === 0 ? (
+                                    <div className="p-4 text-center text-sm text-muted-foreground">
+                                      No materials found. Add in Materials first.
+                                    </div>
+                                  ) : (
+                                    getFilteredMaterialsForRow(index).map((m) => (
+                                      <button
+                                        key={m.id}
+                                        type="button"
+                                        onClick={() => handleSelectMaterial(index, m)}
+                                        className="w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 last:border-0 font-medium text-foreground"
+                                      >
+                                        <div className="text-sm">{m.name}</div>
+                                        <div className="text-xs text-muted-foreground">{m.code} • {m.unit}</div>
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              </div>,
+                              document.body
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="0.001"
+                            value={row.quantity}
+                            onChange={(e) => handleUpdateQuantity(index, e.target.value)}
+                            placeholder="0"
+                            disabled={requesting || !row.material}
+                            className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRow(index)}
+                            disabled={requesting}
+                            className="text-destructive hover:text-destructive/80 p-1 disabled:opacity-50"
+                            title="Remove row"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
+              {allocationRows.length === 0 && (
+                <p className="text-sm text-muted-foreground mt-3">
+                  Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity.
+                </p>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex flex-col lg:flex-row gap-3 mt-6">
@@ -810,7 +830,7 @@ const OutletDetails = () => {
                 onClick={() => {
                   setShowAllocateModal(false)
                   setEditingRequest(null)
-                  setSelectedItems([])
+                  setAllocationRows([])
                 }}
                 disabled={requesting}
                 className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
@@ -819,7 +839,7 @@ const OutletDetails = () => {
               </button>
               <button
                 onClick={handleFinalizeAllocation}
-                disabled={requesting || selectedItems.length === 0}
+                disabled={requesting || getSelectedItemsForSubmit().length === 0}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
                 {requesting 
@@ -860,10 +880,10 @@ const OutletDetails = () => {
             {/* Request Summary */}
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">
-                Request Summary ({selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''})
+                Request Summary ({getSelectedItemsForSubmit().length} item{getSelectedItemsForSubmit().length !== 1 ? 's' : ''})
               </h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {selectedItems.map((item) => (
+                {getSelectedItemsForSubmit().map((item) => (
                   <div key={item.raw_material_id} className="bg-background border border-border rounded-lg p-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
@@ -879,13 +899,6 @@ const OutletDetails = () => {
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Info Message */}
-            <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/50 rounded-lg">
-              <p className="text-xs lg:text-sm text-foreground">
-                <span className="font-semibold">ℹ️ Note:</span> This will create an allocation request. The inventory will not be decremented until the request is processed and packed.
-              </p>
             </div>
 
             {/* Actions */}
