@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 
@@ -28,12 +29,20 @@ const StockIn = () => {
     notes: ''
   })
 
-  // Items in the purchase slip
+  // Items in the purchase slip (spreadsheet rows)
   const [purchaseItems, setPurchaseItems] = useState([])
+
+  // Selected rows for bulk remove
+  const [selectedRows, setSelectedRows] = useState(new Set())
+
+  // Which row's material dropdown is open (-1 = none)
+  const [openDropdownRow, setOpenDropdownRow] = useState(-1)
+  const [dropdownSearchTerm, setDropdownSearchTerm] = useState('')
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const dropdownSearchRef = useRef(null)
 
   // Available materials from raw_materials
   const [availableMaterials, setAvailableMaterials] = useState([])
-  const [materialSearchTerm, setMaterialSearchTerm] = useState('')
 
   // Vendors for supplier dropdown
   const [vendors, setVendors] = useState([])
@@ -139,57 +148,130 @@ const StockIn = () => {
     fetchAvailableMaterials()
   }, [showAddModal])
 
-
-  // Filter available materials
-  const filteredAvailableMaterials = availableMaterials.filter(material =>
-    material.name.toLowerCase().includes(materialSearchTerm.toLowerCase()) ||
-    material.code.toLowerCase().includes(materialSearchTerm.toLowerCase())
-  )
-
-  // Add item to purchase slip
-  const handleAddItem = async (material) => {
-    // Check if material already added
-    if (purchaseItems.some(item => item.raw_material_id === material.id)) {
-      alert('This material is already added to the purchase slip')
-      return
+  // Focus search input and update position when dropdown opens
+  useEffect(() => {
+    if (openDropdownRow >= 0) {
+      const trigger = document.querySelector(`[data-dropdown-trigger="${openDropdownRow}"]`)
+      if (trigger) {
+        const rect = trigger.getBoundingClientRect()
+        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+      }
+      const t = setTimeout(() => dropdownSearchRef.current?.focus(), 50)
+      return () => clearTimeout(t)
     }
+  }, [openDropdownRow])
 
-    // Fetch the latest unit cost from the most recent batch for this material
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (openDropdownRow >= 0 && !e.target.closest('.material-dropdown-container')) {
+        setOpenDropdownRow(-1)
+        setDropdownSearchTerm('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openDropdownRow])
+
+
+  // Filter materials for dropdown search (by row)
+  const getFilteredMaterialsForRow = (rowIndex) => {
+    const search = openDropdownRow === rowIndex ? dropdownSearchTerm : ''
+    const usedIds = purchaseItems
+      .filter((item, i) => i !== rowIndex && item.raw_material_id)
+      .map(item => item.raw_material_id)
+    return availableMaterials.filter(material => {
+      if (usedIds.includes(material.id)) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return material.name.toLowerCase().includes(q) || material.code.toLowerCase().includes(q)
+    })
+  }
+
+  // Add new empty row
+  const handleAddRow = () => {
+    const rowId = `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setPurchaseItems(prev => [...prev, {
+      id: rowId,
+      raw_material_id: null,
+      material: null,
+      quantity: '',
+      unit_cost: 0,
+      previous_cost: null,
+      total_cost: 0
+    }])
+  }
+
+  // Select material for a row (from dropdown)
+  const handleSelectMaterial = async (rowIndex, material) => {
     let unitCost = 0
     const session = getSession()
     if (session?.cloud_kitchen_id) {
       try {
-        const { data: latestBatch, error } = await supabase
+        const { data: latestBatch } = await supabase
           .from('stock_in_batches')
-          .select('unit_cost, created_at')
+          .select('unit_cost')
           .eq('raw_material_id', material.id)
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-
-        if (!error && latestBatch) {
-          unitCost = parseFloat(latestBatch.unit_cost) || 0
-        }
+        if (latestBatch) unitCost = parseFloat(latestBatch.unit_cost) || 0
       } catch (err) {
-        console.error('Error fetching latest batch cost:', err)
+        console.error('Error fetching unit cost:', err)
       }
     }
 
-    setPurchaseItems(prev => [...prev, {
-      raw_material_id: material.id,
-      material: material,
-      quantity: '',
-      unit_cost: unitCost,
-      total_cost: 0
-    }])
-
-    setMaterialSearchTerm('')
+    setPurchaseItems(prev => {
+      const updated = [...prev]
+      updated[rowIndex] = {
+        ...updated[rowIndex],
+        raw_material_id: material.id,
+        material,
+        unit_cost: unitCost,
+        previous_cost: unitCost,
+        total_cost: (parseFloat(updated[rowIndex].quantity) || 0) * unitCost
+      }
+      return updated
+    })
+    setOpenDropdownRow(-1)
+    setDropdownSearchTerm('')
   }
 
-  // Remove item from purchase slip
-  const handleRemoveItem = (index) => {
+  // Remove single row
+  const handleRemoveRow = (index) => {
     setPurchaseItems(prev => prev.filter((_, i) => i !== index))
+    setSelectedRows(prev => {
+      const next = new Set(prev)
+      next.delete(index)
+      return next
+    })
+  }
+
+  // Toggle row selection
+  const handleToggleRowSelect = (index) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  // Select/deselect all rows
+  const handleToggleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedRows(new Set(purchaseItems.map((_, i) => i)))
+    } else {
+      setSelectedRows(new Set())
+    }
+  }
+
+  // Remove selected rows
+  const handleRemoveSelectedRows = () => {
+    if (selectedRows.size === 0) return
+    setPurchaseItems(prev => prev.filter((_, i) => !selectedRows.has(i)))
+    setSelectedRows(new Set())
   }
 
   // Update item quantity
@@ -210,9 +292,10 @@ const StockIn = () => {
     })
   }
 
-  // Calculate total cost of purchase slip
+  // Calculate total cost of purchase slip (only valid items)
+  const validPurchaseItems = purchaseItems.filter(item => item.raw_material_id && item.material)
   const calculateTotalCost = () => {
-    return purchaseItems.reduce((sum, item) => sum + (item.total_cost || 0), 0)
+    return validPurchaseItems.reduce((sum, item) => sum + (item.total_cost || 0), 0)
   }
 
   // Open add modal
@@ -237,7 +320,9 @@ const StockIn = () => {
       notes: ''
     })
     setPurchaseItems([])
-    setMaterialSearchTerm('')
+    setSelectedRows(new Set())
+    setOpenDropdownRow(-1)
+    setDropdownSearchTerm('')
   }
 
   // Finalize purchase slip
@@ -258,14 +343,14 @@ const StockIn = () => {
       return
     }
 
-    if (purchaseItems.length === 0) {
-      alert('Please add at least one item to the purchase slip')
+    if (validPurchaseItems.length === 0) {
+      alert('Please add at least one item with a material selected')
       return
     }
 
-    // Validate all items
-    for (let i = 0; i < purchaseItems.length; i++) {
-      const item = purchaseItems[i]
+    // Validate all valid items
+    for (let i = 0; i < validPurchaseItems.length; i++) {
+      const item = validPurchaseItems[i]
       if (!item.quantity || parseFloat(item.quantity) <= 0) {
         alert(`Please enter a valid quantity for ${item.material.name}`)
         return
@@ -298,7 +383,7 @@ const StockIn = () => {
 
       // Check if materials exist in inventory, create entries if they don't
       // This must happen BEFORE creating stock_in_batches
-      for (const item of purchaseItems) {
+      for (const item of validPurchaseItems) {
         // Check if inventory entry exists
         const { data: existingInventory } = await supabase
           .from('inventory')
@@ -327,7 +412,7 @@ const StockIn = () => {
       }
 
       // Create stock_in_batches (FIFO tracking)
-      const stockInBatches = purchaseItems.map(item => {
+      const stockInBatches = validPurchaseItems.map(item => {
         const quantity = parseFloat(item.quantity)
         return {
           stock_in_id: stockInData.id,
@@ -346,7 +431,7 @@ const StockIn = () => {
       if (batchesError) throw batchesError
 
       // Update inventory quantities by incrementing with the new batch quantities
-      for (const item of purchaseItems) {
+      for (const item of validPurchaseItems) {
         const quantity = parseFloat(item.quantity)
         
         // Fetch current inventory
@@ -825,137 +910,179 @@ const StockIn = () => {
                 </div>
               </div>
 
-              {/* Add Items Section */}
+              {/* Purchase Items - Spreadsheet Style */}
               <div className="mb-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-bold text-foreground mb-2">Purchase Items</h3>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    <strong>Note:</strong> Unit costs are pre-filled from the most recent purchase batch. You can edit the unit cost for this purchase.
-                  </p>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-bold text-foreground">Purchase Items</h3>
                 </div>
-
-                {/* Material Search */}
-                <div className="mb-4">
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    Search Material
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Type to search materials..."
-                    value={materialSearchTerm}
-                    onChange={(e) => setMaterialSearchTerm(e.target.value)}
-                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                  />
-                </div>
-
-                {/* Material Selection Dropdown */}
-                {materialSearchTerm !== '' && (
-                  <div className="mb-4 max-h-48 overflow-y-auto border border-border rounded-lg">
-                    {filteredAvailableMaterials
-                      .filter(material => !purchaseItems.some(item => item.raw_material_id === material.id))
-                      .length === 0 ? (
-                        <div className="p-4 text-center">
-                          <p className="text-muted-foreground text-sm mb-2">
-                            No materials found.
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Please go to the <strong>Materials</strong> section to add the material first, then come back here.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="divide-y divide-border">
-                          {filteredAvailableMaterials
-                            .filter(material => !purchaseItems.some(item => item.raw_material_id === material.id))
-                            .map((material) => (
-                              <button
-                                key={material.id}
-                                onClick={() => handleAddItem(material)}
-                                className="w-full text-left px-4 py-3 hover:bg-accent/10 transition-colors"
-                              >
-                                <div className="font-semibold text-foreground">{material.name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {material.code} • {material.unit} • {material.category || 'No category'}
-                                </div>
-                              </button>
-                            ))}
-                        </div>
-                      )}
+                <p className="text-sm text-muted-foreground mb-3">
+                  If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
+                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex gap-2">
+                    {selectedRows.size > 0 && (
+                      <button
+                        onClick={handleRemoveSelectedRows}
+                        className="px-3 py-1.5 text-sm font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded-lg hover:bg-destructive/20 transition-all"
+                      >
+                        Remove Selected ({selectedRows.size})
+                      </button>
+                    )}
+                    <button
+                      onClick={handleAddRow}
+                      className="px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm"
+                    >
+                      + Add Row
+                    </button>
                   </div>
-                )}
+                </div>
 
-                {/* Purchase Items List */}
-                {purchaseItems.length > 0 && (
-                  <div className="space-y-3">
-                    {purchaseItems.map((item, index) => (
-                      <div key={index} className="bg-background border border-border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="font-semibold text-foreground">{item.material.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.material.code} • {item.material.unit}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveItem(index)}
-                            className="text-destructive hover:text-destructive/80 font-semibold text-sm"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Quantity ({item.material.unit})
-                            </label>
+                <div className="overflow-x-auto border-2 border-border rounded-xl">
+                  <table className="w-full min-w-[700px]">
+                    <thead>
+                      <tr className="bg-background border-b-2 border-border select-none">
+                        <th className="px-3 py-2 w-10"></th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Prev. Cost (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Unit Cost (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Total (₹)</th>
+                        <th className="px-3 py-2 w-12"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchaseItems.map((item, index) => (
+                        <tr
+                          key={item.id || index}
+                          className={`border-b border-border hover:bg-accent/5 ${selectedRows.has(index) ? 'bg-accent/10' : ''}`}
+                        >
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedRows.has(index)}
+                              onChange={() => handleToggleRowSelect(index)}
+                              className="rounded border-border"
+                            />
+                          </td>
+                          <td className="px-3 py-2 relative material-dropdown-container">
+                            <div className="min-w-[180px]">
+                              <button
+                                type="button"
+                                data-dropdown-trigger={index}
+                                onClick={() => {
+                                  setOpenDropdownRow(openDropdownRow === index ? -1 : index)
+                                  setDropdownSearchTerm('')
+                                }}
+                                className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate"
+                              >
+                                {item.material ? (
+                                  <span>{item.material.name} <span className="text-muted-foreground text-xs">({item.material.unit})</span></span>
+                                ) : (
+                                  <span className="text-muted-foreground">Select material...</span>
+                                )}
+                              </button>
+                              {openDropdownRow === index && ReactDOM.createPortal(
+                                <div
+                                  className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
+                                  style={{
+                                    top: dropdownPosition.top,
+                                    left: dropdownPosition.left,
+                                    width: dropdownPosition.width,
+                                    minWidth: 280
+                                  }}
+                                >
+                                  <input
+                                    ref={dropdownSearchRef}
+                                    type="text"
+                                    value={dropdownSearchTerm}
+                                    onChange={(e) => setDropdownSearchTerm(e.target.value)}
+                                    placeholder="Search material..."
+                                    className="w-full px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                                  />
+                                  <div className="max-h-44 overflow-y-auto bg-card">
+                                    {getFilteredMaterialsForRow(index).length === 0 ? (
+                                      <div className="p-4 text-center text-sm text-muted-foreground">
+                                        No materials found. Add in Materials first.
+                                      </div>
+                                    ) : (
+                                      getFilteredMaterialsForRow(index).map((m) => (
+                                        <button
+                                          key={m.id}
+                                          type="button"
+                                          onClick={() => handleSelectMaterial(index, m)}
+                                          className="w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 last:border-0 font-medium text-foreground"
+                                        >
+                                          <div className="text-sm">{m.name}</div>
+                                          <div className="text-xs text-muted-foreground">{m.code} • {m.unit}</div>
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>,
+                                document.body
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
                             <input
                               type="number"
                               min="0.001"
                               step="0.001"
                               value={item.quantity}
                               onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value)}
-                              className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                              placeholder="0.000"
+                              placeholder="0"
+                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              disabled={!item.material}
                             />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Unit Cost (₹) <span className="text-destructive">*</span>
-                            </label>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="block px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground text-sm">
+                              {item.previous_cost != null && item.previous_cost > 0
+                                ? `₹${parseFloat(item.previous_cost).toFixed(2)}`
+                                : '—'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
                             <input
                               type="number"
-                              min="0.01"
+                              min="0"
                               step="0.01"
-                              value={item.unit_cost}
+                              value={item.unit_cost || ''}
                               onChange={(e) => handleUpdateItem(index, 'unit_cost', e.target.value)}
-                              className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                              placeholder="0.00"
-                              required
+                              placeholder="0"
+                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              disabled={!item.material}
                             />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-foreground mb-1">
-                              Total Cost (₹)
-                            </label>
-                            <input
-                              type="text"
-                              value={item.total_cost.toFixed(2)}
-                              disabled
-                              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-foreground opacity-60 cursor-not-allowed"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                          </td>
+                          <td className="px-3 py-2 text-sm font-medium text-foreground">
+                            {item.total_cost != null ? `₹${parseFloat(item.total_cost || 0).toFixed(2)}` : '—'}
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(index)}
+                              className="text-destructive hover:text-destructive/80 p-1"
+                              title="Remove row"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {purchaseItems.length === 0 && (
+                  <p className="text-sm text-muted-foreground mt-3">
+                    Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity and unit cost.
+                  </p>
                 )}
-
               </div>
 
               {/* Total Cost */}
-              {purchaseItems.length > 0 && (
+              {validPurchaseItems.length > 0 && (
                 <div className="mb-6 p-4 bg-accent/20 border border-accent rounded-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-bold text-foreground">Total Cost:</span>
@@ -976,13 +1103,13 @@ const StockIn = () => {
                 </button>
                 <button
                   onClick={() => {
-                    if (purchaseItems.length === 0) {
-                      alert('Please add at least one item')
+                    if (validPurchaseItems.length === 0) {
+                      alert('Please add at least one item with a material selected')
                       return
                     }
                     setShowConfirmModal(true)
                   }}
-                  disabled={purchaseItems.length === 0}
+                  disabled={validPurchaseItems.length === 0}
                   className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Finalize Purchase Slip
@@ -1023,7 +1150,7 @@ const StockIn = () => {
               <div className="mb-6">
                 <p className="text-sm font-semibold text-foreground mb-3">Items to be added:</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {purchaseItems.map((item, index) => (
+                  {validPurchaseItems.map((item, index) => (
                     <div key={index} className="bg-background border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between">
                         <div>
