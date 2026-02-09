@@ -9,6 +9,11 @@ const PurchaseManagerDashboard = () => {
   const [cloudKitchenName, setCloudKitchenName] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [notificationStats, setNotificationStats] = useState({
+    pendingAllocationsToday: 0,
+    lowStock: 0,
+    noStock: 0
+  })
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -24,6 +29,65 @@ const PurchaseManagerDashboard = () => {
       setCloudKitchenName(null)
     }
     setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    const fetchNotificationStats = async () => {
+      const currentSession = getSession()
+      if (!currentSession?.cloud_kitchen_id) return
+
+      try {
+        const todayStr = new Date().toISOString().split('T')[0]
+
+        const [pendingAllocationsResult, inventoryResult] = await Promise.all([
+          supabase
+            .from('allocation_requests')
+            .select('id')
+            .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
+            .eq('request_date', todayStr)
+            .eq('is_packed', false),
+          supabase
+            .from('inventory')
+            .select(`
+              quantity,
+              raw_material_id,
+              raw_materials!inner (
+                id,
+                low_stock_threshold
+              )
+            `)
+            .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
+        ])
+
+        const pendingAllocationsToday = pendingAllocationsResult.data?.length || 0
+
+        let lowStock = 0
+        let noStock = 0
+
+        if (inventoryResult.data) {
+          inventoryResult.data.forEach(item => {
+            const quantity = parseFloat(item.quantity) || 0
+            const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+
+            if (quantity === 0) {
+              noStock++
+            } else if (quantity > 0 && quantity <= threshold) {
+              lowStock++
+            }
+          })
+        }
+
+        setNotificationStats({
+          pendingAllocationsToday,
+          lowStock,
+          noStock
+        })
+      } catch (err) {
+        console.error('Error fetching notification stats:', err)
+      }
+    }
+
+    fetchNotificationStats()
   }, [])
 
   const handleLogout = () => {
@@ -120,7 +184,43 @@ const PurchaseManagerDashboard = () => {
                     }`
                   }
                 >
-                  <span>{item.label}</span>
+                  <span className="flex-1">{item.label}</span>
+
+                  {/* Stock Out notifications: hourglass + count for pending allocations today */}
+                  {item.path === 'stock-out' && notificationStats.pendingAllocationsToday > 0 && (
+                    <span
+                      className="ml-2 inline-flex items-center justify-center px-1.5 h-5 rounded-full bg-accent/20 text-accent text-[11px] font-semibold gap-1"
+                      aria-label="Pending allocations today"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 5h8M8 19h8M9 5v3l3 3 3-3V5M9 19v-3l3-3 3 3v3"
+                        />
+                      </svg>
+                      <span>{notificationStats.pendingAllocationsToday}</span>
+                    </span>
+                  )}
+
+                  {/* Inventory notifications: single arrow + count for low stock, double arrows + count for no stock */}
+                  {item.path === 'inventory' && (notificationStats.lowStock > 0 || notificationStats.noStock > 0) && (
+                    <span className="ml-2 flex items-center gap-1" aria-label="Inventory alerts">
+                      {notificationStats.lowStock > 0 && (
+                        <span className="inline-flex items-center justify-center px-1.5 h-4 rounded-full bg-yellow-500/20 text-yellow-600 text-[10px] font-bold gap-0.5">
+                          <span>↓</span>
+                          <span>{notificationStats.lowStock}</span>
+                        </span>
+                      )}
+                      {notificationStats.noStock > 0 && (
+                        <span className="inline-flex items-center justify-center px-1.5 h-4 rounded-full bg-destructive/20 text-destructive text-[10px] font-bold gap-0.5">
+                          <span>↓↓</span>
+                          <span>{notificationStats.noStock}</span>
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </NavLink>
               </li>
             ))}

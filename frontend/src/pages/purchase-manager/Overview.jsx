@@ -10,10 +10,14 @@ const Overview = () => {
     lowStockItems: 0,
     totalValue: 0,
     stockOutToday: 0,
-    pendingAllocationsToday: 0
+    pendingAllocationsToday: 0,
+    outletsCount: 0,
+    supervisorsCount: 0
   })
   const [recentStockIn, setRecentStockIn] = useState([])
   const [recentAllocations, setRecentAllocations] = useState([])
+  const [supervisors, setSupervisors] = useState([])
+  const [showSupervisorsModal, setShowSupervisorsModal] = useState(false)
   const [stockInDetails, setStockInDetails] = useState(null)
   const [showStockInDetailsModal, setShowStockInDetailsModal] = useState(false)
   const [stockOutDetails, setStockOutDetails] = useState(null)
@@ -47,7 +51,9 @@ const Overview = () => {
         stockInResult,
         stockOutResult,
         batchesResult,
-        pendingAllocationsResult
+        pendingAllocationsResult,
+        outletsResult,
+        supervisorsResult
       ] = await Promise.all([
         // Inventory data with raw material details (for low stock and total materials count)
         supabase
@@ -104,7 +110,24 @@ const Overview = () => {
           .select('id')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .eq('request_date', todayStr)
-          .eq('is_packed', false)
+          .eq('is_packed', false),
+
+        // Outlets for this cloud kitchen (for count)
+        supabase
+          .from('outlets')
+          .select('id')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .eq('is_active', true)
+          .is('deleted_at', null),
+
+        // Supervisors for this cloud kitchen (for count and modal)
+        supabase
+          .from('users')
+          .select('id, full_name, login_key, phone_number')
+          .eq('role', 'supervisor')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .eq('is_active', true)
+          .is('deleted_at', null)
       ])
 
       // Calculate total materials (unique materials in inventory)
@@ -146,17 +169,23 @@ const Overview = () => {
       // Pending allocation requests for today
       const pendingAllocationsToday = pendingAllocationsResult.data?.length || 0
 
+      const outletsCount = outletsResult.data?.length || 0
+      const supervisorsCount = supervisorsResult.data?.length || 0
+
       setStats({
         totalMaterials,
         stockInThisMonth,
         lowStockItems,
         totalValue,
         stockOutToday,
-        pendingAllocationsToday
+        pendingAllocationsToday,
+        outletsCount,
+        supervisorsCount
       })
 
       setRecentStockIn(stockInResult.data || [])
       setRecentAllocations(stockOutResult.data || [])
+      setSupervisors(supervisorsResult.data || [])
     } catch (err) {
       console.error('Error fetching overview data:', err)
     } finally {
@@ -338,6 +367,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
 
         {/* Additional Analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          {/* Stock Out Today */}
           <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground font-semibold">Stock Out (Today)</p>
@@ -354,6 +384,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
             </button>
           </div>
 
+          {/* Pending Requests Today */}
           <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground font-semibold">Pending Requests (Today)</p>
@@ -367,6 +398,40 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
               className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
             >
               View requests →
+            </button>
+          </div>
+
+          {/* Outlets Count */}
+          <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground font-semibold">Outlets</p>
+              <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 11h14M7 15h10M9 19h6" />
+              </svg>
+            </div>
+            <p className="text-3xl font-bold text-foreground mt-2">{stats.outletsCount}</p>
+            <button
+              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/outlets')}
+              className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
+            >
+              View outlets →
+            </button>
+          </div>
+
+          {/* Supervisors Count */}
+          <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground font-semibold">Supervisors</p>
+              <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m3-3l2 2 4-4M7 10h6m-6 4h3" />
+              </svg>
+            </div>
+            <p className="text-3xl font-bold text-foreground mt-2">{stats.supervisorsCount}</p>
+            <button
+              onClick={() => setShowSupervisorsModal(true)}
+              className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
+            >
+              View supervisors →
             </button>
           </div>
         </div>
@@ -695,6 +760,56 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                 <p className="text-sm text-muted-foreground">No items found for this stock out.</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Supervisors Details Modal */}
+      {showSupervisorsModal && (
+        <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
+          <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-foreground">Supervisors</h2>
+              <button
+                onClick={() => setShowSupervisorsModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {supervisors.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No supervisors found for this cloud kitchen.</p>
+            ) : (
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-background border-b border-border">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Full Name</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Login Key</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Phone Number</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {supervisors.map((sup) => (
+                      <tr key={sup.id} className="border-b border-border">
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {sup.full_name}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                          {sup.login_key || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {sup.phone_number || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
