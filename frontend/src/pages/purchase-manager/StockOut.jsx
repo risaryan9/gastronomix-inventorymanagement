@@ -13,8 +13,8 @@ const StockOut = () => {
   const [todayTotals, setTodayTotals] = useState({})
   const [allocating, setAllocating] = useState(false)
   const [alert, setAlert] = useState(null)
-  const [dateFilter, setDateFilter] = useState('today')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [searchTerm, setSearchTerm] = useState('')
   
   // Self stock out states
   const [showSelfStockOutModal, setShowSelfStockOutModal] = useState(false)
@@ -33,7 +33,7 @@ const StockOut = () => {
   // Fetch allocation requests
   useEffect(() => {
     fetchAllocationRequests()
-  }, [dateFilter, statusFilter])
+  }, [statusFilter])
 
   const fetchAllocationRequests = async () => {
     const session = getSession()
@@ -45,7 +45,7 @@ const StockOut = () => {
     try {
       setLoading(true)
 
-      // Build date filter
+      // Base query (no date range filter; show all matching status)
       let dateQuery = supabase
         .from('allocation_requests')
         .select(`
@@ -64,26 +64,6 @@ const StockOut = () => {
           )
         `)
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-
-      // Apply date filter
-      if (dateFilter === 'today') {
-        const today = new Date().toISOString().split('T')[0]
-        dateQuery = dateQuery.eq('request_date', today)
-      } else if (dateFilter === 'week') {
-        const today = new Date()
-        const weekAgo = new Date(today)
-        weekAgo.setDate(today.getDate() - 7)
-        dateQuery = dateQuery
-          .gte('request_date', weekAgo.toISOString().split('T')[0])
-          .lte('request_date', today.toISOString().split('T')[0])
-      } else if (dateFilter === 'month') {
-        const today = new Date()
-        const monthAgo = new Date(today)
-        monthAgo.setMonth(today.getMonth() - 1)
-        dateQuery = dateQuery
-          .gte('request_date', monthAgo.toISOString().split('T')[0])
-          .lte('request_date', today.toISOString().split('T')[0])
-      }
 
       // Apply status filter
       if (statusFilter !== 'all') {
@@ -621,6 +601,20 @@ const StockOut = () => {
     )
   }
 
+  // Apply search filter (outlet name, outlet code, requested by)
+  const filteredRequests = allocationRequests.filter((request) => {
+    if (!searchTerm.trim()) return true
+    const q = searchTerm.toLowerCase()
+    const outletName = request.outlets?.name?.toLowerCase() || ''
+    const outletCode = request.outlets?.code?.toLowerCase() || ''
+    const requestedBy = request.users?.full_name?.toLowerCase() || ''
+    return (
+      outletName.includes(q) ||
+      outletCode.includes(q) ||
+      requestedBy.includes(q)
+    )
+  })
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -660,21 +654,18 @@ const StockOut = () => {
         {/* Filters */}
         <div className="bg-card border-2 border-border rounded-xl p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Date Filter */}
+            {/* Search */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-2">
-                Date Range
+                Search (Outlet / Code / Requested By)
               </label>
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+              <input
+                type="text"
+                placeholder="Search by outlet name, outlet code, or requested by..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-              >
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="all">All</option>
-              </select>
+              />
             </div>
 
             {/* Status Filter */}
@@ -697,15 +688,15 @@ const StockOut = () => {
 
         {/* Allocation Requests Table */}
         <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
-          {allocationRequests.length === 0 ? (
+          {filteredRequests.length === 0 ? (
             <div className="text-center py-16">
               <h3 className="text-xl font-bold text-foreground mb-2">
                 No allocation requests found
               </h3>
               <p className="text-muted-foreground">
-                {dateFilter === 'today' 
-                  ? 'No allocation requests for today.' 
-                  : 'Try adjusting your filters.'}
+                {searchTerm.trim()
+                  ? 'No allocation requests match your search.'
+                  : 'No allocation requests match your filters.'}
               </p>
             </div>
           ) : (
@@ -722,7 +713,7 @@ const StockOut = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {allocationRequests.map((request) => (
+                  {filteredRequests.map((request) => (
                     <tr 
                       key={request.id} 
                       className={`border-b border-border transition-colors ${
