@@ -99,11 +99,19 @@ const OutletDetails = () => {
     }
   }
 
-  // Check if there's an existing allocation request for today with is_packed = false
+  // Check if there's an existing allocation request for today
+  // - existingTodayRequest: today's request that is not packed (can be edited)
+  // - packedTodayRequest: today's request that has already been packed (no new requests allowed)
   const existingTodayRequest = allocationRequests.find(request => {
     const today = new Date().toISOString().split('T')[0]
     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
     return requestDate === today && !request.is_packed
+  })
+
+  const packedTodayRequest = allocationRequests.find(request => {
+    const today = new Date().toISOString().split('T')[0]
+    const requestDate = new Date(request.request_date).toISOString().split('T')[0]
+    return requestDate === today && request.is_packed
   })
 
   const getSelectedItemsForSubmit = () =>
@@ -118,9 +126,14 @@ const OutletDetails = () => {
       }))
 
   const handleAllocate = () => {
+    // If today's request is already packed, the button will be disabled and this will not be called.
+    if (packedTodayRequest) return
+
+    // If there is an un-packed request for today, open it for editing
     if (existingTodayRequest) {
       handleEditRequest(existingTodayRequest)
     } else {
+      // Otherwise, allow creating a new request
       setShowAllocateModal(true)
       setAllocationRows([])
       setSelectedRows(new Set())
@@ -360,6 +373,21 @@ const OutletDetails = () => {
         // Refresh the allocation requests to show updated data
         await fetchAllocationRequests()
       } else {
+        // Before creating a new request, ensure there is no packed request for today
+        const today = new Date().toISOString().split('T')[0]
+        const { data: existingPacked, error: existingPackedError } = await supabase
+          .from('allocation_requests')
+          .select('id')
+          .eq('outlet_id', outletId)
+          .eq('request_date', today)
+          .eq('is_packed', true)
+          .maybeSingle()
+
+        if (existingPackedError) throw existingPackedError
+        if (existingPacked) {
+          throw new Error('Today\'s allocation request for this outlet has already been packed. You cannot create another request for today.')
+        }
+
         // Validate no duplicate materials before proceeding
         const materialIds = selectedItems.map(item => item.raw_material_id)
         const uniqueMaterialIds = new Set(materialIds)
@@ -534,17 +562,22 @@ const OutletDetails = () => {
         <div className="mb-4 lg:mb-6">
           <button
             onClick={handleAllocate}
+            disabled={!!packedTodayRequest}
             className={`w-full lg:w-auto font-bold px-6 py-4 lg:py-3 rounded-xl border-3 transition-all duration-200 text-base touch-manipulation ${
-              existingTodayRequest && !existingTodayRequest.is_packed
-                ? 'bg-yellow-500 text-black border-yellow-500 shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
-                : 'bg-accent text-background border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
+              packedTodayRequest
+                ? 'bg-muted text-muted-foreground border-border cursor-not-allowed opacity-70'
+                : existingTodayRequest && !existingTodayRequest.is_packed
+                  ? 'bg-yellow-500 text-black border-yellow-500 shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
+                  : 'bg-accent text-background border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em]'
             }`}
           >
-            {existingTodayRequest && !existingTodayRequest.is_packed
-              ? 'Edit Today\'s Allocation Request'
-              : '+ Create Allocation Request'}
+            {packedTodayRequest
+              ? 'Allocation already packed'
+              : existingTodayRequest && !existingTodayRequest.is_packed
+                ? 'Edit Today\'s Allocation Request'
+                : '+ Create Allocation Request'}
           </button>
-          {existingTodayRequest && !existingTodayRequest.is_packed && (
+          {existingTodayRequest && !existingTodayRequest.is_packed && !packedTodayRequest && (
             <p className="text-xs text-muted-foreground mt-2">
               You already have an allocation request for today. Click the button above to edit it.
             </p>
