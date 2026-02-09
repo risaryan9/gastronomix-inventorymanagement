@@ -356,6 +356,12 @@ const StockIn = () => {
       setFinalizing(false)
       return
     }
+    if (!purchaseSlip.invoice_number?.trim()) {
+      alert('Please enter an invoice number')
+      finalizingRef.current = false
+      setFinalizing(false)
+      return
+    }
 
     if (validPurchaseItems.length === 0) {
       alert('Please add at least one item with a material selected')
@@ -895,10 +901,11 @@ const StockIn = () => {
 
                 <div>
                   <label className="block text-sm font-semibold text-foreground mb-2">
-                    Invoice Number
+                    Invoice Number <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={purchaseSlip.invoice_number}
                     onChange={(e) => setPurchaseSlip({ ...purchaseSlip, invoice_number: e.target.value })}
                     className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
@@ -1128,6 +1135,10 @@ const StockIn = () => {
                   onClick={() => {
                     if (validPurchaseItems.length === 0) {
                       alert('Please add at least one item with a material selected')
+                      return
+                    }
+                    if (!purchaseSlip.invoice_number?.trim()) {
+                      alert('Please enter an invoice number')
                       return
                     }
                     setShowConfirmModal(true)
