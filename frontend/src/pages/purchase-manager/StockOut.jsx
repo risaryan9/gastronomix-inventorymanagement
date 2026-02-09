@@ -312,8 +312,11 @@ const StockOut = () => {
     })
   }
 
-  // FIFO Allocation Logic
+  // FIFO Allocation Logic (no-op when quantity <= 0)
   const allocateStockFIFO = async (rawMaterialId, quantity, cloudKitchenId) => {
+    const qty = parseFloat(quantity)
+    if (qty <= 0) return true
+
     // Query stock_in_batches ordered by created_at (oldest first)
     const { data: batches, error: batchError } = await supabase
       .from('stock_in_batches')
@@ -411,10 +414,19 @@ const StockOut = () => {
         }
       }
 
-      // Validate quantities
+      // At least one item must have quantity > 0
+      const hasPositiveQty = itemsToProcess.some(item => parseFloat(item.allocated_quantity) > 0)
+      if (!hasPositiveQty) {
+        setAlert({ type: 'error', message: 'Please enter a quantity greater than 0 for at least one item' })
+        allocatingRef.current = false
+        setAllocating(false)
+        return
+      }
+
+      // Validate quantities (allow 0; reject negative; check cap for positive)
       for (const item of itemsToProcess) {
-        if (item.allocated_quantity <= 0) {
-          setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+        if (parseFloat(item.allocated_quantity) < 0) {
+          setAlert({ type: 'error', message: `Quantity cannot be negative for ${item.name}` })
           allocatingRef.current = false
           setAllocating(false)
           return
@@ -422,7 +434,7 @@ const StockOut = () => {
 
         // Use the current_inventory already fetched when material was selected
         const availableInventory = item.current_inventory || 0
-        if (item.allocated_quantity > availableInventory) {
+        if (parseFloat(item.allocated_quantity) > availableInventory) {
           setAlert({ 
             type: 'error', 
             message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
@@ -433,17 +445,26 @@ const StockOut = () => {
         }
       }
     } else {
-      // Validate allocated quantities for regular stock out
+      // At least one item must have quantity > 0 for regular stock out
+      const hasPositiveQty = itemsToProcess.some(item => parseFloat(item.allocated_quantity) > 0)
+      if (!hasPositiveQty) {
+        setAlert({ type: 'error', message: 'Please enter a quantity greater than 0 for at least one item' })
+        allocatingRef.current = false
+        setAllocating(false)
+        return
+      }
+
+      // Validate allocated quantities for regular stock out (allow 0; reject negative; cap by inventory)
       for (const item of itemsToProcess) {
-        if (item.allocated_quantity <= 0) {
-          setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+        if (parseFloat(item.allocated_quantity) < 0) {
+          setAlert({ type: 'error', message: `Quantity cannot be negative for ${item.name}` })
           allocatingRef.current = false
           setAllocating(false)
           return
         }
 
         const availableInventory = inventoryData[item.raw_material_id] || 0
-        if (item.allocated_quantity > availableInventory) {
+        if (parseFloat(item.allocated_quantity) > availableInventory) {
           setAlert({ 
             type: 'error', 
             message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
@@ -483,76 +504,81 @@ const StockOut = () => {
 
       if (stockOutError) throw stockOutError
 
-      // Process each item with FIFO allocation
+      // Process each item: always create stock_out_item; for quantity > 0 run FIFO and decrement inventory
       for (const item of itemsToProcess) {
-        // Allocate stock using FIFO
-        await allocateStockFIFO(
-          item.raw_material_id,
-          item.allocated_quantity,
-          session.cloud_kitchen_id
-        )
+        const qty = parseFloat(item.allocated_quantity) || 0
 
-        // Create stock_out_item
+        // Create stock_out_item (0 is valid: "packed 0" for this line)
         const { error: itemError } = await supabase
           .from('stock_out_items')
           .insert({
             stock_out_id: stockOutData.id,
             raw_material_id: item.raw_material_id,
-            quantity: item.allocated_quantity
+            quantity: qty
           })
 
         if (itemError) throw itemError
 
-        // Update inventory (decrement)
-        const { data: currentInv, error: invFetchError } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .eq('raw_material_id', item.raw_material_id)
-          .single()
+        if (qty > 0) {
+          // Allocate stock using FIFO and update inventory
+          await allocateStockFIFO(
+            item.raw_material_id,
+            qty,
+            session.cloud_kitchen_id
+          )
 
-        if (invFetchError) throw invFetchError
+          const { data: currentInv, error: invFetchError } = await supabase
+            .from('inventory')
+            .select('quantity')
+            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+            .eq('raw_material_id', item.raw_material_id)
+            .single()
 
-        const newQuantity = parseFloat(currentInv.quantity) - item.allocated_quantity
+          if (invFetchError) throw invFetchError
 
-        const { error: invUpdateError } = await supabase
-          .from('inventory')
-          .update({
-            quantity: Math.max(0, newQuantity),
-            last_updated_at: new Date().toISOString(),
-            updated_by: session.id
-          })
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .eq('raw_material_id', item.raw_material_id)
+          const newQuantity = parseFloat(currentInv.quantity) - qty
 
-        if (invUpdateError) throw invUpdateError
+          const { error: invUpdateError } = await supabase
+            .from('inventory')
+            .update({
+              quantity: Math.max(0, newQuantity),
+              last_updated_at: new Date().toISOString(),
+              updated_by: session.id
+            })
+            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+            .eq('raw_material_id', item.raw_material_id)
+
+          if (invUpdateError) throw invUpdateError
+        }
       }
 
-      // Create audit log
-      const { error: auditError } = await supabase
-        .from('audit_logs')
-        .insert({
-          user_id: session.id,
-          action: 'stock_out',
-          entity_type: 'stock_out',
-          entity_id: stockOutData.id,
-          new_values: {
-            self_stock_out: isSelfStockOut,
-            reason: isSelfStockOut ? selfStockOutReason.trim() : null,
-            allocation_request_id: isSelfStockOut ? null : selectedRequest.id,
-            outlet_id: isSelfStockOut ? null : selectedRequest.outlet_id,
-            items: itemsToProcess.map(item => ({
-              raw_material_id: item.raw_material_id,
-              name: item.name,
-              quantity: item.allocated_quantity,
-              unit: item.unit
-            }))
-          }
-        })
+      // Audit log only for self stock outs
+      if (isSelfStockOut) {
+        const { error: auditError } = await supabase
+          .from('audit_logs')
+          .insert({
+            user_id: session.id,
+            action: 'stock_out',
+            entity_type: 'stock_out',
+            entity_id: stockOutData.id,
+            new_values: {
+              self_stock_out: true,
+              reason: selfStockOutReason.trim(),
+              allocation_request_id: null,
+              outlet_id: null,
+              items: itemsToProcess.map(item => ({
+                raw_material_id: item.raw_material_id,
+                name: item.name,
+                quantity: item.allocated_quantity,
+                unit: item.unit
+              }))
+            }
+          })
 
-      if (auditError) {
-        console.error('Error creating audit log:', auditError)
-        // Don't fail the operation if audit log fails
+        if (auditError) {
+          console.error('Error creating audit log:', auditError)
+          // Don't fail the operation if audit log fails
+        }
       }
 
       // Mark allocation request as packed (only for regular stock out)
@@ -832,7 +858,7 @@ const StockOut = () => {
                             <td className="px-4 py-3">
                               <input
                                 type="number"
-                                min="0.5"
+                                min="0"
                                 step="0.5"
                                 value={item.allocated_quantity}
                                 onChange={(e) => handleUpdateAllocatedQuantity(index, parseFloat(e.target.value) || 0)}
@@ -1017,7 +1043,7 @@ const StockOut = () => {
                               <div className="flex items-center gap-2">
                                 <input
                                   type="number"
-                                  min="0.5"
+                                  min="0"
                                   step="0.5"
                                   value={item.allocated_quantity}
                                   onChange={(e) => handleUpdateSelfStockOutQuantity(index, parseFloat(e.target.value) || 0)}
