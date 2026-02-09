@@ -23,6 +23,7 @@ const OutletDetails = () => {
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const dropdownSearchRef = useRef(null)
   const [requesting, setRequesting] = useState(false)
+  const requestingRef = useRef(false) // Prevent double-submit on Confirm & Create/Update Request
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
   const [editingRequest, setEditingRequest] = useState(null) // The allocation request being edited
@@ -221,14 +222,19 @@ const OutletDetails = () => {
   }
 
   const confirmAllocation = async () => {
+    if (requestingRef.current) return
+    requestingRef.current = true
+    setRequesting(true)
+
     const session = getSession()
     if (!session?.id || !session?.cloud_kitchen_id) {
       setAlert({ type: 'error', message: 'Session expired. Please log in again.' })
+      requestingRef.current = false
+      setRequesting(false)
       return
     }
 
     const selectedItems = getSelectedItemsForSubmit()
-    setRequesting(true)
     setShowConfirmModal(false)
     try {
       if (editingRequest) {
@@ -405,6 +411,7 @@ const OutletDetails = () => {
       console.error('Error saving allocation request:', err)
       setAlert({ type: 'error', message: `Failed to save allocation request: ${err.message}` })
     } finally {
+      requestingRef.current = false
       setRequesting(false)
     }
   }

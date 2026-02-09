@@ -13,11 +13,12 @@ Run these migrations in the following order in your Supabase SQL Editor:
 - Creates views
 - **Run this first** - it's the complete database schema
 
-### 2. Fix RLS Recursion (IMPORTANT - Run this first if you get recursion errors)
+### 2. Fix RLS Recursion (IMPORTANT - Run if you get recursion errors)
 **File:** `fix-rls-recursion.sql`
 - Creates `is_admin()` function to prevent infinite recursion in RLS policies
-- Fixes the "infinite recursion detected in policy" error
-- **Run this if you encounter recursion errors**
+- **File:** `fix-users-table-rls-recursion.sql` (use this if you get **"infinite recursion detected in policy for relation users"**)
+- Fixes the "infinite recursion detected in policy" error on the **users** table (e.g. after admin login when the app queries `users?id=eq.xxx&role=eq.admin`)
+- **Run the users fix if admin login returns 500 with recursion error**
 
 ### 3. Key-Based Login Support
 **File:** `add-key-login-policy.sql` or `add-key-login-policy-alternative.sql`

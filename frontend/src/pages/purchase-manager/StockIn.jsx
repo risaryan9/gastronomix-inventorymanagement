@@ -48,6 +48,9 @@ const StockIn = () => {
   const [vendors, setVendors] = useState([])
 
   const fetchingRef = useRef(false)
+  // Prevent double-submit on Confirm & Create (catastrophic if multiple stock_in created)
+  const finalizingRef = useRef(false)
+  const [finalizing, setFinalizing] = useState(false)
 
   // Fetch stock in records
   useEffect(() => {
@@ -327,24 +330,37 @@ const StockIn = () => {
 
   // Finalize purchase slip
   const handleFinalize = async () => {
+    // Prevent double/multiple submit: ref guard blocks immediately, state disables button
+    if (finalizingRef.current) return
+    finalizingRef.current = true
+    setFinalizing(true)
+
     const session = getSession()
     if (!session?.id || !session?.cloud_kitchen_id) {
       alert('Session expired. Please log in again.')
+      finalizingRef.current = false
+      setFinalizing(false)
       return
     }
 
     // Validate purchase slip
     if (!purchaseSlip.supplier_name?.trim()) {
       alert('Please select a supplier')
+      finalizingRef.current = false
+      setFinalizing(false)
       return
     }
     if (!purchaseSlip.receipt_date) {
       alert('Please select a receipt date')
+      finalizingRef.current = false
+      setFinalizing(false)
       return
     }
 
     if (validPurchaseItems.length === 0) {
       alert('Please add at least one item with a material selected')
+      finalizingRef.current = false
+      setFinalizing(false)
       return
     }
 
@@ -353,10 +369,14 @@ const StockIn = () => {
       const item = validPurchaseItems[i]
       if (!item.quantity || parseFloat(item.quantity) <= 0) {
         alert(`Please enter a valid quantity for ${item.material.name}`)
+        finalizingRef.current = false
+        setFinalizing(false)
         return
       }
       if (!item.unit_cost || parseFloat(item.unit_cost) <= 0) {
         alert(`Please enter a valid unit cost for ${item.material.name}`)
+        finalizingRef.current = false
+        setFinalizing(false)
         return
       }
     }
@@ -511,6 +531,9 @@ const StockIn = () => {
     } catch (err) {
       console.error('Error finalizing purchase slip:', err)
       alert(`Failed to create purchase slip: ${err.message}`)
+    } finally {
+      finalizingRef.current = false
+      setFinalizing(false)
     }
   }
 
@@ -1176,16 +1199,18 @@ const StockIn = () => {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowConfirmModal(false)}
-                  className="flex-1 bg-transparent text-foreground font-semibold px-4 py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all"
+                  onClick={() => !finalizing && setShowConfirmModal(false)}
+                  disabled={finalizing}
+                  className="flex-1 bg-transparent text-foreground font-semibold px-4 py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleFinalize}
-                  className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
+                  disabled={finalizing}
+                  className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  Confirm & Create
+                  {finalizing ? 'Creating...' : 'Confirm & Create'}
                 </button>
               </div>
             </div>

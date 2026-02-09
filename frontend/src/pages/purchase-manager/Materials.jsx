@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 
@@ -38,6 +38,7 @@ const Materials = () => {
   })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false) // Prevent double-submit on Confirm & Create Material
   const [error, setError] = useState(null)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
   const [currentPage, setCurrentPage] = useState(1)
@@ -249,6 +250,8 @@ const Materials = () => {
 
   // Confirm and submit (create or update)
   const confirmSubmit = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     setError(null)
     setShowConfirmModal(false)
@@ -384,6 +387,7 @@ const Materials = () => {
         setError(err.message || 'Failed to save material. Please try again.')
       }
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }

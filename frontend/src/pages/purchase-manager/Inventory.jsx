@@ -987,33 +987,6 @@ const Inventory = () => {
             {/* Adjustment Form */}
             <div className="mb-4 space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  Adjustment Type
-                </label>
-                <div className={`px-4 py-3 rounded-lg border-2 ${
-                  calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment'
-                    ? 'bg-green-500/20 border-green-500/50'
-                    : 'bg-destructive/20 border-destructive/50'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-foreground">
-                      {calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment' ? 'Increment' : 'Decrement'}
-                    </span>
-                    <span className={`text-sm font-bold ${
-                      calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment'
-                        ? 'text-green-500'
-                        : 'text-destructive'
-                    }`}>
-                      {calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment' ? '↑' : '↓'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Automatically determined based on quantity change
-                  </p>
-                </div>
-              </div>
-
-              <div>
                 <label htmlFor="reason" className="block text-sm font-semibold text-foreground mb-2">
                   Reason <span className="text-destructive">*</span>
                 </label>
@@ -1026,21 +999,6 @@ const Inventory = () => {
                   placeholder="Please provide a reason for this inventory adjustment..."
                   disabled={updating}
                   required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="details" className="block text-sm font-semibold text-foreground mb-2">
-                  Additional Details
-                </label>
-                <textarea
-                  id="details"
-                  rows={3}
-                  value={adjustmentForm.details}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, details: e.target.value })}
-                  className="w-full bg-input border-2 border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base resize-none"
-                  placeholder="Any additional details or notes..."
-                  disabled={updating}
                 />
               </div>
             </div>

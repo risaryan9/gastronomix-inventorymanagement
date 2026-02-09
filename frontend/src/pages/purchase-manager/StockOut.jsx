@@ -22,6 +22,8 @@ const StockOut = () => {
   const [selfStockOutReason, setSelfStockOutReason] = useState('')
   const [allMaterials, setAllMaterials] = useState([])
   const [isSelfStockOut, setIsSelfStockOut] = useState(false)
+  // Prevent double-submit on allocation (ref blocks immediately)
+  const allocatingRef = useRef(false)
   // Material search popup (same design as Stock In / OutletDetails)
   const [openMaterialDropdownRow, setOpenMaterialDropdownRow] = useState(-1)
   const [materialDropdownSearchTerm, setMaterialDropdownSearchTerm] = useState('')
@@ -386,9 +388,16 @@ const StockOut = () => {
 
   // Handle allocation submission (both regular and self stock out)
   const handleAllocateStock = async () => {
+    // Prevent double/multiple submit
+    if (allocatingRef.current) return
+    allocatingRef.current = true
+    setAllocating(true)
+
     const session = getSession()
     if (!session?.id || !session?.cloud_kitchen_id) {
       setAlert({ type: 'error', message: 'Session expired. Please log in again.' })
+      allocatingRef.current = false
+      setAllocating(false)
       return
     }
 
@@ -399,11 +408,15 @@ const StockOut = () => {
     if (isSelfStockOut) {
       if (!selfStockOutReason || selfStockOutReason.trim() === '') {
         setAlert({ type: 'error', message: 'Please provide a reason for self stock out' })
+        allocatingRef.current = false
+        setAllocating(false)
         return
       }
 
       if (itemsToProcess.length === 0) {
         setAlert({ type: 'error', message: 'Please add at least one material' })
+        allocatingRef.current = false
+        setAllocating(false)
         return
       }
 
@@ -412,6 +425,8 @@ const StockOut = () => {
         const item = itemsToProcess[i]
         if (!item.raw_material_id) {
           setAlert({ type: 'error', message: `Please select a material for row ${i + 1}` })
+          allocatingRef.current = false
+          setAllocating(false)
           return
         }
       }
@@ -420,6 +435,8 @@ const StockOut = () => {
       for (const item of itemsToProcess) {
         if (item.allocated_quantity <= 0) {
           setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+          allocatingRef.current = false
+          setAllocating(false)
           return
         }
 
@@ -430,6 +447,8 @@ const StockOut = () => {
             type: 'error', 
             message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
           })
+          allocatingRef.current = false
+          setAllocating(false)
           return
         }
       }
@@ -438,6 +457,8 @@ const StockOut = () => {
       for (const item of itemsToProcess) {
         if (item.allocated_quantity <= 0) {
           setAlert({ type: 'error', message: `Please enter a valid quantity for ${item.name}` })
+          allocatingRef.current = false
+          setAllocating(false)
           return
         }
 
@@ -447,12 +468,12 @@ const StockOut = () => {
             type: 'error', 
             message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
           })
+          allocatingRef.current = false
+          setAllocating(false)
           return
         }
       }
     }
-
-    setAllocating(true)
 
     try {
       // Create stock_out record
@@ -583,6 +604,7 @@ const StockOut = () => {
         message: err.message || 'Failed to allocate stock. Please try again.' 
       })
     } finally {
+      allocatingRef.current = false
       setAllocating(false)
     }
   }
