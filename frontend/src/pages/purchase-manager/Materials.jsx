@@ -32,6 +32,7 @@ const Materials = () => {
     code: '',
     unit: '',
     category: '',
+    brand: '',
     description: '',
     low_stock_threshold: '',
     vendor_id: ''
@@ -99,6 +100,7 @@ const Materials = () => {
       filtered = filtered.filter(material =>
         material.name.toLowerCase().includes(query) ||
         material.code.toLowerCase().includes(query) ||
+        (material.brand && material.brand.toLowerCase().includes(query)) ||
         (material.description && material.description.toLowerCase().includes(query))
       )
     }
@@ -203,6 +205,7 @@ const Materials = () => {
       code: material.code || '',
       unit: material.unit || '',
       category: material.category || '',
+      brand: material.brand || '',
       description: material.description || '',
       low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
       vendor_id: material.vendor_id || ''
@@ -269,6 +272,7 @@ const Materials = () => {
           code: formData.code.trim(),
           unit: formData.unit.trim(),
           category: formData.category.trim() || null,
+          brand: formData.brand.trim() || null,
           description: formData.description.trim() || null,
           low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
           vendor_id: formData.vendor_id || null,
@@ -293,6 +297,7 @@ const Materials = () => {
             code: editingMaterial.code,
             unit: editingMaterial.unit,
             category: editingMaterial.category,
+            brand: editingMaterial.brand,
             description: editingMaterial.description,
             low_stock_threshold: editingMaterial.low_stock_threshold
           },
@@ -301,6 +306,7 @@ const Materials = () => {
             code: updateData.code,
             unit: updateData.unit,
             category: updateData.category,
+            brand: updateData.brand,
             description: updateData.description,
             low_stock_threshold: updateData.low_stock_threshold
           },
@@ -333,6 +339,7 @@ const Materials = () => {
             code: materialCode,
             unit: formData.unit.trim(),
             category: formData.category.trim() || null,
+            brand: formData.brand.trim() || null,
             description: formData.description.trim() || null,
             low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
             vendor_id: formData.vendor_id || null
@@ -354,6 +361,7 @@ const Materials = () => {
             code: newMaterial.code,
             unit: newMaterial.unit,
             category: newMaterial.category,
+            brand: newMaterial.brand,
             description: newMaterial.description,
             low_stock_threshold: newMaterial.low_stock_threshold
           },
@@ -583,25 +591,6 @@ const Materials = () => {
                     </div>
                   )}
 
-                  {/* Code - Always shown, always read-only */}
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">
-                      Material Code <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.code}
-                      disabled
-                      className="w-full bg-muted border-2 border-border rounded-lg px-4 py-2.5 text-muted-foreground cursor-not-allowed opacity-60 font-mono"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {editingMaterial 
-                        ? 'Code cannot be modified' 
-                        : 'Code is auto-generated based on category'}
-                    </p>
-                  </div>
-
                   {/* Name */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
@@ -663,6 +652,40 @@ const Materials = () => {
                         Category cannot be modified
                       </p>
                     )}
+                  </div>
+
+                  {/* Brand (optional) */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Brand
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                      placeholder="Brand name (optional)"
+                      disabled={saving}
+                    />
+                  </div>
+
+                  {/* Material Code - Always shown, always read-only */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Material Code <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.code}
+                      disabled
+                      className="w-full bg-muted border-2 border-border rounded-lg px-4 py-2.5 text-muted-foreground cursor-not-allowed opacity-60 font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {editingMaterial 
+                        ? 'Code cannot be modified' 
+                        : 'Code is auto-generated based on category'}
+                    </p>
                   </div>
 
                   {/* Vendor */}
@@ -788,6 +811,10 @@ const Materials = () => {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Category:</span>
                       <span className="text-foreground font-semibold">{formData.category}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Brand:</span>
+                      <span className="text-foreground font-semibold">{formData.brand || '—'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Low Stock Threshold:</span>
