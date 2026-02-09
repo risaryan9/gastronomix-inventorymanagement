@@ -199,8 +199,8 @@ const Overview = () => {
             </div>
             <p className="text-3xl font-bold text-foreground mt-2">{stats.totalMaterials}</p>
             <button
-              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/inventory')}
-              className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
+onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
+            className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
             >
               View all →
             </button>
@@ -384,37 +384,6 @@ const Overview = () => {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-card border-2 border-border rounded-xl p-6">
-          <h2 className="text-lg font-bold text-foreground mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <button
-              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/stock-in')}
-              className="bg-accent text-background font-bold px-4 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 text-sm touch-manipulation"
-            >
-              + Add Stock In
-            </button>
-            <button
-              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
-              className="bg-transparent text-accent font-semibold px-4 py-3 rounded-lg border-2 border-accent hover:bg-accent/10 transition-all text-sm touch-manipulation"
-            >
-              Add Material
-            </button>
-            <button
-              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/inventory')}
-              className="bg-transparent text-accent font-semibold px-4 py-3 rounded-lg border-2 border-accent hover:bg-accent/10 transition-all text-sm touch-manipulation"
-            >
-              View Inventory
-            </button>
-            <button
-              onClick={() => navigate('/invmanagement/dashboard/purchase_manager/outlets')}
-              className="bg-transparent text-accent font-semibold px-4 py-3 rounded-lg border-2 border-accent hover:bg-accent/10 transition-all text-sm touch-manipulation"
-            >
-              Allocate to Outlets
-            </button>
           </div>
         </div>
       </div>
