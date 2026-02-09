@@ -139,8 +139,18 @@ const Inventory = () => {
           }
         })
 
-        // Sort by material name
+        // Sort: In stock first, then Low stock, then Out of stock; within each group by material name
+        const stockStatusOrder = (item) => {
+          const qty = parseFloat(item.quantity) || 0
+          const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+          if (qty > threshold) return 0   // In stock
+          if (qty > 0) return 1          // Low stock
+          return 2                         // Out of stock
+        }
         inventoryWithMaterials.sort((a, b) => {
+          const orderA = stockStatusOrder(a)
+          const orderB = stockStatusOrder(b)
+          if (orderA !== orderB) return orderA - orderB
           const nameA = a.raw_materials?.name || ''
           const nameB = b.raw_materials?.name || ''
           return nameA.localeCompare(nameB)
