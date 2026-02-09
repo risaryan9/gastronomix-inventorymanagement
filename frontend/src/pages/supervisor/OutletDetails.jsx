@@ -701,13 +701,13 @@ const OutletDetails = () => {
               </div>
 
               <div className="overflow-x-auto border-2 border-border rounded-xl">
-                <table className="w-full min-w-[500px]">
+                <table className="w-full sm:min-w-[500px]">
                   <thead>
                     <tr className="bg-background border-b-2 border-border select-none">
                       <th className="px-3 py-2 w-10"></th>
                       <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
-                      <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Quantity</th>
-                      <th className="px-3 py-2 w-12"></th>
+                      <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-24 sm:w-32">Quantity</th>
+                      <th className="px-3 py-2 w-10 sm:w-12"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -726,7 +726,7 @@ const OutletDetails = () => {
                           />
                         </td>
                         <td className="px-3 py-2 relative material-dropdown-container">
-                          <div className="min-w-[180px]">
+                          <div className="min-w-[140px] sm:min-w-[180px]">
                             <button
                               type="button"
                               data-dropdown-trigger={index}
