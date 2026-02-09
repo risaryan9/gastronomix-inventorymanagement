@@ -14,6 +14,10 @@ const Overview = () => {
   })
   const [recentStockIn, setRecentStockIn] = useState([])
   const [recentAllocations, setRecentAllocations] = useState([])
+  const [stockInDetails, setStockInDetails] = useState(null)
+  const [showStockInDetailsModal, setShowStockInDetailsModal] = useState(false)
+  const [stockOutDetails, setStockOutDetails] = useState(null)
+  const [showStockOutDetailsModal, setShowStockOutDetailsModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -61,13 +65,13 @@ const Overview = () => {
         // Stock In for this month (recent records)
         supabase
           .from('stock_in')
-          .select('id, receipt_date, total_cost')
+          .select('id, receipt_date, total_cost, supplier_name, invoice_number')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .gte('receipt_date', firstOfMonthStr)
           .order('receipt_date', { ascending: false })
           .limit(5),
         
-        // Recent stock out / allocations to outlets
+        // Recent stock out / allocations to outlets (including self stock out)
         supabase
           .from('stock_out')
           .select(`
@@ -75,6 +79,8 @@ const Overview = () => {
             allocation_date,
             created_at,
             outlet_id,
+            self_stock_out,
+            reason,
             outlets (
               name,
               code
@@ -181,6 +187,78 @@ const Overview = () => {
         </div>
       </div>
     )
+  }
+
+  const openStockInDetails = async (id) => {
+    try {
+      setStockInDetails(null)
+      setShowStockInDetailsModal(true)
+
+      const { data, error } = await supabase
+        .from('stock_in')
+        .select(`
+          *,
+          stock_in_batches (
+            id,
+            quantity_purchased,
+            quantity_remaining,
+            unit_cost,
+            raw_materials:raw_material_id (
+              id,
+              name,
+              code,
+              unit
+            )
+          )
+        `)
+        .eq('id', id)
+        .single()
+
+      if (error) throw error
+      setStockInDetails(data)
+    } catch (err) {
+      console.error('Error fetching stock in details:', err)
+      setShowStockInDetailsModal(false)
+    }
+  }
+
+  const openStockOutDetails = async (id) => {
+    try {
+      setStockOutDetails(null)
+      setShowStockOutDetailsModal(true)
+
+      const { data, error } = await supabase
+        .from('stock_out')
+        .select(`
+          *,
+          outlets (
+            name,
+            code
+          ),
+          users:allocated_by (
+            id,
+            full_name
+          ),
+          stock_out_items (
+            id,
+            quantity,
+            raw_materials:raw_material_id (
+              id,
+              name,
+              code,
+              unit
+            )
+          )
+        `)
+        .eq('id', id)
+        .single()
+
+      if (error) throw error
+      setStockOutDetails(data)
+    } catch (err) {
+      console.error('Error fetching stock out details:', err)
+      setShowStockOutDetailsModal(false)
+    }
   }
 
   return (
@@ -315,13 +393,24 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                 {recentStockIn.map((record) => (
                   <div
                     key={record.id}
-                    className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors"
+                    className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors cursor-pointer"
+                    onClick={() => openStockInDetails(record.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-foreground">
                           {formatDate(record.receipt_date)}
                         </p>
+                        {record.supplier_name && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Supplier: {record.supplier_name}
+                          </p>
+                        )}
+                        {record.invoice_number && (
+                          <p className="text-xs text-muted-foreground font-mono">
+                            Invoice: {record.invoice_number}
+                          </p>
+                        )}
                         {record.total_cost && (
                           <p className="text-xs text-muted-foreground mt-1">
                             Total: {formatCurrency(record.total_cost)}
@@ -363,21 +452,32 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                 {recentAllocations.map((allocation) => (
                   <div
                     key={allocation.id}
-                    className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors"
+                    className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors cursor-pointer"
+                    onClick={() => openStockOutDetails(allocation.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-foreground">
-                          {allocation.outlets?.name || 'Unknown Outlet'}
+                          {allocation.self_stock_out
+                            ? 'Self Stock Out'
+                            : (allocation.outlets?.name || 'Unknown Outlet')}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {allocation.outlets?.code} • {formatDate(allocation.created_at)}
+                          {allocation.self_stock_out
+                            ? `${formatDate(allocation.allocation_date)}${allocation.reason ? ` • ${allocation.reason}` : ''}`
+                            : `${allocation.outlets?.code || ''} • ${formatDate(allocation.created_at)}`}
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-500/20 text-green-500">
-                          Allocated
-                        </span>
+                        {allocation.self_stock_out ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-purple-500/20 text-purple-500">
+                            Self Stock Out
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-500/20 text-green-500">
+                            Allocated
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -387,6 +487,211 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
           </div>
         </div>
       </div>
+
+      {/* Stock In Details Modal */}
+      {showStockInDetailsModal && stockInDetails && (
+        <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
+          <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-foreground">Purchase Slip Details</h2>
+              <button
+                onClick={() => setShowStockInDetailsModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-6 space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Receipt Date</p>
+                  <p className="font-semibold text-foreground">
+                    {new Date(stockInDetails.receipt_date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created At</p>
+                  <p className="font-semibold text-foreground">
+                    {new Date(stockInDetails.created_at).toLocaleString()}
+                  </p>
+                </div>
+                {stockInDetails.supplier_name && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Supplier</p>
+                    <p className="font-semibold text-foreground">{stockInDetails.supplier_name}</p>
+                  </div>
+                )}
+                {stockInDetails.invoice_number && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Invoice Number</p>
+                    <p className="font-semibold text-foreground font-mono">{stockInDetails.invoice_number}</p>
+                  </div>
+                )}
+              </div>
+              {stockInDetails.notes && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="font-semibold text-foreground">{stockInDetails.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-6">
+              <h3 className="text-lg font-bold text-foreground mb-3">
+                Items ({stockInDetails.stock_in_batches?.length || 0})
+              </h3>
+              {stockInDetails.stock_in_batches && stockInDetails.stock_in_batches.length > 0 ? (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-background border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Purchased</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Remaining</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit Cost</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockInDetails.stock_in_batches.map((batch) => (
+                        <tr key={batch.id} className="border-b border-border">
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {batch.raw_materials?.name || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                            {batch.raw_materials?.code || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {parseFloat(batch.quantity_purchased || 0).toFixed(3)} {batch.raw_materials?.unit || ''}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {parseFloat(batch.quantity_remaining || 0).toFixed(3)} {batch.raw_materials?.unit || ''}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            ₹{parseFloat(batch.unit_cost || 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            ₹{(parseFloat(batch.unit_cost || 0) * parseFloat(batch.quantity_purchased || 0)).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No items found for this purchase slip.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Out Details Modal */}
+      {showStockOutDetailsModal && stockOutDetails && (
+        <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
+          <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-foreground">
+                {stockOutDetails.self_stock_out ? 'Self Stock Out Details' : 'Stock Out Details'}
+              </h2>
+              <button
+                onClick={() => setShowStockOutDetailsModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-6 space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Allocation Date</p>
+                  <p className="font-semibold text-foreground">
+                    {new Date(stockOutDetails.allocation_date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created At</p>
+                  <p className="font-semibold text-foreground">
+                    {new Date(stockOutDetails.created_at).toLocaleString()}
+                  </p>
+                </div>
+                {!stockOutDetails.self_stock_out && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Outlet</p>
+                    <p className="font-semibold text-foreground">
+                      {stockOutDetails.outlets?.name || 'N/A'}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {stockOutDetails.outlets?.code || ''}
+                    </p>
+                  </div>
+                )}
+                {stockOutDetails.users?.full_name && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Allocated By</p>
+                    <p className="font-semibold text-foreground">{stockOutDetails.users.full_name}</p>
+                  </div>
+                )}
+              </div>
+              {stockOutDetails.self_stock_out && stockOutDetails.reason && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Reason</p>
+                  <p className="font-semibold text-foreground">{stockOutDetails.reason}</p>
+                </div>
+              )}
+              {stockOutDetails.notes && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="font-semibold text-foreground">{stockOutDetails.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-6">
+              <h3 className="text-lg font-bold text-foreground mb-3">
+                Items ({stockOutDetails.stock_out_items?.length || 0})
+              </h3>
+              {stockOutDetails.stock_out_items && stockOutDetails.stock_out_items.length > 0 ? (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-background border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
+                        <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockOutDetails.stock_out_items.map((item) => (
+                        <tr key={item.id} className="border-b border-border">
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {item.raw_materials?.name || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                            {item.raw_materials?.code || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {parseFloat(item.quantity || 0).toFixed(3)} {item.raw_materials?.unit || ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No items found for this stock out.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

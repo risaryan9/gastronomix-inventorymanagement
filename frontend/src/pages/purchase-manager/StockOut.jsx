@@ -15,6 +15,8 @@ const StockOut = () => {
   const [alert, setAlert] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [stockOutDetails, setStockOutDetails] = useState(null)
+  const [showStockOutDetailsModal, setShowStockOutDetailsModal] = useState(false)
   
   // Self stock out states
   const [showSelfStockOutModal, setShowSelfStockOutModal] = useState(false)
@@ -641,6 +643,51 @@ const StockOut = () => {
     )
   })
 
+  const openStockOutDetailsModal = async (request) => {
+    try {
+      setStockOutDetails(null)
+      setShowStockOutDetailsModal(true)
+
+      const { data, error } = await supabase
+        .from('stock_out')
+        .select(`
+          *,
+          outlets (
+            name,
+            code
+          ),
+          users:allocated_by (
+            id,
+            full_name
+          ),
+          stock_out_items (
+            id,
+            quantity,
+            raw_materials:raw_material_id (
+              id,
+              name,
+              code,
+              unit
+            )
+          )
+        `)
+        .eq('allocation_request_id', request.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        setShowStockOutDetailsModal(false)
+        return
+      }
+      setStockOutDetails(data)
+    } catch (err) {
+      console.error('Error fetching stock out details:', err)
+      setShowStockOutDetailsModal(false)
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -736,6 +783,7 @@ const StockOut = () => {
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Items</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Details</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -784,6 +832,18 @@ const StockOut = () => {
                           >
                             Allocate Stock
                           </button>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {request.is_packed ? (
+                          <button
+                            onClick={() => openStockOutDetailsModal(request)}
+                            className="text-accent hover:text-accent/80 font-semibold text-sm"
+                          >
+                            View Details
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
@@ -1100,6 +1160,109 @@ const StockOut = () => {
                 >
                   {allocating ? 'Processing...' : 'Confirm Self Stock Out'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stock Out Details Modal */}
+        {showStockOutDetailsModal && stockOutDetails && (
+          <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-foreground">
+                  {stockOutDetails.self_stock_out ? 'Self Stock Out Details' : 'Stock Out Details'}
+                </h2>
+                <button
+                  onClick={() => setShowStockOutDetailsModal(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mb-6 space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Allocation Date</p>
+                    <p className="font-semibold text-foreground">
+                      {new Date(stockOutDetails.allocation_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Created At</p>
+                    <p className="font-semibold text-foreground">
+                      {new Date(stockOutDetails.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  {!stockOutDetails.self_stock_out && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Outlet</p>
+                      <p className="font-semibold text-foreground">
+                        {stockOutDetails.outlets?.name || 'N/A'}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {stockOutDetails.outlets?.code || ''}
+                      </p>
+                    </div>
+                  )}
+                  {stockOutDetails.users?.full_name && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Allocated By</p>
+                      <p className="font-semibold text-foreground">{stockOutDetails.users.full_name}</p>
+                    </div>
+                  )}
+                </div>
+                {stockOutDetails.self_stock_out && stockOutDetails.reason && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Reason</p>
+                    <p className="font-semibold text-foreground">{stockOutDetails.reason}</p>
+                  </div>
+                )}
+                {stockOutDetails.notes && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Notes</p>
+                    <p className="font-semibold text-foreground">{stockOutDetails.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-foreground mb-3">
+                  Items ({stockOutDetails.stock_out_items?.length || 0})
+                </h3>
+                {stockOutDetails.stock_out_items && stockOutDetails.stock_out_items.length > 0 ? (
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-background border-b border-border">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stockOutDetails.stock_out_items.map((item) => (
+                          <tr key={item.id} className="border-b border-border">
+                            <td className="px-4 py-3 text-sm text-foreground">
+                              {item.raw_materials?.name || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                              {item.raw_materials?.code || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-foreground">
+                              {parseFloat(item.quantity || 0).toFixed(3)} {item.raw_materials?.unit || ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No items found for this stock out.</p>
+                )}
               </div>
             </div>
           </div>
