@@ -19,6 +19,7 @@ const Outlets = () => {
   const [loading, setLoading] = useState(false)
   const [cloudKitchenId, setCloudKitchenId] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [todayAllocationStatus, setTodayAllocationStatus] = useState({}) // { [outletId]: { hasRequest: boolean, isPacked: boolean } }
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
   const navigate = useNavigate()
 
@@ -62,6 +63,41 @@ const Outlets = () => {
       const fetchedOutlets = data || []
       setAllOutlets(fetchedOutlets)
       setOutlets(fetchedOutlets)
+
+      // Fetch today's allocation status for these outlets
+      const outletIds = fetchedOutlets.map(o => o.id)
+      if (outletIds.length > 0) {
+        try {
+          const today = new Date().toISOString().split('T')[0]
+          const { data: requests, error: requestsError } = await supabase
+            .from('allocation_requests')
+            .select('id, outlet_id, is_packed, request_date')
+            .eq('cloud_kitchen_id', cloudKitchenId)
+            .eq('request_date', today)
+            .in('outlet_id', outletIds)
+
+          if (requestsError) {
+            console.error('Error fetching today allocation status:', requestsError)
+          } else {
+            const statusMap = {}
+            ;(requests || []).forEach(req => {
+              const outletId = req.outlet_id
+              if (!statusMap[outletId]) {
+                statusMap[outletId] = { hasRequest: false, isPacked: false }
+              }
+              statusMap[outletId].hasRequest = true
+              if (req.is_packed) {
+                statusMap[outletId].isPacked = true
+              }
+            })
+            setTodayAllocationStatus(statusMap)
+          }
+        } catch (statusErr) {
+          console.error('Error computing today allocation status:', statusErr)
+        }
+      } else {
+        setTodayAllocationStatus({})
+      }
     } catch (err) {
       console.error('Error:', err)
       setAlert({ type: 'error', message: 'Failed to fetch outlets' })
@@ -202,7 +238,13 @@ const Outlets = () => {
                   <button
                     key={outlet.id}
                     onClick={() => handleOutletClick(outlet)}
-                    className="bg-card border-2 border-border rounded-xl p-4 lg:p-5 hover:border-accent hover:shadow-lg transition-all duration-200 text-left active:scale-98 touch-manipulation"
+                    className={`bg-card border-2 rounded-xl p-4 lg:p-5 hover:border-accent hover:shadow-lg transition-all duration-200 text-left active:scale-98 touch-manipulation ${
+                      todayAllocationStatus[outlet.id]?.isPacked
+                        ? 'border-green-500/70 bg-green-500/5'
+                        : todayAllocationStatus[outlet.id]?.hasRequest
+                          ? 'border-yellow-500/70 bg-yellow-500/5'
+                          : 'border-border'
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0">
@@ -213,15 +255,17 @@ const Outlets = () => {
                           {outlet.code}
                         </p>
                       </div>
-                      <div className={`${getBrandColor(selectedBrand)} text-white text-xs font-bold px-2 py-1 rounded-lg ml-2 flex items-center gap-1.5`}>
-                        {getBrandLogo(selectedBrand) && (
-                          <img 
-                            src={getBrandLogo(selectedBrand)} 
-                            alt={BRANDS.find(b => b.id === selectedBrand)?.name} 
-                            className="h-4 w-auto object-contain"
-                          />
+                      <div className="flex flex-col items-end gap-1 ml-2">
+                        {todayAllocationStatus[outlet.id]?.isPacked && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">
+                            Today: Packed
+                          </span>
                         )}
-                        <span>{BRANDS.find(b => b.id === selectedBrand)?.name}</span>
+                        {!todayAllocationStatus[outlet.id]?.isPacked && todayAllocationStatus[outlet.id]?.hasRequest && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">
+                            Today: Request sent
+                          </span>
+                        )}
                       </div>
                     </div>
 

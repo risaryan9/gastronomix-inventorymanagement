@@ -67,6 +67,15 @@ const OutletDetails = () => {
               code,
               unit
             )
+          ),
+          stock_out (
+            id,
+            allocation_date,
+            stock_out_items (
+              id,
+              raw_material_id,
+              quantity
+            )
           )
         `)
         .eq('outlet_id', outletId)
@@ -608,7 +617,26 @@ const OutletDetails = () => {
             </div>
           ) : (
             <div className="space-y-3 lg:space-y-4">
-              {allocationRequests.map((request) => (
+              {allocationRequests.map((request) => {
+                // Build a map of packed quantities per material for this request
+                const packedQuantitiesByMaterial = {}
+                if (request.stock_out) {
+                  const stockOutArray = Array.isArray(request.stock_out)
+                    ? request.stock_out
+                    : [request.stock_out]
+                  stockOutArray.forEach(so => {
+                    ;(so.stock_out_items || []).forEach(item => {
+                      const materialId = item.raw_material_id
+                      const qty = parseFloat(item.quantity || 0)
+                      if (!packedQuantitiesByMaterial[materialId]) {
+                        packedQuantitiesByMaterial[materialId] = 0
+                      }
+                      packedQuantitiesByMaterial[materialId] += qty
+                    })
+                  })
+                }
+
+                return (
                 <div key={request.id} className="bg-card border-2 border-border rounded-xl p-4 lg:p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div>
@@ -637,7 +665,13 @@ const OutletDetails = () => {
 
                   <div className="space-y-2">
                     <p className="text-xs lg:text-sm font-semibold text-foreground mb-2">Items:</p>
-                    {request.allocation_request_items.map((item) => (
+                    {request.allocation_request_items.map((item) => {
+                      const requestedQty = parseFloat(item.quantity || 0)
+                      const packedQtyRaw = packedQuantitiesByMaterial[item.raw_materials.id]
+                      const hasPackedInfo = request.is_packed && packedQtyRaw !== undefined
+                      const packedQty = hasPackedInfo ? packedQtyRaw : 0
+
+                      return (
                       <div key={item.id} className="flex items-center justify-between bg-background rounded-lg p-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm lg:text-base font-semibold text-foreground truncate">
@@ -646,13 +680,39 @@ const OutletDetails = () => {
                           <p className="text-xs text-muted-foreground">{item.raw_materials.code}</p>
                         </div>
                         <div className="text-right ml-3">
-                          <p className="text-base lg:text-lg font-bold text-foreground">
-                            {parseFloat(item.quantity).toFixed(3)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{item.raw_materials.unit}</p>
+                          {!request.is_packed && (
+                            <>
+                              <p className="text-base lg:text-lg font-bold text-foreground">
+                                {requestedQty.toFixed(3)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{item.raw_materials.unit}</p>
+                            </>
+                          )}
+                          {request.is_packed && (
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-baseline gap-3">
+                                <div className="text-right">
+                                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                                    Requested
+                                  </p>
+                                  <p className="text-sm lg:text-base font-semibold text-foreground">
+                                    {requestedQty.toFixed(3)} {item.raw_materials.unit}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                                    Packed
+                                  </p>
+                                  <p className="text-sm lg:text-base font-semibold text-foreground">
+                                    {packedQty.toFixed(3)} {item.raw_materials.unit}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
 
                   {/* Edit Button - only show if not packed and is today's request */}
@@ -674,7 +734,7 @@ const OutletDetails = () => {
                     return null
                   })()}
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>
