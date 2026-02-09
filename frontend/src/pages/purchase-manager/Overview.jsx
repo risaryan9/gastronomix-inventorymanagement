@@ -111,13 +111,16 @@ const Overview = () => {
       const totalMaterials = inventoryResult.data ? new Set(inventoryResult.data.map(item => item.raw_material_id)).size : 0
 
       // Calculate low stock items from inventory (using raw_materials.low_stock_threshold)
+      // Includes both low-stock (> 0 and <= threshold) and no-stock (quantity === 0) items
       let lowStockItems = 0
       if (inventoryResult.data) {
         inventoryResult.data.forEach(item => {
           const quantity = parseFloat(item.quantity) || 0
           const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
           
-          if (quantity > 0 && quantity <= threshold) {
+          if (quantity === 0) {
+            lowStockItems++
+          } else if (quantity > 0 && quantity <= threshold) {
             lowStockItems++
           }
         })
@@ -398,24 +401,27 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          {formatDate(record.receipt_date)}
+                        <p className="text-sm font-semibold text-foreground flex items-center gap-1">
+                          <span>{record.supplier_name || '—'}</span>
+                          {record.invoice_number && (
+                            <>
+                              <span className="text-xs text-muted-foreground">•</span>
+                              <span className="text-xs font-mono text-muted-foreground">
+                                {record.invoice_number}
+                              </span>
+                            </>
+                          )}
                         </p>
-                        {record.supplier_name && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Supplier: {record.supplier_name}
-                          </p>
-                        )}
-                        {record.invoice_number && (
-                          <p className="text-xs text-muted-foreground font-mono">
-                            Invoice: {record.invoice_number}
-                          </p>
-                        )}
-                        {record.total_cost && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Total: {formatCurrency(record.total_cost)}
-                          </p>
-                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {record.total_cost && (
+                            <>
+                              <span className="font-semibold">Total:</span>{' '}
+                              <span>{formatCurrency(record.total_cost)}</span>
+                              <span className="mx-1">•</span>
+                            </>
+                          )}
+                          <span>{formatDate(record.receipt_date)}</span>
+                        </p>
                       </div>
                       <div className="text-right">
                         <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-accent/20 text-accent">
