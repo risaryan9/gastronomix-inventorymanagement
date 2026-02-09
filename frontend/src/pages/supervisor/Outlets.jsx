@@ -77,9 +77,11 @@ const Outlets = () => {
       return
     }
 
+    const term = searchTerm.toLowerCase()
     const filtered = allOutlets.filter(outlet =>
-      outlet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (outlet.address && outlet.address.toLowerCase().includes(searchTerm.toLowerCase()))
+      outlet.name.toLowerCase().includes(term) ||
+      (outlet.address && outlet.address.toLowerCase().includes(term)) ||
+      (outlet.code && outlet.code.toLowerCase().includes(term))
     )
     setOutlets(filtered)
   }, [searchTerm, allOutlets])
@@ -153,7 +155,7 @@ const Outlets = () => {
                 <input
                   id="outlet-search"
                   type="text"
-                  placeholder="Search by outlet name or address..."
+                  placeholder="Search by outlet name, code (e.g. NK1001) or address..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
