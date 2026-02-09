@@ -902,7 +902,7 @@ const Inventory = () => {
                   id="quantity"
                   type="number"
                   min="0"
-                  step="0.001"
+                  step="0.5"
                   value={editForm.quantity}
                   onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
                   className="w-full bg-input border-2 border-border rounded-lg px-4 py-3.5 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"

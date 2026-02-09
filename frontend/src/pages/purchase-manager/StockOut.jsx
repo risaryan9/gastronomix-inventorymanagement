@@ -841,8 +841,8 @@ const StockOut = () => {
                             <td className="px-4 py-3">
                               <input
                                 type="number"
-                                min="0.001"
-                                step="0.001"
+                                min="0.5"
+                                step="0.5"
                                 value={item.allocated_quantity}
                                 onChange={(e) => handleUpdateAllocatedQuantity(index, parseFloat(e.target.value) || 0)}
                                 disabled={allocating}
@@ -1026,8 +1026,8 @@ const StockOut = () => {
                               <div className="flex items-center gap-2">
                                 <input
                                   type="number"
-                                  min="0.001"
-                                  step="0.001"
+                                  min="0.5"
+                                  step="0.5"
                                   value={item.allocated_quantity}
                                   onChange={(e) => handleUpdateSelfStockOutQuantity(index, parseFloat(e.target.value) || 0)}
                                   disabled={allocating || !item.raw_material_id}

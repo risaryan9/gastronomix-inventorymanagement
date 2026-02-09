@@ -788,8 +788,8 @@ const OutletDetails = () => {
                         <td className="px-3 py-2">
                           <input
                             type="number"
-                            min="0.001"
-                            step="0.001"
+                            min="0.5"
+                            step="0.5"
                             value={row.quantity}
                             onChange={(e) => handleUpdateQuantity(index, e.target.value)}
                             placeholder="0"
