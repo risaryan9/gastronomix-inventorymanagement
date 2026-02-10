@@ -12,6 +12,9 @@ const StockIn = () => {
   const [selectedRecord, setSelectedRecord] = useState(null)
   const itemsPerPage = 20
 
+  // Layout mode for desktop panels: 'split' | 'purchase-full' | 'kitchen-full'
+  const [layoutMode, setLayoutMode] = useState('split')
+
   // Filter and search state - Purchase panel
   const [purchaseSearchTerm, setPurchaseSearchTerm] = useState('')
   const [purchaseItemCountFilter, setPurchaseItemCountFilter] = useState('all')
@@ -760,14 +763,24 @@ const StockIn = () => {
         </div>
 
         {/* Purchase & Kitchen Stock-In Panels */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className={`grid grid-cols-1 ${layoutMode === 'split' ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-6 transition-all duration-300`}>
           {/* Purchase Stock-In Panel */}
-          <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
+          {layoutMode !== 'kitchen-full' && (
+          <div className={`bg-card border-2 border-border rounded-xl overflow-hidden transition-all duration-300 ${layoutMode === 'purchase-full' ? 'lg:col-span-1' : ''}`}>
             <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
-              <h2 className="text-lg font-bold text-foreground">Purchase Stock-In</h2>
-              <span className="text-xs text-muted-foreground">
-                {purchaseRecords.length} record(s)
-              </span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-foreground">Purchase Stock-In</h2>
+                <span className="text-xs text-muted-foreground">
+                  {purchaseRecords.length} record(s)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLayoutMode(layoutMode === 'purchase-full' ? 'split' : 'purchase-full')}
+                className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+              >
+                {layoutMode === 'purchase-full' ? 'Restore Split' : 'Maximize'}
+              </button>
             </div>
 
             <div className="p-4 border-b border-border">
@@ -916,6 +929,16 @@ const StockIn = () => {
                         <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
                           Total Cost
                         </th>
+                        {layoutMode === 'purchase-full' && (
+                          <>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                              Created At
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                              Notes
+                            </th>
+                          </>
+                        )}
                         <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
                           Actions
                         </th>
@@ -942,6 +965,16 @@ const StockIn = () => {
                           <td className="px-4 py-3 text-foreground font-semibold text-sm">
                             ₹{parseFloat(record.total_cost || 0).toFixed(2)}
                           </td>
+                          {layoutMode === 'purchase-full' && (
+                            <>
+                              <td className="px-4 py-3 text-foreground text-xs">
+                                {new Date(record.created_at).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-foreground text-sm">
+                                {record.notes || '—'}
+                              </td>
+                            </>
+                          )}
                           <td className="px-4 py-3">
                             <button
                               onClick={() => openDetailsModal(record)}
@@ -1007,14 +1040,25 @@ const StockIn = () => {
               )}
             </div>
           </div>
+          )}
 
           {/* Kitchen Stock-In Panel */}
-          <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
+          {layoutMode !== 'purchase-full' && (
+          <div className={`bg-card border-2 border-border rounded-xl overflow-hidden transition-all duration-300 ${layoutMode === 'kitchen-full' ? 'lg:col-span-1' : ''}`}>
             <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
-              <h2 className="text-lg font-bold text-foreground">Kitchen Stock-In</h2>
-              <span className="text-xs text-muted-foreground">
-                {kitchenRecords.length} record(s)
-              </span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-foreground">Kitchen Stock-In</h2>
+                <span className="text-xs text-muted-foreground">
+                  {kitchenRecords.length} record(s)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLayoutMode(layoutMode === 'kitchen-full' ? 'split' : 'kitchen-full')}
+                className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+              >
+                {layoutMode === 'kitchen-full' ? 'Restore Split' : 'Maximize'}
+              </button>
             </div>
 
             <div className="p-4 border-b border-border">
@@ -1157,6 +1201,16 @@ const StockIn = () => {
                         <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
                           Total Cost
                         </th>
+                        {layoutMode === 'kitchen-full' && (
+                          <>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                              Created At
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                              Notes
+                            </th>
+                          </>
+                        )}
                         <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
                           Actions
                         </th>
@@ -1177,6 +1231,16 @@ const StockIn = () => {
                           <td className="px-4 py-3 text-foreground font-semibold text-sm">
                             ₹{parseFloat(record.total_cost || 0).toFixed(2)}
                           </td>
+                          {layoutMode === 'kitchen-full' && (
+                            <>
+                              <td className="px-4 py-3 text-foreground text-xs">
+                                {new Date(record.created_at).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-foreground text-sm">
+                                {record.notes || '—'}
+                              </td>
+                            </>
+                          )}
                           <td className="px-4 py-3">
                             <button
                               onClick={() => openDetailsModal(record)}
@@ -1242,6 +1306,7 @@ const StockIn = () => {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Add Stock-In Modal */}
