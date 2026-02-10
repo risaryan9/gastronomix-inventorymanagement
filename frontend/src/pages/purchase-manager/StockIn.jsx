@@ -10,16 +10,25 @@ const StockIn = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const itemsPerPage = 20
 
-  // Filter and search state
-  const [searchTerm, setSearchTerm] = useState('')
-  const [itemCountFilter, setItemCountFilter] = useState('all')
-  const [costFilter, setCostFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  // Filter and search state - Purchase panel
+  const [purchaseSearchTerm, setPurchaseSearchTerm] = useState('')
+  const [purchaseItemCountFilter, setPurchaseItemCountFilter] = useState('all')
+  const [purchaseCostFilter, setPurchaseCostFilter] = useState('all')
+  const [purchaseDateFilter, setPurchaseDateFilter] = useState('all')
+  const [purchaseDateFrom, setPurchaseDateFrom] = useState('')
+  const [purchaseDateTo, setPurchaseDateTo] = useState('')
+  const [purchaseCurrentPage, setPurchaseCurrentPage] = useState(1)
+
+  // Filter and search state - Kitchen panel
+  const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
+  const [kitchenItemCountFilter, setKitchenItemCountFilter] = useState('all')
+  const [kitchenCostFilter, setKitchenCostFilter] = useState('all')
+  const [kitchenDateFilter, setKitchenDateFilter] = useState('all')
+  const [kitchenDateFrom, setKitchenDateFrom] = useState('')
+  const [kitchenDateTo, setKitchenDateTo] = useState('')
+  const [kitchenCurrentPage, setKitchenCurrentPage] = useState(1)
 
   // Stock-in type state ('purchase' or 'kitchen')
   const [stockInType, setStockInType] = useState('purchase')
@@ -560,68 +569,129 @@ const StockIn = () => {
     }
   }
 
-  // Filter and search logic
-  const filteredRecords = stockInRecords.filter(record => {
-    // Search filter (invoice number or supplier name)
-    if (searchTerm) {
-      const invoiceMatch = record.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
-      const supplierMatch = record.supplier_name?.toLowerCase().includes(searchTerm.toLowerCase())
-      if (!invoiceMatch && !supplierMatch) return false
-    }
+  // Helper to apply filters to a set of records
+  // searchByMaterial: when true, also search within material names/codes in stock_in_batches
+  const applyFilters = (records, searchTerm, itemCountFilter, costFilter, dateFilter, dateFrom, dateTo, searchByMaterial = false) => {
+    return records.filter(record => {
+      // Search filter
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase()
+        let matches = false
 
-    // Item count filter
-    const itemCount = record.stock_in_batches?.length || 0
-    if (itemCountFilter === '1-5' && (itemCount < 1 || itemCount > 5)) return false
-    if (itemCountFilter === '6-10' && (itemCount < 6 || itemCount > 10)) return false
-    if (itemCountFilter === '11+' && itemCount < 11) return false
+        // For kitchen stock-in, allow searching by material name/code in batches
+        if (searchByMaterial && Array.isArray(record.stock_in_batches)) {
+          matches = record.stock_in_batches.some(batch => {
+            const rm = batch.raw_materials
+            if (!rm) return false
+            const nameMatch = rm.name?.toLowerCase().includes(lower)
+            const codeMatch = rm.code?.toLowerCase().includes(lower)
+            return nameMatch || codeMatch
+          })
+        }
 
-    // Cost filter
-    const totalCost = parseFloat(record.total_cost || 0)
-    if (costFilter === '0-1000' && (totalCost < 0 || totalCost > 1000)) return false
-    if (costFilter === '1001-5000' && (totalCost < 1001 || totalCost > 5000)) return false
-    if (costFilter === '5001-10000' && (totalCost < 5001 || totalCost > 10000)) return false
-    if (costFilter === '10000+' && totalCost < 10001) return false
+        // Always also allow invoice/supplier search
+        if (!matches) {
+          const invoiceMatch = record.invoice_number?.toLowerCase().includes(lower)
+          const supplierMatch = record.supplier_name?.toLowerCase().includes(lower)
+          matches = !!(invoiceMatch || supplierMatch)
+        }
 
-    // Date filter
-    if (dateFilter === 'custom') {
-      if (dateFrom || dateTo) {
-        const recordDate = new Date(record.receipt_date)
-        if (dateFrom && recordDate < new Date(dateFrom)) return false
-        if (dateTo && recordDate > new Date(dateTo)) return false
+        if (!matches) return false
       }
-    } else if (dateFilter === 'today') {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const recordDate = new Date(record.receipt_date)
-      recordDate.setHours(0, 0, 0, 0)
-      if (recordDate.getTime() !== today.getTime()) return false
-    } else if (dateFilter === 'this-week') {
-      const today = new Date()
-      const weekAgo = new Date(today)
-      weekAgo.setDate(today.getDate() - 7)
-      const recordDate = new Date(record.receipt_date)
-      if (recordDate < weekAgo || recordDate > today) return false
-    } else if (dateFilter === 'this-month') {
-      const today = new Date()
-      const monthAgo = new Date(today)
-      monthAgo.setMonth(today.getMonth() - 1)
-      const recordDate = new Date(record.receipt_date)
-      if (recordDate < monthAgo || recordDate > today) return false
-    }
 
-    return true
-  })
+      // Item count filter
+      const itemCount = record.stock_in_batches?.length || 0
+      if (itemCountFilter === '1-5' && (itemCount < 1 || itemCount > 5)) return false
+      if (itemCountFilter === '6-10' && (itemCount < 6 || itemCount > 10)) return false
+      if (itemCountFilter === '11+' && itemCount < 11) return false
 
-  // Reset to page 1 when filters change
+      // Cost filter
+      const totalCost = parseFloat(record.total_cost || 0)
+      if (costFilter === '0-1000' && (totalCost < 0 || totalCost > 1000)) return false
+      if (costFilter === '1001-5000' && (totalCost < 1001 || totalCost > 5000)) return false
+      if (costFilter === '5001-10000' && (totalCost < 5001 || totalCost > 10000)) return false
+      if (costFilter === '10000+' && totalCost < 10001) return false
+
+      // Date filter
+      if (dateFilter === 'custom') {
+        if (dateFrom || dateTo) {
+          const recordDate = new Date(record.receipt_date)
+          if (dateFrom && recordDate < new Date(dateFrom)) return false
+          if (dateTo && recordDate > new Date(dateTo)) return false
+        }
+      } else if (dateFilter === 'today') {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const recordDate = new Date(record.receipt_date)
+        recordDate.setHours(0, 0, 0, 0)
+        if (recordDate.getTime() !== today.getTime()) return false
+      } else if (dateFilter === 'this-week') {
+        const today = new Date()
+        const weekAgo = new Date(today)
+        weekAgo.setDate(today.getDate() - 7)
+        const recordDate = new Date(record.receipt_date)
+        if (recordDate < weekAgo || recordDate > today) return false
+      } else if (dateFilter === 'this-month') {
+        const today = new Date()
+        const monthAgo = new Date(today)
+        monthAgo.setMonth(today.getMonth() - 1)
+        const recordDate = new Date(record.receipt_date)
+        if (recordDate < monthAgo || recordDate > today) return false
+      }
+
+      return true
+    })
+  }
+
+  // Split records by type
+  const purchaseRecords = stockInRecords.filter(
+    record => !record.stock_in_type || record.stock_in_type === 'purchase'
+  )
+  const kitchenRecords = stockInRecords.filter(
+    record => record.stock_in_type === 'kitchen'
+  )
+
+  // Apply filters per panel
+  const purchaseFiltered = applyFilters(
+    purchaseRecords,
+    purchaseSearchTerm,
+    purchaseItemCountFilter,
+    purchaseCostFilter,
+    purchaseDateFilter,
+    purchaseDateFrom,
+    purchaseDateTo
+  )
+
+  const kitchenFiltered = applyFilters(
+    kitchenRecords,
+    kitchenSearchTerm,
+    kitchenItemCountFilter,
+    kitchenCostFilter,
+    kitchenDateFilter,
+    kitchenDateFrom,
+    kitchenDateTo,
+    true
+  )
+
+  // Reset to page 1 when filters change (per panel)
   useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm, itemCountFilter, costFilter, dateFilter, dateFrom, dateTo])
+    setPurchaseCurrentPage(1)
+  }, [purchaseSearchTerm, purchaseItemCountFilter, purchaseCostFilter, purchaseDateFilter, purchaseDateFrom, purchaseDateTo])
 
-  // Pagination
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedRecords = filteredRecords.slice(startIndex, endIndex)
+  useEffect(() => {
+    setKitchenCurrentPage(1)
+  }, [kitchenSearchTerm, kitchenItemCountFilter, kitchenCostFilter, kitchenDateFilter, kitchenDateFrom, kitchenDateTo])
+
+  // Pagination per panel
+  const purchaseTotalPages = Math.ceil(purchaseFiltered.length / itemsPerPage) || 1
+  const purchaseStartIndex = (purchaseCurrentPage - 1) * itemsPerPage
+  const purchaseEndIndex = purchaseStartIndex + itemsPerPage
+  const purchasePaginated = purchaseFiltered.slice(purchaseStartIndex, purchaseEndIndex)
+
+  const kitchenTotalPages = Math.ceil(kitchenFiltered.length / itemsPerPage) || 1
+  const kitchenStartIndex = (kitchenCurrentPage - 1) * itemsPerPage
+  const kitchenEndIndex = kitchenStartIndex + itemsPerPage
+  const kitchenPaginated = kitchenFiltered.slice(kitchenStartIndex, kitchenEndIndex)
 
   // Open details modal
   const openDetailsModal = (record) => {
@@ -665,241 +735,489 @@ const StockIn = () => {
           </div>
         </div>
 
-        {/* Filters and Search */}
-        <div className="bg-card border-2 border-border rounded-xl p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            {/* Search */}
-            <div className="lg:col-span-2">
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Search (Invoice # or Supplier)
-              </label>
-              <input
-                type="text"
-                placeholder="Search by invoice number or supplier name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-              />
+        {/* Purchase & Kitchen Stock-In Panels */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Purchase Stock-In Panel */}
+          <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
+            <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
+              <h2 className="text-lg font-bold text-foreground">Purchase Stock-In</h2>
+              <span className="text-xs text-muted-foreground">
+                {purchaseRecords.length} record(s)
+              </span>
             </div>
 
-            {/* Item Count Filter */}
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Items
-              </label>
-              <select
-                value={itemCountFilter}
-                onChange={(e) => setItemCountFilter(e.target.value)}
-                className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-              >
-                <option value="all">All</option>
-                <option value="1-5">1-5 items</option>
-                <option value="6-10">6-10 items</option>
-                <option value="11+">11+ items</option>
-              </select>
-            </div>
-
-            {/* Cost Filter */}
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Total Cost
-              </label>
-              <select
-                value={costFilter}
-                onChange={(e) => setCostFilter(e.target.value)}
-                className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-              >
-                <option value="all">All</option>
-                <option value="0-1000">₹0 - ₹1,000</option>
-                <option value="1001-5000">₹1,001 - ₹5,000</option>
-                <option value="5001-10000">₹5,001 - ₹10,000</option>
-                <option value="10000+">₹10,000+</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Date Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Date Range
-              </label>
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-              >
-                <option value="all">All Dates</option>
-                <option value="today">Today</option>
-                <option value="this-week">This Week</option>
-                <option value="this-month">This Month</option>
-                <option value="custom">Custom Range</option>
-              </select>
-            </div>
-
-            {dateFilter === 'custom' && (
-              <>
+            <div className="p-4 border-b border-border">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    From Date
+                  <label className="block text-xs font-semibold text-foreground mb-1">
+                    Search (Invoice # or Supplier)
                   </label>
                   <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    type="text"
+                    placeholder="Search by invoice number or supplier name..."
+                    value={purchaseSearchTerm}
+                    onChange={(e) => setPurchaseSearchTerm(e.target.value)}
+                    className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                  />
-                </div>
-              </>
-            )}
 
-            {/* Clear Filters Button */}
-            {(searchTerm || itemCountFilter !== 'all' || costFilter !== 'all' || dateFilter !== 'all') && (
-              <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    setSearchTerm('')
-                    setItemCountFilter('all')
-                    setCostFilter('all')
-                    setDateFilter('all')
-                    setDateFrom('')
-                    setDateTo('')
-                  }}
-                  className="w-full bg-transparent text-foreground font-semibold px-4 py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all"
-                >
-                  Clear Filters
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Stock In Records Table */}
-        <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
-          {filteredRecords.length === 0 ? (
-            <div className="text-center py-16">
-              <h3 className="text-xl font-bold text-foreground mb-2">
-                {stockInRecords.length === 0 
-                  ? 'No purchase slips found' 
-                  : 'No purchase slips match your filters'}
-              </h3>
-              <p className="text-muted-foreground">
-                {stockInRecords.length === 0 
-                  ? 'Create your first purchase slip to get started.' 
-                  : 'Try adjusting your search or filter criteria.'}
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-background border-b border-border">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Supplier</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Invoice #</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Items</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Total Cost</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedRecords.map((record) => (
-                      <tr key={record.id} className="border-b border-border hover:bg-accent/5 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
-                            record.stock_in_type === 'kitchen' 
-                              ? 'bg-green-500/20 text-green-400' 
-                              : 'bg-blue-500/20 text-blue-400'
-                          }`}>
-                            {record.stock_in_type === 'kitchen' ? 'Kitchen' : 'Purchase'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-foreground">
-                          {new Date(record.receipt_date).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-foreground">
-                          {record.supplier_name || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-sm">
-                          {record.invoice_number || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-foreground">
-                          {record.stock_in_batches?.length || 0} item(s)
-                        </td>
-                        <td className="px-4 py-3 text-foreground font-semibold">
-                          ₹{parseFloat(record.total_cost || 0).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => openDetailsModal(record)}
-                            className="text-accent hover:text-accent/80 font-semibold text-sm"
-                          >
-                            View Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="border-t border-border px-4 py-4 flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {startIndex + 1} to {Math.min(endIndex, filteredRecords.length)} of {filteredRecords.length} records
-                    {filteredRecords.length !== stockInRecords.length && (
-                      <span className="ml-2">(filtered from {stockInRecords.length} total)</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Items
+                    </label>
+                    <select
+                      value={purchaseItemCountFilter}
+                      onChange={(e) => setPurchaseItemCountFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                     >
-                      Previous
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                        <button
-                          key={page}
-                          onClick={() => setCurrentPage(page)}
-                          className={`px-3 py-2 rounded-lg font-semibold transition-all ${
-                            currentPage === page
-                              ? 'bg-accent text-background'
-                              : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
+                      <option value="all">All</option>
+                      <option value="1-5">1-5 items</option>
+                      <option value="6-10">6-10 items</option>
+                      <option value="11+">11+ items</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Total Cost
+                    </label>
+                    <select
+                      value={purchaseCostFilter}
+                      onChange={(e) => setPurchaseCostFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="all">All</option>
+                      <option value="0-1000">₹0 - ₹1,000</option>
+                      <option value="1001-5000">₹1,001 - ₹5,000</option>
+                      <option value="5001-10000">₹5,001 - ₹10,000</option>
+                      <option value="10000+">₹10,000+</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Date Range
+                    </label>
+                    <select
+                      value={purchaseDateFilter}
+                      onChange={(e) => setPurchaseDateFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="all">All Dates</option>
+                      <option value="today">Today</option>
+                      <option value="this-week">This Week</option>
+                      <option value="this-month">This Month</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                  {purchaseDateFilter === 'custom' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1">
+                          From
+                        </label>
+                        <input
+                          type="date"
+                          value={purchaseDateFrom}
+                          onChange={(e) => setPurchaseDateFrom(e.target.value)}
+                          className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1">
+                          To
+                        </label>
+                        <input
+                          type="date"
+                          value={purchaseDateTo}
+                          onChange={(e) => setPurchaseDateTo(e.target.value)}
+                          className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                        />
+                      </div>
                     </div>
+                  )}
+                </div>
+
+                {(purchaseSearchTerm ||
+                  purchaseItemCountFilter !== 'all' ||
+                  purchaseCostFilter !== 'all' ||
+                  purchaseDateFilter !== 'all') && (
+                  <div className="flex justify-end">
                     <button
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                      onClick={() => {
+                        setPurchaseSearchTerm('')
+                        setPurchaseItemCountFilter('all')
+                        setPurchaseCostFilter('all')
+                        setPurchaseDateFilter('all')
+                        setPurchaseDateFrom('')
+                        setPurchaseDateTo('')
+                      }}
+                      className="text-xs bg-transparent text-foreground font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent/10 transition-all"
                     >
-                      Next
+                      Clear Filters
                     </button>
                   </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {purchaseFiltered.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-sm text-muted-foreground">
+                    {purchaseRecords.length === 0
+                      ? 'No purchase stock-ins found.'
+                      : 'No purchase stock-ins match your filters.'}
+                  </p>
                 </div>
+              ) : (
+                <>
+                  <table className="w-full">
+                    <thead className="bg-background border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Supplier
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Invoice #
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Items
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Total Cost
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchasePaginated.map((record) => (
+                        <tr
+                          key={record.id}
+                          className="border-b border-border hover:bg-accent/5 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-foreground text-sm">
+                            {new Date(record.receipt_date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-foreground text-sm">
+                            {record.supplier_name || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                            {record.invoice_number || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-foreground text-sm">
+                            {record.stock_in_batches?.length || 0} item(s)
+                          </td>
+                          <td className="px-4 py-3 text-foreground font-semibold text-sm">
+                            ₹{parseFloat(record.total_cost || 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => openDetailsModal(record)}
+                              className="text-accent hover:text-accent/80 font-semibold text-xs"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {purchaseTotalPages > 1 && (
+                    <div className="border-t border-border px-4 py-3 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        Showing {purchaseStartIndex + 1} to{' '}
+                        {Math.min(purchaseEndIndex, purchaseFiltered.length)} of{' '}
+                        {purchaseFiltered.length} records
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            setPurchaseCurrentPage((prev) => Math.max(1, prev - 1))
+                          }
+                          disabled={purchaseCurrentPage === 1}
+                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        >
+                          Previous
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: purchaseTotalPages }, (_, i) => i + 1).map(
+                            (page) => (
+                              <button
+                                key={page}
+                                onClick={() => setPurchaseCurrentPage(page)}
+                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                  purchaseCurrentPage === page
+                                    ? 'bg-accent text-background'
+                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            )
+                          )}
+                        </div>
+                        <button
+                          onClick={() =>
+                            setPurchaseCurrentPage((prev) =>
+                              Math.min(purchaseTotalPages, prev + 1)
+                            )
+                          }
+                          disabled={purchaseCurrentPage === purchaseTotalPages}
+                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-            </>
-          )}
+            </div>
+          </div>
+
+          {/* Kitchen Stock-In Panel */}
+          <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
+            <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
+              <h2 className="text-lg font-bold text-foreground">Kitchen Stock-In</h2>
+              <span className="text-xs text-muted-foreground">
+                {kitchenRecords.length} record(s)
+              </span>
+            </div>
+
+            <div className="p-4 border-b border-border">
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">
+                    Search (Material Name)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Search by material name..."
+                    value={kitchenSearchTerm}
+                    onChange={(e) => setKitchenSearchTerm(e.target.value)}
+                    className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Items
+                    </label>
+                    <select
+                      value={kitchenItemCountFilter}
+                      onChange={(e) => setKitchenItemCountFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="all">All</option>
+                      <option value="1-5">1-5 items</option>
+                      <option value="6-10">6-10 items</option>
+                      <option value="11+">11+ items</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Total Cost
+                    </label>
+                    <select
+                      value={kitchenCostFilter}
+                      onChange={(e) => setKitchenCostFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="all">All</option>
+                      <option value="0-1000">₹0 - ₹1,000</option>
+                      <option value="1001-5000">₹1,001 - ₹5,000</option>
+                      <option value="5001-10000">₹5,001 - ₹10,000</option>
+                      <option value="10000+">₹10,000+</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Date Range
+                    </label>
+                    <select
+                      value={kitchenDateFilter}
+                      onChange={(e) => setKitchenDateFilter(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="all">All Dates</option>
+                      <option value="today">Today</option>
+                      <option value="this-week">This Week</option>
+                      <option value="this-month">This Month</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                  {kitchenDateFilter === 'custom' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1">
+                          From
+                        </label>
+                        <input
+                          type="date"
+                          value={kitchenDateFrom}
+                          onChange={(e) => setKitchenDateFrom(e.target.value)}
+                          className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1">
+                          To
+                        </label>
+                        <input
+                          type="date"
+                          value={kitchenDateTo}
+                          onChange={(e) => setKitchenDateTo(e.target.value)}
+                          className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {(kitchenSearchTerm ||
+                  kitchenItemCountFilter !== 'all' ||
+                  kitchenCostFilter !== 'all' ||
+                  kitchenDateFilter !== 'all') && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => {
+                        setKitchenSearchTerm('')
+                        setKitchenItemCountFilter('all')
+                        setKitchenCostFilter('all')
+                        setKitchenDateFilter('all')
+                        setKitchenDateFrom('')
+                        setKitchenDateTo('')
+                      }}
+                      className="text-xs bg-transparent text-foreground font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent/10 transition-all"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {kitchenFiltered.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-sm text-muted-foreground">
+                    {kitchenRecords.length === 0
+                      ? 'No kitchen stock-ins found.'
+                      : 'No kitchen stock-ins match your filters.'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <table className="w-full">
+                    <thead className="bg-background border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Items
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Total Cost
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kitchenPaginated.map((record) => (
+                        <tr
+                          key={record.id}
+                          className="border-b border-border hover:bg-accent/5 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-foreground text-sm">
+                            {new Date(record.receipt_date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-foreground text-sm">
+                            {record.stock_in_batches?.length || 0} item(s)
+                          </td>
+                          <td className="px-4 py-3 text-foreground font-semibold text-sm">
+                            ₹{parseFloat(record.total_cost || 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => openDetailsModal(record)}
+                              className="text-accent hover:text-accent/80 font-semibold text-xs"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {kitchenTotalPages > 1 && (
+                    <div className="border-t border-border px-4 py-3 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        Showing {kitchenStartIndex + 1} to{' '}
+                        {Math.min(kitchenEndIndex, kitchenFiltered.length)} of{' '}
+                        {kitchenFiltered.length} records
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            setKitchenCurrentPage((prev) => Math.max(1, prev - 1))
+                          }
+                          disabled={kitchenCurrentPage === 1}
+                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        >
+                          Previous
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: kitchenTotalPages }, (_, i) => i + 1).map(
+                            (page) => (
+                              <button
+                                key={page}
+                                onClick={() => setKitchenCurrentPage(page)}
+                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                  kitchenCurrentPage === page
+                                    ? 'bg-accent text-background'
+                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            )
+                          )}
+                        </div>
+                        <button
+                          onClick={() =>
+                            setKitchenCurrentPage((prev) =>
+                              Math.min(kitchenTotalPages, prev + 1)
+                            )
+                          }
+                          disabled={kitchenCurrentPage === kitchenTotalPages}
+                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Add Stock-In Modal */}
