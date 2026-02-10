@@ -71,7 +71,7 @@ const Overview = () => {
         // Stock In for this month (recent records)
         supabase
           .from('stock_in')
-          .select('id, receipt_date, total_cost, supplier_name, invoice_number')
+          .select('id, receipt_date, total_cost, supplier_name, invoice_number, stock_in_type')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .gte('receipt_date', firstOfMonthStr)
           .order('receipt_date', { ascending: false })
@@ -458,44 +458,59 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
               </div>
             ) : (
               <div className="space-y-3">
-                {recentStockIn.map((record) => (
-                  <div
-                    key={record.id}
-                    className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors cursor-pointer"
-                    onClick={() => openStockInDetails(record.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground flex items-center gap-1">
-                          <span>{record.supplier_name || '—'}</span>
-                          {record.invoice_number && (
-                            <>
-                              <span className="text-xs text-muted-foreground">•</span>
-                              <span className="text-xs font-mono text-muted-foreground">
-                                {record.invoice_number}
-                              </span>
-                            </>
-                          )}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {record.total_cost && (
-                            <>
-                              <span className="font-semibold">Total:</span>{' '}
-                              <span>{formatCurrency(record.total_cost)}</span>
-                              <span className="mx-1">•</span>
-                            </>
-                          )}
-                          <span>{formatDate(record.receipt_date)}</span>
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-accent/20 text-accent">
-                          Stock In
-                        </span>
+                {recentStockIn.map((record) => {
+                  const isKitchen = record.stock_in_type === 'kitchen'
+                  return (
+                    <div
+                      key={record.id}
+                      className="bg-background border border-border rounded-lg p-4 hover:bg-accent/5 transition-colors cursor-pointer"
+                      onClick={() => openStockInDetails(record.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground flex items-center gap-1">
+                            {isKitchen ? (
+                              <span>Kitchen Stock In</span>
+                            ) : (
+                              <>
+                                <span>{record.supplier_name || '—'}</span>
+                                {record.invoice_number && (
+                                  <>
+                                    <span className="text-xs text-muted-foreground">•</span>
+                                    <span className="text-xs font-mono text-muted-foreground">
+                                      {record.invoice_number}
+                                    </span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {record.total_cost && (
+                              <>
+                                <span className="font-semibold">Total:</span>{' '}
+                                <span>{formatCurrency(record.total_cost)}</span>
+                                <span className="mx-1">•</span>
+                              </>
+                            )}
+                            <span>{formatDate(record.receipt_date)}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
+                              isKitchen
+                                ? 'bg-purple-500/15 text-purple-500'
+                                : 'bg-accent/20 text-accent'
+                            }`}
+                          >
+                            {isKitchen ? 'Kitchen Stock In' : 'Purchase Stock In'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -564,7 +579,11 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
         <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
           <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-foreground">Purchase Slip Details</h2>
+              <h2 className="text-2xl font-bold text-foreground">
+                {stockInDetails.stock_in_type === 'kitchen'
+                  ? 'Kitchen Stock In Details'
+                  : 'Purchase Slip Details'}
+              </h2>
               <button
                 onClick={() => setShowStockInDetailsModal(false)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
