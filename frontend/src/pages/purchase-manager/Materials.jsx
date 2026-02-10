@@ -5,8 +5,15 @@ import { getSession } from '../../lib/auth'
 // Unit options
 const UNITS = ['nos', 'kg', 'liter', 'packets', 'btl']
 
-// Category options with their short forms for code generation
-const CATEGORIES = [
+// Material Type options
+const MATERIAL_TYPES = [
+  { value: 'raw_material', label: 'Raw Material' },
+  { value: 'semi_finished', label: 'Semi-Finished' },
+  { value: 'finished', label: 'Finished' }
+]
+
+// Category options for Raw Materials with their short forms for code generation
+const RAW_MATERIAL_CATEGORIES = [
   { label: 'Meat', short: 'MEAT' },
   { label: 'Grains', short: 'GRNS' },
   { label: 'Vegetables', short: 'VEGT' },
@@ -18,12 +25,20 @@ const CATEGORIES = [
   { label: 'Misc', short: 'MISC' }
 ]
 
+// Category options for Semi-Finished and Finished Materials (Brand-based)
+const BRAND_CATEGORIES = [
+  { label: 'Boom Pizza', short: 'BM' },
+  { label: 'Nippu Kodi', short: 'NK' },
+  { label: 'El Chaapo', short: 'EC' }
+]
+
 const Materials = () => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState(null)
@@ -35,7 +50,8 @@ const Materials = () => {
     brand: '',
     description: '',
     low_stock_threshold: '',
-    vendor_id: ''
+    vendor_id: '',
+    material_type: ''
   })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
@@ -110,11 +126,15 @@ const Materials = () => {
       filtered = filtered.filter(material => material.category === categoryFilter)
     }
 
+    // Type filter
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(material => material.material_type === typeFilter)
+    }
 
     setFilteredMaterials(filtered)
     // Reset to page 1 when filters change
     setCurrentPage(1)
-  }, [searchQuery, categoryFilter, materials])
+  }, [searchQuery, categoryFilter, typeFilter, materials])
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage)
@@ -125,26 +145,48 @@ const Materials = () => {
   // Get unique categories for filter dropdown
   const categories = ['all', ...new Set(materials.map(m => m.category).filter(Boolean))]
 
-  // Function to generate material code based on category
-  const generateMaterialCode = async (category) => {
-    if (!category) return ''
+  // Function to generate material code based on material type and category
+  const generateMaterialCode = async (materialType, category) => {
+    if (!materialType || !category) return ''
 
-    // Find category short form
-    const categoryData = CATEGORIES.find(cat => cat.label === category)
-    if (!categoryData) return ''
+    let prefix = ''
+    let categoryShort = ''
+
+    if (materialType === 'raw_material') {
+      // For raw materials: RM-{CATEGORY}-{NUMBER}
+      prefix = 'RM'
+      const categoryData = RAW_MATERIAL_CATEGORIES.find(cat => cat.label === category)
+      if (!categoryData) return ''
+      categoryShort = categoryData.short
+    } else if (materialType === 'semi_finished') {
+      // For semi-finished: SF-{BRAND}-{NUMBER}
+      prefix = 'SF'
+      const brandData = BRAND_CATEGORIES.find(cat => cat.label === category)
+      if (!brandData) return ''
+      categoryShort = brandData.short
+    } else if (materialType === 'finished') {
+      // For finished: FF-{BRAND}-{NUMBER}
+      prefix = 'FF'
+      const brandData = BRAND_CATEGORIES.find(cat => cat.label === category)
+      if (!brandData) return ''
+      categoryShort = brandData.short
+    } else {
+      return ''
+    }
 
     try {
-      // Get all materials with the same category to find the next number
+      // Get all materials with the same material_type and category to find the next number
       const { data: categoryMaterials, error } = await supabase
         .from('raw_materials')
         .select('code')
+        .eq('material_type', materialType)
         .eq('category', category)
         .is('deleted_at', null)
 
       if (error) throw error
 
-      // Extract numbers from existing codes (format: RM-{SHORT}-{NUMBER})
-      const codePattern = new RegExp(`^RM-${categoryData.short}-(\\d+)$`)
+      // Extract numbers from existing codes (format: {PREFIX}-{SHORT}-{NUMBER})
+      const codePattern = new RegExp(`^${prefix}-${categoryShort}-(\\d+)$`)
       const existingNumbers = categoryMaterials
         .map(m => {
           const match = m.code.match(codePattern)
@@ -160,19 +202,29 @@ const Materials = () => {
       // Format with leading zeros (001, 002, etc.)
       const formattedNumber = String(nextNumber).padStart(3, '0')
 
-      return `RM-${categoryData.short}-${formattedNumber}`
+      return `${prefix}-${categoryShort}-${formattedNumber}`
     } catch (err) {
       console.error('Error generating material code:', err)
       // Fallback: return a code with number 001
-      return `RM-${categoryData.short}-001`
+      return `${prefix}-${categoryShort}-001`
     }
+  }
+
+  // Handle material type change - reset category and code
+  const handleMaterialTypeChange = (materialType) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      material_type: materialType,
+      category: '', // Reset category when type changes
+      code: '' // Reset code when type changes
+    }))
   }
 
   // Handle category change - auto-generate code for new materials
   const handleCategoryChange = async (category) => {
     // Only auto-generate code for new materials (not when editing)
-    if (!editingMaterial && category) {
-      const generatedCode = await generateMaterialCode(category)
+    if (!editingMaterial && category && formData.material_type) {
+      const generatedCode = await generateMaterialCode(formData.material_type, category)
       setFormData(prev => ({ ...prev, category, code: generatedCode }))
     } else {
       // For editing, just update category (code stays the same)
@@ -188,9 +240,11 @@ const Materials = () => {
       code: '',
       unit: '',
       category: '',
+      brand: '',
       description: '',
       low_stock_threshold: '',
-      vendor_id: ''
+      vendor_id: '',
+      material_type: ''
     })
     setError(null)
     setIsModalOpen(true)
@@ -208,7 +262,8 @@ const Materials = () => {
       brand: material.brand || '',
       description: material.description || '',
       low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
-      vendor_id: material.vendor_id || ''
+      vendor_id: material.vendor_id || '',
+      material_type: material.material_type || 'raw_material'
     })
     setError(null)
     setIsModalOpen(true)
@@ -221,6 +276,10 @@ const Materials = () => {
     setError(null)
 
     // Validate form
+    if (!formData.material_type) {
+      setError('Material type is required')
+      return
+    }
     if (!formData.name.trim()) {
       setError('Material name is required')
       return
@@ -237,9 +296,12 @@ const Materials = () => {
       setError('Material code is required')
       return
     }
-    if (!formData.vendor_id) {
-      setError('Vendor is required')
-      return
+    // Vendor and brand are only required for raw materials
+    if (formData.material_type === 'raw_material') {
+      if (!formData.vendor_id) {
+        setError('Vendor is required for raw materials')
+        return
+      }
     }
 
     // For new materials, show confirmation modal
@@ -276,6 +338,7 @@ const Materials = () => {
           description: formData.description.trim() || null,
           low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
           vendor_id: formData.vendor_id || null,
+          material_type: formData.material_type,
           updated_at: new Date().toISOString()
         }
 
@@ -327,8 +390,8 @@ const Materials = () => {
       } else {
         // Generate code if not provided (shouldn't happen, but safety check)
         let materialCode = formData.code.trim()
-        if (!materialCode && formData.category) {
-          materialCode = await generateMaterialCode(formData.category)
+        if (!materialCode && formData.category && formData.material_type) {
+          materialCode = await generateMaterialCode(formData.material_type, formData.category)
         }
 
         // Create new material
@@ -342,7 +405,8 @@ const Materials = () => {
             brand: formData.brand.trim() || null,
             description: formData.description.trim() || null,
             low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
-            vendor_id: formData.vendor_id || null
+            vendor_id: formData.vendor_id || null,
+            material_type: formData.material_type
           })
           .select()
           .single()
@@ -407,10 +471,10 @@ const Materials = () => {
         {/* Header Section */}
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2">
-            Raw Materials
+            Materials
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground mb-4">
-            Manage raw material catalog. New materials automatically create inventory entries for all cloud kitchens.
+            Manage material catalog. New materials automatically create inventory entries for all cloud kitchens.
           </p>
           <button
             onClick={handleAddNew}
@@ -432,6 +496,18 @@ const Materials = () => {
               className="flex-1 bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
             />
             
+            {/* Type Filter */}
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+            >
+              <option value="all">All Types</option>
+              {MATERIAL_TYPES.map(type => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+
             {/* Category Filter */}
             <select
               value={categoryFilter}
@@ -463,7 +539,7 @@ const Materials = () => {
           ) : filteredMaterials.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-muted-foreground">
-                {searchQuery || categoryFilter !== 'all'
+                {searchQuery || categoryFilter !== 'all' || typeFilter !== 'all'
                   ? 'No materials match your filters.'
                   : 'No materials found. Add your first material to get started.'}
               </p>
@@ -473,6 +549,7 @@ const Materials = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b-2 border-border bg-background/50">
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Name</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Code</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">UOM</th>
@@ -488,6 +565,18 @@ const Materials = () => {
                       key={material.id}
                       className="border-b border-border hover:bg-background/30 transition-colors duration-200"
                     >
+                      <td className="px-4 py-3">
+                        <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
+                          material.material_type === 'raw_material' 
+                            ? 'bg-blue-500/20 text-blue-400' 
+                            : material.material_type === 'semi_finished'
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-green-500/20 text-green-400'
+                        }`}>
+                          {material.material_type === 'raw_material' ? 'Raw Material' : 
+                           material.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-foreground">{material.name}</td>
                       <td className="px-4 py-3 text-foreground font-mono text-sm">{material.code}</td>
                       <td className="px-4 py-3 text-foreground">{material.unit}</td>
@@ -591,6 +680,35 @@ const Materials = () => {
                     </div>
                   )}
 
+                  {/* Material Type */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Material Type <span className="text-destructive">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.material_type}
+                      onChange={(e) => handleMaterialTypeChange(e.target.value)}
+                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                      disabled={saving || editingMaterial} // Disable type change when editing
+                    >
+                      <option value="">Select material type</option>
+                      {MATERIAL_TYPES.map(type => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                    {editingMaterial && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Material type cannot be modified
+                      </p>
+                    )}
+                    {!editingMaterial && !formData.material_type && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Select material type first to enable category selection
+                      </p>
+                    )}
+                  </div>
+
                   {/* Name */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
@@ -625,7 +743,7 @@ const Materials = () => {
                     </select>
                   </div>
 
-                  {/* Category */}
+                  {/* Category - Conditional based on material type */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
                       Category <span className="text-destructive">*</span>
@@ -635,10 +753,15 @@ const Materials = () => {
                       value={formData.category}
                       onChange={(e) => handleCategoryChange(e.target.value)}
                       className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      disabled={saving || editingMaterial} // Disable category change when editing
+                      disabled={saving || editingMaterial || !formData.material_type} // Disable if no type selected
                     >
-                      <option value="">Select category</option>
-                      {CATEGORIES.map(cat => (
+                      <option value="">
+                        {!formData.material_type ? 'Select material type first' : 'Select category'}
+                      </option>
+                      {formData.material_type === 'raw_material' && RAW_MATERIAL_CATEGORIES.map(cat => (
+                        <option key={cat.label} value={cat.label}>{cat.label}</option>
+                      ))}
+                      {(formData.material_type === 'semi_finished' || formData.material_type === 'finished') && BRAND_CATEGORIES.map(cat => (
                         <option key={cat.label} value={cat.label}>{cat.label}</option>
                       ))}
                     </select>
@@ -654,20 +777,22 @@ const Materials = () => {
                     )}
                   </div>
 
-                  {/* Brand (optional) */}
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">
-                      Brand
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      placeholder="Brand name (optional)"
-                      disabled={saving}
-                    />
-                  </div>
+                  {/* Brand (only for raw materials) */}
+                  {formData.material_type === 'raw_material' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-2">
+                        Brand
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.brand}
+                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                        className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                        placeholder="Brand name (optional)"
+                        disabled={saving}
+                      />
+                    </div>
+                  )}
 
                   {/* Material Code - Always shown, always read-only */}
                   <div>
@@ -688,24 +813,26 @@ const Materials = () => {
                     </p>
                   </div>
 
-                  {/* Vendor */}
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">
-                      Vendor <span className="text-destructive">*</span>
-                    </label>
-                    <select
-                      required
-                      value={formData.vendor_id}
-                      onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
-                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      disabled={saving}
-                    >
-                      <option value="">Select vendor</option>
-                      {vendors.map(vendor => (
-                        <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Vendor (only for raw materials) */}
+                  {formData.material_type === 'raw_material' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-2">
+                        Vendor <span className="text-destructive">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.vendor_id}
+                        onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
+                        className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                        disabled={saving}
+                      >
+                        <option value="">Select vendor</option>
+                        {vendors.map(vendor => (
+                          <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Low Stock Threshold */}
                   <div>
@@ -797,6 +924,12 @@ const Materials = () => {
                   <h3 className="text-sm font-semibold text-foreground mb-3">Material Details</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Type:</span>
+                      <span className="text-foreground font-semibold">
+                        {MATERIAL_TYPES.find(t => t.value === formData.material_type)?.label || formData.material_type}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-muted-foreground">Name:</span>
                       <span className="text-foreground font-semibold">{formData.name}</span>
                     </div>
@@ -812,10 +945,20 @@ const Materials = () => {
                       <span className="text-muted-foreground">Category:</span>
                       <span className="text-foreground font-semibold">{formData.category}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Brand:</span>
-                      <span className="text-foreground font-semibold">{formData.brand || '—'}</span>
-                    </div>
+                    {formData.material_type === 'raw_material' && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Brand:</span>
+                          <span className="text-foreground font-semibold">{formData.brand || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Vendor:</span>
+                          <span className="text-foreground font-semibold">
+                            {vendors.find(v => v.id === formData.vendor_id)?.name || '—'}
+                          </span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Low Stock Threshold:</span>
                       <span className="text-foreground font-semibold">

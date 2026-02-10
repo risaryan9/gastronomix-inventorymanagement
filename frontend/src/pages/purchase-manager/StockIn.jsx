@@ -21,6 +21,9 @@ const StockIn = () => {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  // Stock-in type state ('purchase' or 'kitchen')
+  const [stockInType, setStockInType] = useState('purchase')
+
   // Purchase slip form state
   const [purchaseSlip, setPurchaseSlip] = useState({
     supplier_name: '',
@@ -81,7 +84,8 @@ const StockIn = () => {
                 id,
                 name,
                 code,
-                unit
+                unit,
+                material_type
               )
             )
           `)
@@ -130,11 +134,19 @@ const StockIn = () => {
       if (!showAddModal) return
 
       try {
+        // Fetch materials based on stock-in type
+        // Purchase: raw_material only
+        // Kitchen: semi_finished and finished only
+        const materialTypes = stockInType === 'purchase' 
+          ? ['raw_material'] 
+          : ['semi_finished', 'finished']
+
         const { data: materialsData, error } = await supabase
           .from('raw_materials')
-          .select('id, name, code, unit, category')
+          .select('id, name, code, unit, category, material_type')
           .eq('is_active', true)
           .is('deleted_at', null)
+          .in('material_type', materialTypes)
           .order('name', { ascending: true })
 
         if (error) {
@@ -149,7 +161,7 @@ const StockIn = () => {
     }
 
     fetchAvailableMaterials()
-  }, [showAddModal])
+  }, [showAddModal, stockInType])
 
   // Focus search input and update position when dropdown opens
   useEffect(() => {
@@ -301,8 +313,9 @@ const StockIn = () => {
     return validPurchaseItems.reduce((sum, item) => sum + (item.total_cost || 0), 0)
   }
 
-  // Open add modal
-  const openAddModal = () => {
+  // Open add modal for purchase stock-in
+  const openAddModal = (type = 'purchase') => {
+    setStockInType(type)
     setPurchaseSlip({
       supplier_name: '',
       invoice_number: '',
@@ -343,21 +356,24 @@ const StockIn = () => {
       return
     }
 
-    // Validate purchase slip
-    if (!purchaseSlip.supplier_name?.trim()) {
-      alert('Please select a supplier')
-      finalizingRef.current = false
-      setFinalizing(false)
-      return
+    // Validate purchase slip based on type
+    if (stockInType === 'purchase') {
+      if (!purchaseSlip.supplier_name?.trim()) {
+        alert('Please select a supplier')
+        finalizingRef.current = false
+        setFinalizing(false)
+        return
+      }
+      if (!purchaseSlip.invoice_number?.trim()) {
+        alert('Please enter an invoice number')
+        finalizingRef.current = false
+        setFinalizing(false)
+        return
+      }
     }
+    
     if (!purchaseSlip.receipt_date) {
-      alert('Please select a receipt date')
-      finalizingRef.current = false
-      setFinalizing(false)
-      return
-    }
-    if (!purchaseSlip.invoice_number?.trim()) {
-      alert('Please enter an invoice number')
+      alert('Please select a date')
       finalizingRef.current = false
       setFinalizing(false)
       return
@@ -397,10 +413,11 @@ const StockIn = () => {
           cloud_kitchen_id: session.cloud_kitchen_id,
           received_by: session.id,
           receipt_date: purchaseSlip.receipt_date,
-          supplier_name: purchaseSlip.supplier_name.trim() || null,
-          invoice_number: purchaseSlip.invoice_number.trim() || null,
+          supplier_name: stockInType === 'purchase' ? (purchaseSlip.supplier_name.trim() || null) : null,
+          invoice_number: stockInType === 'purchase' ? (purchaseSlip.invoice_number.trim() || null) : null,
           total_cost: totalCost,
-          notes: purchaseSlip.notes.trim() || null
+          notes: purchaseSlip.notes.trim() || null,
+          stock_in_type: stockInType
         })
         .select()
         .single()
@@ -628,13 +645,24 @@ const StockIn = () => {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Stock In</h1>
-          <button
-            onClick={openAddModal}
-            className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
-          >
-            + Add New Purchase Slip
-          </button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Stock In</h1>
+            <p className="text-sm text-muted-foreground">Manage purchase and kitchen stock-in records</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => openAddModal('purchase')}
+              className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
+            >
+              + Create Stock-In Invoice
+            </button>
+            <button
+              onClick={() => openAddModal('kitchen')}
+              className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
+            >
+              + Create Kitchen Stock-In
+            </button>
+          </div>
         </div>
 
         {/* Filters and Search */}
@@ -778,7 +806,8 @@ const StockIn = () => {
                 <table className="w-full">
                   <thead className="bg-background border-b border-border">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Receipt Date</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Date</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Supplier</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Invoice #</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Items</th>
@@ -789,6 +818,15 @@ const StockIn = () => {
                   <tbody>
                     {paginatedRecords.map((record) => (
                       <tr key={record.id} className="border-b border-border hover:bg-accent/5 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
+                            record.stock_in_type === 'kitchen' 
+                              ? 'bg-green-500/20 text-green-400' 
+                              : 'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {record.stock_in_type === 'kitchen' ? 'Kitchen' : 'Purchase'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-foreground">
                           {new Date(record.receipt_date).toLocaleDateString()}
                         </td>
@@ -864,12 +902,14 @@ const StockIn = () => {
           )}
         </div>
 
-        {/* Add Purchase Slip Modal */}
+        {/* Add Stock-In Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-card border-2 border-border rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-foreground">New Purchase Slip</h2>
+                <h2 className="text-2xl font-bold text-foreground">
+                  {stockInType === 'kitchen' ? 'New Kitchen Stock-In' : 'New Purchase Slip'}
+                </h2>
                 <button
                   onClick={closeAddModal}
                   className="text-muted-foreground hover:text-foreground transition-colors"
@@ -880,42 +920,46 @@ const StockIn = () => {
                 </button>
               </div>
 
-              {/* Purchase Slip Details */}
+              {/* Stock-In Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    Supplier <span className="text-destructive">*</span>
-                  </label>
-                  <select
-                    required
-                    value={purchaseSlip.supplier_name}
-                    onChange={(e) => setPurchaseSlip({ ...purchaseSlip, supplier_name: e.target.value })}
-                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                  >
-                    <option value="">Select vendor</option>
-                    {vendors.map(vendor => (
-                      <option key={vendor.id} value={vendor.name}>{vendor.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {stockInType === 'purchase' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Supplier <span className="text-destructive">*</span>
+                    </label>
+                    <select
+                      required
+                      value={purchaseSlip.supplier_name}
+                      onChange={(e) => setPurchaseSlip({ ...purchaseSlip, supplier_name: e.target.value })}
+                      className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                    >
+                      <option value="">Select vendor</option>
+                      {vendors.map(vendor => (
+                        <option key={vendor.id} value={vendor.name}>{vendor.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {stockInType === 'purchase' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Invoice Number <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={purchaseSlip.invoice_number}
+                      onChange={(e) => setPurchaseSlip({ ...purchaseSlip, invoice_number: e.target.value })}
+                      className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                      placeholder="Invoice #"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-foreground mb-2">
-                    Invoice Number <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={purchaseSlip.invoice_number}
-                    onChange={(e) => setPurchaseSlip({ ...purchaseSlip, invoice_number: e.target.value })}
-                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    placeholder="Invoice #"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-2">
-                    Receipt Date <span className="text-destructive">*</span>
+                    {stockInType === 'kitchen' ? 'Date' : 'Receipt Date'} <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="date"
@@ -940,10 +984,10 @@ const StockIn = () => {
                 </div>
               </div>
 
-              {/* Purchase Items - Spreadsheet Style */}
+              {/* Add Items - Spreadsheet Style */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-bold text-foreground">Purchase Items</h3>
+                  <h3 className="text-lg font-bold text-foreground">Add Items</h3>
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">
                   If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
@@ -1137,7 +1181,7 @@ const StockIn = () => {
                       alert('Please add at least one item with a material selected')
                       return
                     }
-                    if (!purchaseSlip.invoice_number?.trim()) {
+                    if (stockInType === 'purchase' && !purchaseSlip.invoice_number?.trim()) {
                       alert('Please enter an invoice number')
                       return
                     }

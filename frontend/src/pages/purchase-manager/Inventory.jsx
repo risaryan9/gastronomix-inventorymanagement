@@ -18,6 +18,13 @@ const CATEGORIES = [
   'Misc'
 ]
 
+// Material Type options
+const MATERIAL_TYPES = [
+  { value: 'raw_material', label: 'Raw Material' },
+  { value: 'semi_finished', label: 'Semi-Finished' },
+  { value: 'finished', label: 'Finished' }
+]
+
 const Inventory = () => {
   const [inventory, setInventory] = useState([])
   const [materials, setMaterials] = useState([])
@@ -25,6 +32,7 @@ const Inventory = () => {
   const [updating, setUpdating] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
   const [stockLevelFilter, setStockLevelFilter] = useState('all')
   const [editingItem, setEditingItem] = useState(null)
   const [editForm, setEditForm] = useState({ quantity: '' })
@@ -65,7 +73,8 @@ const Inventory = () => {
               code,
               unit,
               category,
-              low_stock_threshold
+              low_stock_threshold,
+              material_type
             )
           `)
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
@@ -347,6 +356,9 @@ const Inventory = () => {
     // Category filter
     const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
 
+    // Type filter
+    const matchesType = typeFilter === 'all' || material.material_type === typeFilter
+
     // Stock level filter - use low_stock_threshold from raw_materials
     let matchesStockLevel = true
     const lowStockThreshold = parseFloat(material.low_stock_threshold || 0)
@@ -360,7 +372,7 @@ const Inventory = () => {
       matchesStockLevel = quantity > lowStockThreshold
     }
 
-    return matchesSearch && matchesCategory && matchesStockLevel
+    return matchesSearch && matchesCategory && matchesType && matchesStockLevel
   })
 
   // Pagination calculations
@@ -372,7 +384,7 @@ const Inventory = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, categoryFilter, stockLevelFilter])
+  }, [searchTerm, categoryFilter, typeFilter, stockLevelFilter])
 
   // Calculate stats
   const stats = {
@@ -391,7 +403,7 @@ const Inventory = () => {
   // Export functions
   const exportToCSV = () => {
     const session = getSession()
-    const headers = ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
+    const headers = ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
     const rows = filteredInventory.map(item => {
       const material = item.raw_materials
       const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
@@ -400,8 +412,11 @@ const Inventory = () => {
       const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
       const totalValue = item.fifo_total_value || 0
       const avgCost = item.fifo_average_cost || 0
+      const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
+                          material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
       
       return [
+        materialType,
         material?.name || 'N/A',
         material?.code || 'N/A',
         material?.category || 'N/A',
@@ -465,7 +480,7 @@ const Inventory = () => {
 
     // Inventory data sheet
     const inventoryData = [
-      ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
+      ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
       ...filteredInventory.map(item => {
         const material = item.raw_materials
         const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
@@ -474,8 +489,11 @@ const Inventory = () => {
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
         const totalValue = item.fifo_total_value || 0
         const avgCost = item.fifo_average_cost || 0
+        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
+                            material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
         
         return [
+          materialType,
           material?.name || 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
@@ -574,12 +592,15 @@ const Inventory = () => {
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
         const totalValue = item.fifo_total_value || 0
         const avgCost = item.fifo_average_cost || 0
+        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
+                            material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
         
         return [
-          material?.name || 'N/A',
+          materialType,
+          `${material?.name || 'N/A'} (${material?.unit || ''})`,
           material?.code || 'N/A',
           material?.category || 'N/A',
-          `${parseFloat(item.quantity).toFixed(3)} ${material?.unit || ''}`,
+          parseFloat(item.quantity).toFixed(3),
           lowStockThreshold.toFixed(3),
           status,
           `₹${avgCost.toFixed(2)}`,
@@ -589,22 +610,23 @@ const Inventory = () => {
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Material Name', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Avg Cost/Unit', 'Total Value (FIFO)']],
+        head: [['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Avg Cost/Unit', 'Total Value (FIFO)']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 2 },
         columnStyles: {
-          0: { cellWidth: 40 },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 30 },
+          0: { cellWidth: 25 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 22 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 20 },
           5: { cellWidth: 25 },
-          6: { cellWidth: 25 },
-          7: { cellWidth: 25 }
+          6: { cellWidth: 20 },
+          7: { cellWidth: 20 },
+          8: { cellWidth: 20 }
         },
-        margin: { left: 20, right: 20 }
+        margin: { left: 10, right: 10 }
       })
 
       // Footer
@@ -714,6 +736,16 @@ const Inventory = () => {
               className="flex-1 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
             />
             <select 
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+            >
+              <option value="all">All Types</option>
+              {MATERIAL_TYPES.map(type => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+            <select 
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
@@ -753,11 +785,11 @@ const Inventory = () => {
                 <table className="w-full">
                   <thead className="bg-background border-b border-border">
                     <tr>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
@@ -777,8 +809,20 @@ const Inventory = () => {
                         key={item.id} 
                         className="border-b border-border hover:bg-accent/5 transition-colors"
                       >
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
+                            material.material_type === 'raw_material' 
+                              ? 'bg-blue-500/20 text-blue-400' 
+                              : material.material_type === 'semi_finished'
+                              ? 'bg-yellow-500/20 text-yellow-400'
+                              : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {material.material_type === 'raw_material' ? 'Raw Material' : 
+                             material.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-foreground font-medium">
-                          {material.name}
+                          {material.name} ({material.unit})
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {material.code}
@@ -790,9 +834,6 @@ const Inventory = () => {
                           <span className="text-foreground font-semibold">
                             {parseFloat(item.quantity).toFixed(3)}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {material.unit}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {lowStockThreshold.toFixed(3)}
