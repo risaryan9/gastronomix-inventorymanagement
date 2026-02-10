@@ -89,6 +89,7 @@ const StockIn = () => {
               quantity_purchased,
               quantity_remaining,
               unit_cost,
+              gst_percent,
               raw_materials:raw_material_id (
                 id,
                 name,
@@ -222,6 +223,7 @@ const StockIn = () => {
       quantity: '',
       unit_cost: 0,
       previous_cost: null,
+      gst_percent: '',
       total_cost: 0
     }])
   }
@@ -254,7 +256,12 @@ const StockIn = () => {
         material,
         unit_cost: unitCost,
         previous_cost: unitCost,
-        total_cost: (parseFloat(updated[rowIndex].quantity) || 0) * unitCost
+        total_cost: (() => {
+          const quantity = parseFloat(updated[rowIndex].quantity) || 0
+          const gstPercent = parseFloat(updated[rowIndex].gst_percent) || 0
+          const base = quantity * unitCost
+          return base + (base * gstPercent / 100)
+        })()
       }
       return updated
     })
@@ -310,7 +317,9 @@ const StockIn = () => {
       // Calculate total cost
       const quantity = parseFloat(updated[index].quantity) || 0
       const unitCost = parseFloat(updated[index].unit_cost) || 0
-      updated[index].total_cost = quantity * unitCost
+      const gstPercent = parseFloat(updated[index].gst_percent) || 0
+      const base = quantity * unitCost
+      updated[index].total_cost = base + (base * gstPercent / 100)
 
       return updated
     })
@@ -466,13 +475,15 @@ const StockIn = () => {
       // Create stock_in_batches (FIFO tracking)
       const stockInBatches = validPurchaseItems.map(item => {
         const quantity = parseFloat(item.quantity)
+        const gstPercent = parseFloat(item.gst_percent) || 0
         return {
           stock_in_id: stockInData.id,
           raw_material_id: item.raw_material_id,
           cloud_kitchen_id: session.cloud_kitchen_id,
           quantity_purchased: quantity,
           quantity_remaining: quantity, // Initially, all purchased quantity is remaining
-          unit_cost: parseFloat(item.unit_cost)
+          unit_cost: parseFloat(item.unit_cost),
+          gst_percent: gstPercent
         }
       })
 
@@ -543,6 +554,7 @@ const StockIn = () => {
             quantity_purchased,
             quantity_remaining,
             unit_cost,
+            gst_percent,
             raw_materials:raw_material_id (
               id,
               name,
@@ -1338,6 +1350,7 @@ const StockIn = () => {
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Prev. Cost (₹)</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Unit Cost (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-24">GST (%)</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Total (₹)</th>
                         <th className="px-3 py-2 w-12"></th>
                       </tr>
@@ -1441,6 +1454,18 @@ const StockIn = () => {
                               step="0.01"
                               value={item.unit_cost || ''}
                               onChange={(e) => handleUpdateItem(index, 'unit_cost', e.target.value)}
+                              placeholder="0"
+                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              disabled={!item.material}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.gst_percent ?? ''}
+                              onChange={(e) => handleUpdateItem(index, 'gst_percent', e.target.value)}
                               placeholder="0"
                               className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                               disabled={!item.material}
@@ -1655,12 +1680,17 @@ const StockIn = () => {
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Purchased</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity Remaining</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Unit Cost</th>
+                          <th className="px-4 py-3 text-left text-sm font-bold text-foreground">GST (%)</th>
                           <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Total Cost</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedRecord.stock_in_batches.map((batch, index) => {
-                          const totalCost = parseFloat(batch.quantity_purchased) * parseFloat(batch.unit_cost || 0)
+                          const qty = parseFloat(batch.quantity_purchased) || 0
+                          const unit = parseFloat(batch.unit_cost || 0)
+                          const gstPercent = parseFloat(batch.gst_percent || 0)
+                          const base = qty * unit
+                          const totalCost = base + (base * gstPercent / 100)
                           return (
                             <tr key={batch.id || index} className="border-b border-border hover:bg-accent/5 transition-colors">
                               <td className="px-4 py-3 text-foreground">
@@ -1677,6 +1707,9 @@ const StockIn = () => {
                               </td>
                               <td className="px-4 py-3 text-foreground">
                                 ₹{parseFloat(batch.unit_cost || 0).toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-foreground">
+                                {gstPercent.toFixed(2)}%
                               </td>
                               <td className="px-4 py-3 text-foreground font-semibold">
                                 ₹{totalCost.toFixed(2)}
