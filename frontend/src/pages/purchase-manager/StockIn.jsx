@@ -334,13 +334,25 @@ const StockIn = () => {
   // Open add modal for purchase stock-in
   const openAddModal = (type = 'purchase') => {
     setStockInType(type)
+    // Reset slip
     setPurchaseSlip({
       supplier_name: '',
       invoice_number: '',
       receipt_date: new Date().toISOString().split('T')[0],
       notes: ''
     })
-    setPurchaseItems([])
+    // Initialize with 3 empty rows
+    const makeRow = () => ({
+      id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      raw_material_id: null,
+      material: null,
+      quantity: '',
+      unit_cost: 0,
+      previous_cost: null,
+      gst_percent: '',
+      total_cost: 0
+    })
+    setPurchaseItems([makeRow(), makeRow(), makeRow()])
     setShowAddModal(true)
   }
 
