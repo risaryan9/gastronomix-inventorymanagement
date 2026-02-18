@@ -127,12 +127,19 @@ const OutletDetails = () => {
         requested_quantity: r.quantity
       }))
 
+  const makeEmptyAllocationRow = () => ({
+    id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    raw_material_id: null,
+    material: null,
+    quantity: ''
+  })
+
   const handleAllocate = () => {
     if (existingTodayRequest) {
       handleEditRequest(existingTodayRequest)
     } else {
       setShowAllocateModal(true)
-      setAllocationRows([])
+      setAllocationRows([makeEmptyAllocationRow(), makeEmptyAllocationRow(), makeEmptyAllocationRow()])
       setSelectedRows(new Set())
       setOpenDropdownRow(-1)
       setEditingRequest(null)

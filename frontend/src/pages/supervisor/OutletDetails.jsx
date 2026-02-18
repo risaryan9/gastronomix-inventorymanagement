@@ -134,6 +134,13 @@ const OutletDetails = () => {
         requested_quantity: r.quantity
       }))
 
+  const makeEmptyAllocationRow = () => ({
+    id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    raw_material_id: null,
+    material: null,
+    quantity: ''
+  })
+
   const handleAllocate = () => {
     // If today's request is already packed, the button will be disabled and this will not be called.
     if (packedTodayRequest) return
@@ -142,9 +149,9 @@ const OutletDetails = () => {
     if (existingTodayRequest) {
       handleEditRequest(existingTodayRequest)
     } else {
-      // Otherwise, allow creating a new request
+      // Otherwise, allow creating a new request (3 empty rows by default)
       setShowAllocateModal(true)
-      setAllocationRows([])
+      setAllocationRows([makeEmptyAllocationRow(), makeEmptyAllocationRow(), makeEmptyAllocationRow()])
       setSelectedRows(new Set())
       setOpenDropdownRow(-1)
       setEditingRequest(null)
