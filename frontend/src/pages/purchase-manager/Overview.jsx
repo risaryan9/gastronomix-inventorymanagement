@@ -621,6 +621,27 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                   </div>
                 )}
               </div>
+              {stockInDetails.invoice_image_url && stockInDetails.stock_in_type === 'purchase' && (
+                <div className="mt-3">
+                  <p className="text-sm text-muted-foreground mb-1">Invoice Image</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="max-h-64 max-w-full overflow-hidden rounded-lg border border-border bg-background">
+                      <img
+                        src={stockInDetails.invoice_image_url}
+                        alt="Invoice"
+                        className="max-h-64 w-full object-contain bg-background"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(stockInDetails.invoice_image_url, '_blank', 'noopener,noreferrer')}
+                      className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg bg-accent text-background hover:bg-accent/90 transition-colors"
+                    >
+                      Open Full Image
+                    </button>
+                  </div>
+                </div>
+              )}
               {stockInDetails.notes && (
                 <div>
                   <p className="text-sm text-muted-foreground">Notes</p>
