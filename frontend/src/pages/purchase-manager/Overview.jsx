@@ -71,7 +71,7 @@ const Overview = () => {
         // Stock In for this month (recent records)
         supabase
           .from('stock_in')
-          .select('id, receipt_date, total_cost, supplier_name, invoice_number, stock_in_type')
+          .select('id, receipt_date, total_cost, supplier_name, invoice_number, stock_in_type, notes')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .gte('receipt_date', firstOfMonthStr)
           .order('receipt_date', { ascending: false })
@@ -460,6 +460,22 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
               <div className="space-y-3">
                 {recentStockIn.map((record) => {
                   const isKitchen = record.stock_in_type === 'kitchen'
+                  const isInterCloud = record.stock_in_type === 'inter_cloud'
+                  const displayLabel = isInterCloud
+                    ? (record.notes || 'Transfer from (unknown)')
+                    : isKitchen
+                      ? 'Kitchen Stock In'
+                      : (record.supplier_name || '—')
+                  const badgeLabel = isInterCloud
+                    ? 'Inter-Cloud Transfer'
+                    : isKitchen
+                      ? 'Kitchen Stock In'
+                      : 'Purchase Stock In'
+                  const badgeClass = isInterCloud
+                    ? 'bg-blue-500/15 text-blue-600'
+                    : isKitchen
+                      ? 'bg-purple-500/15 text-purple-500'
+                      : 'bg-accent/20 text-accent'
                   return (
                     <div
                       key={record.id}
@@ -469,19 +485,13 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-semibold text-foreground flex items-center gap-1">
-                            {isKitchen ? (
-                              <span>Kitchen Stock In</span>
-                            ) : (
+                            <span>{displayLabel}</span>
+                            {!isKitchen && !isInterCloud && record.invoice_number && (
                               <>
-                                <span>{record.supplier_name || '—'}</span>
-                                {record.invoice_number && (
-                                  <>
-                                    <span className="text-xs text-muted-foreground">•</span>
-                                    <span className="text-xs font-mono text-muted-foreground">
-                                      {record.invoice_number}
-                                    </span>
-                                  </>
-                                )}
+                                <span className="text-xs text-muted-foreground">•</span>
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {record.invoice_number}
+                                </span>
                               </>
                             )}
                           </p>
@@ -498,13 +508,9 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                         </div>
                         <div className="text-right">
                           <span
-                            className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
-                              isKitchen
-                                ? 'bg-purple-500/15 text-purple-500'
-                                : 'bg-accent/20 text-accent'
-                            }`}
+                            className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${badgeClass}`}
                           >
-                            {isKitchen ? 'Kitchen Stock In' : 'Purchase Stock In'}
+                            {badgeLabel}
                           </span>
                         </div>
                       </div>
@@ -580,9 +586,11 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
           <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-foreground">
-                {stockInDetails.stock_in_type === 'kitchen'
-                  ? 'Kitchen Stock In Details'
-                  : 'Purchase Slip Details'}
+                {stockInDetails.stock_in_type === 'inter_cloud'
+                  ? 'Inter-Cloud Transfer Details'
+                  : stockInDetails.stock_in_type === 'kitchen'
+                    ? 'Kitchen Stock In Details'
+                    : 'Purchase Slip Details'}
               </h2>
               <button
                 onClick={() => setShowStockInDetailsModal(false)}
@@ -608,10 +616,16 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                     {new Date(stockInDetails.created_at).toLocaleString()}
                   </p>
                 </div>
-                {stockInDetails.supplier_name && (
+                {(stockInDetails.supplier_name || stockInDetails.stock_in_type === 'inter_cloud') && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Supplier</p>
-                    <p className="font-semibold text-foreground">{stockInDetails.supplier_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {stockInDetails.stock_in_type === 'inter_cloud' ? 'Transfer from' : 'Supplier'}
+                    </p>
+                    <p className="font-semibold text-foreground">
+                      {stockInDetails.stock_in_type === 'inter_cloud'
+                        ? (stockInDetails.notes || '—').replace(/^Transfer from\s*/i, '') || stockInDetails.notes || '—'
+                        : stockInDetails.supplier_name}
+                    </p>
                   </div>
                 )}
                 {stockInDetails.invoice_number && (
@@ -642,7 +656,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                   </div>
                 </div>
               )}
-              {stockInDetails.notes && (
+              {stockInDetails.notes && stockInDetails.stock_in_type !== 'inter_cloud' && (
                 <div>
                   <p className="text-sm text-muted-foreground">Notes</p>
                   <p className="font-semibold text-foreground">{stockInDetails.notes}</p>

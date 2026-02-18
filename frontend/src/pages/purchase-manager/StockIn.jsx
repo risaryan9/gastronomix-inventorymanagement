@@ -751,7 +751,7 @@ const StockIn = () => {
     record => !record.stock_in_type || record.stock_in_type === 'purchase'
   )
   const kitchenRecords = stockInRecords.filter(
-    record => record.stock_in_type === 'kitchen'
+    record => record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
   )
 
   // Apply filters per panel
@@ -1799,7 +1799,13 @@ const StockIn = () => {
           <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
             <div className="bg-card border-2 border-border rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-foreground">Purchase Slip Details</h2>
+                <h2 className="text-2xl font-bold text-foreground">
+                  {selectedRecord.stock_in_type === 'inter_cloud'
+                    ? 'Inter-Cloud Transfer Details'
+                    : selectedRecord.stock_in_type === 'kitchen'
+                      ? 'Kitchen Stock In Details'
+                      : 'Purchase Slip Details'}
+                </h2>
                 <button
                   onClick={() => setShowDetailsModal(false)}
                   className="text-muted-foreground hover:text-foreground transition-colors"
@@ -1825,10 +1831,16 @@ const StockIn = () => {
                       {new Date(selectedRecord.created_at).toLocaleString()}
                     </p>
                   </div>
-                  {selectedRecord.supplier_name && (
+                  {(selectedRecord.supplier_name || selectedRecord.stock_in_type === 'inter_cloud') && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Supplier</p>
-                      <p className="font-semibold text-foreground">{selectedRecord.supplier_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedRecord.stock_in_type === 'inter_cloud' ? 'Transfer from' : 'Supplier'}
+                      </p>
+                      <p className="font-semibold text-foreground">
+                        {selectedRecord.stock_in_type === 'inter_cloud'
+                          ? (selectedRecord.notes || '—').replace(/^Transfer from\s*/i, '') || selectedRecord.notes || '—'
+                          : selectedRecord.supplier_name}
+                      </p>
                     </div>
                   )}
                   {selectedRecord.invoice_number && (
