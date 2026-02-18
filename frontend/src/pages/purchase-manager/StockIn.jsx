@@ -10,7 +10,7 @@ const StockIn = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState(null)
-  const itemsPerPage = 20
+  const itemsPerPage = 10
 
   // Layout mode for desktop panels: 'split' | 'purchase-full' | 'kitchen-full'
   const [layoutMode, setLayoutMode] = useState('split')

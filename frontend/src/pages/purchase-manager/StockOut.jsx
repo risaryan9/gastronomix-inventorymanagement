@@ -30,7 +30,7 @@ const StockOut = () => {
   const [kitchenDateTo, setKitchenDateTo] = useState('')
 
   // Pagination per panel
-  const itemsPerPage = 20
+  const itemsPerPage = 10
   const [outletCurrentPage, setOutletCurrentPage] = useState(1)
   const [kitchenCurrentPage, setKitchenCurrentPage] = useState(1)
 
