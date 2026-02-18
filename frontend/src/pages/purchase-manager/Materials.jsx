@@ -60,6 +60,9 @@ const Materials = () => {
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  // Column sort for table: 'name' (material name) or 'low_stock_threshold'
+  const [sortBy, setSortBy] = useState('name')
+  const [sortDirection, setSortDirection] = useState('asc')
 
   // Fetch materials
   const fetchMaterials = async () => {
@@ -136,11 +139,36 @@ const Materials = () => {
     setCurrentPage(1)
   }, [searchQuery, categoryFilter, typeFilter, materials])
 
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1)
+  }
+
+  // Apply column sort to filtered materials
+  const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+    let cmp = 0
+    if (sortBy === 'name') {
+      const nameA = (a.name || '').toLowerCase()
+      const nameB = (b.name || '').toLowerCase()
+      cmp = nameA.localeCompare(nameB)
+    } else if (sortBy === 'low_stock_threshold') {
+      const tA = parseFloat(a.low_stock_threshold || 0)
+      const tB = parseFloat(b.low_stock_threshold || 0)
+      cmp = tA - tB
+    }
+    return sortDirection === 'asc' ? cmp : -cmp
+  })
+
   // Pagination calculations
-  const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage)
+  const totalPages = Math.ceil(sortedMaterials.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
-  const paginatedMaterials = filteredMaterials.slice(startIndex, endIndex)
+  const paginatedMaterials = sortedMaterials.slice(startIndex, endIndex)
 
   // Get unique categories for filter dropdown
   const categories = ['all', ...new Set(materials.map(m => m.category).filter(Boolean))]
@@ -550,12 +578,38 @@ const Materials = () => {
                 <thead>
                   <tr className="border-b-2 border-border bg-background/50">
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('name')}
+                        className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                      >
+                        Material Name
+                        {sortBy === 'name' && (
+                          <span className="text-accent" aria-hidden>
+                            {sortDirection === 'asc' ? ' ↑' : ' ↓'}
+                          </span>
+                        )}
+                      </button>
+                    </th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Code</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">UOM</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Brand</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('low_stock_threshold')}
+                        className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                      >
+                        Low Stock Threshold
+                        {sortBy === 'low_stock_threshold' && (
+                          <span className="text-accent" aria-hidden>
+                            {sortDirection === 'asc' ? ' ↑' : ' ↓'}
+                          </span>
+                        )}
+                      </button>
+                    </th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -606,7 +660,7 @@ const Materials = () => {
           {totalPages > 1 && (
             <div className="border-t border-border px-4 py-4 flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredMaterials.length)} of {filteredMaterials.length} materials
+                Showing {startIndex + 1} to {Math.min(endIndex, sortedMaterials.length)} of {sortedMaterials.length} materials
               </div>
               <div className="flex items-center gap-2">
                 <button

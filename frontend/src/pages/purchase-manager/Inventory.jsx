@@ -43,6 +43,9 @@ const Inventory = () => {
   })
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  // Column sort: 'status' (default no stock → low → in stock), 'quantity', 'low_stock_threshold', 'material'
+  const [sortBy, setSortBy] = useState('status')
+  const [sortDirection, setSortDirection] = useState('asc')
   const [showExportModal, setShowExportModal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
@@ -148,13 +151,13 @@ const Inventory = () => {
           }
         })
 
-        // Sort: In stock first, then Low stock, then Out of stock; within each group by material name
+        // Default sort: No stock first, then Low stock, then In stock; within each group by material name
         const stockStatusOrder = (item) => {
           const qty = parseFloat(item.quantity) || 0
           const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
-          if (qty > threshold) return 0   // In stock
-          if (qty > 0) return 1          // Low stock
-          return 2                         // Out of stock
+          if (qty === 0) return 0          // No stock first
+          if (qty <= threshold) return 1  // Low stock
+          return 2                         // In stock
         }
         inventoryWithMaterials.sort((a, b) => {
           const orderA = stockStatusOrder(a)
@@ -375,16 +378,63 @@ const Inventory = () => {
     return matchesSearch && matchesCategory && matchesType && matchesStockLevel
   })
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredInventory.length / itemsPerPage)
+  // Status order for default sort: no stock (0), low stock (1), in stock (2)
+  const getStatusOrder = (item) => {
+    const qty = parseFloat(item.quantity) || 0
+    const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+    if (qty === 0) return 0
+    if (qty <= threshold) return 1
+    return 2
+  }
+
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1)
+  }
+
+  // Apply column sort to filtered list
+  const sortedInventory = [...filteredInventory].sort((a, b) => {
+    let cmp = 0
+    if (sortBy === 'status') {
+      const orderA = getStatusOrder(a)
+      const orderB = getStatusOrder(b)
+      cmp = orderA - orderB
+      if (cmp === 0) {
+        const nameA = a.raw_materials?.name || ''
+        const nameB = b.raw_materials?.name || ''
+        cmp = nameA.localeCompare(nameB)
+      }
+    } else if (sortBy === 'quantity') {
+      const qA = parseFloat(a.quantity) || 0
+      const qB = parseFloat(b.quantity) || 0
+      cmp = qA - qB
+    } else if (sortBy === 'low_stock_threshold') {
+      const tA = parseFloat(a.raw_materials?.low_stock_threshold || 0)
+      const tB = parseFloat(b.raw_materials?.low_stock_threshold || 0)
+      cmp = tA - tB
+    } else if (sortBy === 'material') {
+      const nameA = (a.raw_materials?.name || '').toLowerCase()
+      const nameB = (b.raw_materials?.name || '').toLowerCase()
+      cmp = nameA.localeCompare(nameB)
+    }
+    return sortDirection === 'asc' ? cmp : -cmp
+  })
+
+  // Pagination calculations (use sorted list)
+  const totalPages = Math.ceil(sortedInventory.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
-  const paginatedInventory = filteredInventory.slice(startIndex, endIndex)
+  const paginatedInventory = sortedInventory.slice(startIndex, endIndex)
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters or sort change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, categoryFilter, typeFilter, stockLevelFilter])
+  }, [searchTerm, categoryFilter, typeFilter, stockLevelFilter, sortBy, sortDirection])
 
   // Calculate stats
   const stats = {
@@ -400,11 +450,11 @@ const Inventory = () => {
     }, 0)
   }
 
-  // Export functions
+  // Export functions (use sortedInventory so export order matches table)
   const exportToCSV = () => {
     const session = getSession()
     const headers = ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
-    const rows = filteredInventory.map(item => {
+    const rows = sortedInventory.map(item => {
       const material = item.raw_materials
       const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
       const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
@@ -481,7 +531,7 @@ const Inventory = () => {
     // Inventory data sheet
     const inventoryData = [
       ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
-      ...filteredInventory.map(item => {
+      ...sortedInventory.map(item => {
         const material = item.raw_materials
         const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
         const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
@@ -489,9 +539,9 @@ const Inventory = () => {
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
         const totalValue = item.fifo_total_value || 0
         const avgCost = item.fifo_average_cost || 0
-        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
+        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' :
                             material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
-        
+
         return [
           materialType,
           material?.name || 'N/A',
@@ -584,7 +634,7 @@ const Inventory = () => {
       }
 
       // Inventory Table
-      const tableData = filteredInventory.map(item => {
+      const tableData = sortedInventory.map(item => {
         const material = item.raw_materials
         const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
         const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
@@ -786,12 +836,56 @@ const Inventory = () => {
                   <thead className="bg-background border-b border-border">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Type</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('material')}
+                          className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                        >
+                          Material
+                          {sortBy === 'material' && (
+                            <span className="text-accent" aria-hidden>{sortDirection === 'asc' ? ' ↑' : ' ↓'}</span>
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Low Stock Threshold</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('quantity')}
+                          className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                        >
+                          Quantity
+                          {sortBy === 'quantity' && (
+                            <span className="text-accent" aria-hidden>{sortDirection === 'asc' ? ' ↑' : ' ↓'}</span>
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('low_stock_threshold')}
+                          className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                        >
+                          Low Stock Threshold
+                          {sortBy === 'low_stock_threshold' && (
+                            <span className="text-accent" aria-hidden>{sortDirection === 'asc' ? ' ↑' : ' ↓'}</span>
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
+                        <button
+                          type="button"
+                          onClick={() => handleSort('status')}
+                          className="inline-flex items-center gap-1 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
+                        >
+                          Status
+                          {sortBy === 'status' && (
+                            <span className="text-accent" aria-hidden>{sortDirection === 'asc' ? ' ↑' : ' ↓'}</span>
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
                     </tr>
                   </thead>
@@ -872,7 +966,7 @@ const Inventory = () => {
               {totalPages > 1 && (
                 <div className="border-t border-border px-4 py-4 flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {startIndex + 1} to {Math.min(endIndex, filteredInventory.length)} of {filteredInventory.length} items
+                    Showing {startIndex + 1} to {Math.min(endIndex, sortedInventory.length)} of {sortedInventory.length} items
                   </div>
                   <div className="flex items-center gap-2">
                     <button
