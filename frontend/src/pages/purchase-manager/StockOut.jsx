@@ -46,6 +46,8 @@ const StockOut = () => {
   const [selfStockOutItems, setSelfStockOutItems] = useState([])
   const [selfStockOutReason, setSelfStockOutReason] = useState('')
   const [selfStockOutNotes, setSelfStockOutNotes] = useState('')
+  const [transferToCloudKitchenId, setTransferToCloudKitchenId] = useState('')
+  const [otherCloudKitchens, setOtherCloudKitchens] = useState([])
   const [allMaterials, setAllMaterials] = useState([])
   const [isSelfStockOut, setIsSelfStockOut] = useState(false)
   const [selectedStockOutRows, setSelectedStockOutRows] = useState(new Set())
@@ -62,6 +64,42 @@ const StockOut = () => {
     fetchAllocationRequests()
   }, [statusFilter])
 
+  // When reason is inter-cloud-kitchen, fetch other cloud kitchens for destination dropdown
+  useEffect(() => {
+    if (selfStockOutReason !== 'inter-cloud-kitchen' || !showSelfStockOutModal) {
+      setTransferToCloudKitchenId('')
+      return
+    }
+    const session = getSession()
+    if (!session?.cloud_kitchen_id) return
+
+    const fetchOtherCloudKitchens = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('cloud_kitchens')
+          .select('id, name, code')
+          .eq('is_active', true)
+          .neq('id', session.cloud_kitchen_id)
+          .order('name')
+
+        if (error) throw error
+        setOtherCloudKitchens(data || [])
+      } catch (err) {
+        console.error('Error fetching cloud kitchens:', err)
+        setAlert(prev => prev || { type: 'error', message: 'Failed to load cloud kitchens' })
+        setOtherCloudKitchens([])
+      }
+    }
+    fetchOtherCloudKitchens()
+  }, [selfStockOutReason, showSelfStockOutModal])
+
+  // Clear transfer destination when reason changes away from inter-cloud
+  useEffect(() => {
+    if (selfStockOutReason !== 'inter-cloud-kitchen') {
+      setTransferToCloudKitchenId('')
+    }
+  }, [selfStockOutReason])
+
   const fetchKitchenStockOutRecords = async () => {
     const session = getSession()
     if (!session?.cloud_kitchen_id) return
@@ -74,6 +112,11 @@ const StockOut = () => {
           users:allocated_by (
             id,
             full_name
+          ),
+          destination_kitchen:cloud_kitchens!transfer_to_cloud_kitchen_id (
+            id,
+            name,
+            code
           ),
           stock_out_items (
             id,
@@ -157,6 +200,8 @@ const StockOut = () => {
     setIsSelfStockOut(true)
     setSelfStockOutReason('')
     setSelfStockOutNotes('')
+    setTransferToCloudKitchenId('')
+    setOtherCloudKitchens([])
     const session = getSession()
 
     try {
@@ -445,10 +490,10 @@ const StockOut = () => {
     })
   }
 
-  // FIFO Allocation Logic (no-op when quantity <= 0)
+  // FIFO Allocation Logic (no-op when quantity <= 0). Returns { totalCost, totalQty } for inter-cloud transfer costing.
   const allocateStockFIFO = async (rawMaterialId, quantity, cloudKitchenId) => {
     const qty = parseFloat(quantity)
-    if (qty <= 0) return true
+    if (qty <= 0) return { totalCost: 0, totalQty: 0 }
 
     // Query stock_in_batches ordered by created_at (oldest first)
     const { data: batches, error: batchError } = await supabase
@@ -467,6 +512,7 @@ const StockOut = () => {
 
     let remainingQuantity = parseFloat(quantity)
     const batchUpdates = []
+    let totalCost = 0
 
     // Iterate through batches and allocate FIFO
     for (const batch of batches) {
@@ -474,6 +520,8 @@ const StockOut = () => {
 
       const availableInBatch = parseFloat(batch.quantity_remaining)
       const toAllocate = Math.min(availableInBatch, remainingQuantity)
+      const unitCost = parseFloat(batch.unit_cost) || 0
+      totalCost += toAllocate * unitCost
 
       // Prepare batch update
       batchUpdates.push({
@@ -499,7 +547,7 @@ const StockOut = () => {
       if (updateError) throw updateError
     }
 
-    return true
+    return { totalCost, totalQty: qty }
   }
 
   // Handle allocation submission (both regular and self stock out)
@@ -534,6 +582,15 @@ const StockOut = () => {
         allocatingRef.current = false
         setAllocating(false)
         return
+      }
+
+      if (selfStockOutReason === 'inter-cloud-kitchen') {
+        if (!transferToCloudKitchenId || transferToCloudKitchenId === session.cloud_kitchen_id) {
+          setAlert({ type: 'error', message: 'Please select the destination cloud kitchen to transfer to' })
+          allocatingRef.current = false
+          setAllocating(false)
+          return
+        }
       }
 
       if (itemsToProcess.length === 0) {
@@ -602,6 +659,9 @@ const StockOut = () => {
         // Self stock out
         stockOutPayload.reason = selfStockOutReason
         stockOutPayload.notes = selfStockOutNotes.trim() || null
+        if (selfStockOutReason === 'inter-cloud-kitchen') {
+          stockOutPayload.transfer_to_cloud_kitchen_id = transferToCloudKitchenId
+        }
       } else {
         // Regular stock out
         stockOutPayload.allocation_request_id = selectedRequest.id
@@ -616,6 +676,9 @@ const StockOut = () => {
         .single()
 
       if (stockOutError) throw stockOutError
+
+      // For inter-cloud transfer, collect FIFO cost per item to create destination stock_in
+      const interCloudFifoResults = []
 
       // Process each item: always create stock_out_item; for quantity > 0 run FIFO and decrement inventory
       for (const item of itemsToProcess) {
@@ -633,35 +696,88 @@ const StockOut = () => {
         if (itemError) throw itemError
 
         if (qty > 0) {
-          // Allocate stock using FIFO and update inventory
-          await allocateStockFIFO(
+          // Allocate stock using FIFO and update inventory (returns { totalCost, totalQty } for inter-cloud)
+          const fifoResult = await allocateStockFIFO(
             item.raw_material_id,
             qty,
             session.cloud_kitchen_id
           )
-
-          const { data: currentInv, error: invFetchError } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-            .eq('raw_material_id', item.raw_material_id)
-            .single()
-
-          if (invFetchError) throw invFetchError
-
-          const newQuantity = parseFloat(currentInv.quantity) - qty
-
-          const { error: invUpdateError } = await supabase
-            .from('inventory')
-            .update({
-              quantity: Math.max(0, newQuantity),
-              last_updated_at: new Date().toISOString(),
-              updated_by: session.id
+          if (isSelfStockOut && selfStockOutReason === 'inter-cloud-kitchen') {
+            interCloudFifoResults.push({
+              raw_material_id: item.raw_material_id,
+              quantity: qty,
+              totalCost: fifoResult.totalCost,
+              totalQty: fifoResult.totalQty
             })
-            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-            .eq('raw_material_id', item.raw_material_id)
+          }
 
-          if (invUpdateError) throw invUpdateError
+          // Note: inventory.quantity is automatically updated by the trigger
+          // sync_inventory_quantity_from_batches when batches are updated via FIFO
+        }
+      }
+
+      // Inter-cloud transfer: create destination stock_in, batches, and increment destination inventory
+      if (isSelfStockOut && selfStockOutReason === 'inter-cloud-kitchen' && interCloudFifoResults.length > 0) {
+        const destinationKitchenId = transferToCloudKitchenId
+        const sourceKitchenName = session.cloud_kitchen_name || session.cloud_kitchen_id || 'Source kitchen'
+        const totalTransferCost = interCloudFifoResults.reduce((sum, r) => sum + (r.totalCost || 0), 0)
+
+        const { data: stockInData, error: stockInError } = await supabase
+          .from('stock_in')
+          .insert({
+            cloud_kitchen_id: destinationKitchenId,
+            received_by: session.id,
+            receipt_date: new Date().toISOString().split('T')[0],
+            supplier_name: null,
+            invoice_number: null,
+            total_cost: totalTransferCost,
+            notes: `Transfer from ${sourceKitchenName}`,
+            stock_in_type: 'inter_cloud',
+            invoice_image_url: null,
+            source_stock_out_id: stockOutData.id
+          })
+          .select()
+          .single()
+
+        if (stockInError) throw stockInError
+
+        for (const row of interCloudFifoResults) {
+          const unitCost = row.totalQty > 0 ? row.totalCost / row.totalQty : 0.01
+          const { error: batchError } = await supabase
+            .from('stock_in_batches')
+            .insert({
+              stock_in_id: stockInData.id,
+              raw_material_id: row.raw_material_id,
+              cloud_kitchen_id: destinationKitchenId,
+              quantity_purchased: row.quantity,
+              quantity_remaining: row.quantity,
+              unit_cost: Math.max(0.01, unitCost),
+              gst_percent: 0
+            })
+
+          if (batchError) throw batchError
+
+          // Ensure destination inventory entry exists (trigger will set quantity from batches)
+          const { data: destInv } = await supabase
+            .from('inventory')
+            .select('id')
+            .eq('cloud_kitchen_id', destinationKitchenId)
+            .eq('raw_material_id', row.raw_material_id)
+            .maybeSingle()
+
+          if (!destInv) {
+            // Create inventory entry; trigger will set quantity from batches
+            const { error: invInsErr } = await supabase
+              .from('inventory')
+              .insert({
+                cloud_kitchen_id: destinationKitchenId,
+                raw_material_id: row.raw_material_id,
+                quantity: 0, // Trigger will update this
+                updated_by: session.id
+              })
+            if (invInsErr) throw invInsErr
+          }
+          // Note: inventory.quantity is automatically updated by trigger when batches are inserted
         }
       }
 
@@ -705,10 +821,12 @@ const StockOut = () => {
         if (updateRequestError) throw updateRequestError
       }
 
-      setAlert({ 
-        type: 'success', 
-        message: isSelfStockOut ? 'Self stock out completed successfully!' : 'Stock allocated successfully!' 
-      })
+      const successMessage = isSelfStockOut
+        ? (selfStockOutReason === 'inter-cloud-kitchen'
+            ? `Transfer completed successfully! Stock sent to ${otherCloudKitchens.find(c => c.id === transferToCloudKitchenId)?.name || 'destination'}.`
+            : 'Self stock out completed successfully!')
+        : 'Stock allocated successfully!'
+      setAlert({ type: 'success', message: successMessage })
       
       if (isSelfStockOut) {
         setShowSelfStockOutModal(false)
@@ -1386,6 +1504,12 @@ const StockOut = () => {
                             {record.reason
                               ? record.reason.replace(/-/g, ' ')
                               : '—'}
+                            {record.reason === 'inter-cloud-kitchen' && record.destination_kitchen && (
+                              <span className="block text-xs text-muted-foreground mt-0.5">
+                                → {record.destination_kitchen.name}
+                                {record.destination_kitchen.code ? ` (${record.destination_kitchen.code})` : ''}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-foreground text-sm">
                             {record.stock_out_items?.length || 0}
@@ -1610,8 +1734,31 @@ const StockOut = () => {
                   <option value="wastage">Wastage</option>
                   <option value="staff-food">Staff Food</option>
                   <option value="internal-production">Internal Production</option>
+                  <option value="inter-cloud-kitchen">Inter Cloud Kitchen Transfer</option>
                 </select>
               </div>
+
+              {/* Destination kitchen (only when reason is inter-cloud-kitchen) */}
+              {selfStockOutReason === 'inter-cloud-kitchen' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-foreground mb-2">
+                    Transfer to <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={transferToCloudKitchenId}
+                    onChange={(e) => setTransferToCloudKitchenId(e.target.value)}
+                    disabled={allocating}
+                    className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                  >
+                    <option value="">Select destination cloud kitchen</option>
+                    {otherCloudKitchens.map((ck) => (
+                      <option key={ck.id} value={ck.id}>
+                        {ck.name} ({ck.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Additional Notes Field */}
               <div className="mb-6">
@@ -1809,6 +1956,7 @@ const StockOut = () => {
                   disabled={
                     allocating || 
                     !selfStockOutReason ||
+                    (selfStockOutReason === 'inter-cloud-kitchen' && !transferToCloudKitchenId) ||
                     selfStockOutItems.filter(item => item.raw_material_id && parseFloat(item.allocated_quantity) > 0).length === 0
                   }
                   className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1876,6 +2024,12 @@ const StockOut = () => {
                     <p className="font-semibold text-foreground capitalize">
                       {stockOutDetails.reason.replace(/-/g, ' ')}
                     </p>
+                    {stockOutDetails.reason === 'inter-cloud-kitchen' && stockOutDetails.destination_kitchen && (
+                      <p className="text-sm text-foreground mt-1">
+                        Transfer to: <span className="font-semibold">{stockOutDetails.destination_kitchen.name}</span>
+                        {stockOutDetails.destination_kitchen.code ? ` (${stockOutDetails.destination_kitchen.code})` : ''}
+                      </p>
+                    )}
                   </div>
                 )}
                 {stockOutDetails.self_stock_out && stockOutDetails.notes && (

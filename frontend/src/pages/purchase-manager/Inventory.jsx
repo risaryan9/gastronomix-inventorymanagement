@@ -246,7 +246,7 @@ const Inventory = () => {
     setShowConfirmModal(true)
   }
 
-  // Confirm and update inventory
+  // Confirm and update inventory via edge function
   const confirmUpdateInventory = async () => {
     if (!editingItem) return
     
@@ -265,78 +265,53 @@ const Inventory = () => {
     const newQuantity = parseFloat(editForm.quantity)
     const oldQuantity = parseFloat(editingItem.quantity)
 
+    if (isNaN(newQuantity) || newQuantity < 0) {
+      setAlert({ type: 'error', message: 'Please enter a valid quantity (must be >= 0)' })
+      return
+    }
+
     setUpdating(true)
     try {
-      // Update inventory
-      const { data: updatedData, error: updateError } = await supabase
-        .from('inventory')
-        .update({
-          quantity: newQuantity,
-          last_updated_at: new Date().toISOString(),
-          updated_by: session.id
-        })
-        .eq('id', editingItem.id)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error('Error updating inventory:', updateError)
-        setAlert({ type: 'error', message: `Failed to update inventory: ${updateError.message}` })
+      // Get auth token
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      if (!authSession?.access_token) {
+        setAlert({ type: 'error', message: 'Authentication required. Please log in again.' })
         setUpdating(false)
         return
       }
 
-      // Create audit log entry
-      // Calculate adjustment type automatically
-      const calculatedAdjustmentType = calculateAdjustmentType(newQuantity, oldQuantity)
-      const adjustmentAmount = Math.abs(newQuantity - oldQuantity)
-      const auditLogData = {
-        user_id: session.id,
-        action: `inventory_${calculatedAdjustmentType}`,
-        entity_type: 'inventory',
-        entity_id: editingItem.id,
-        old_values: {
-          quantity: oldQuantity,
-          raw_material_id: editingItem.raw_material_id,
-          cloud_kitchen_id: session.cloud_kitchen_id
-        },
-        new_values: {
-          quantity: newQuantity,
-          raw_material_id: editingItem.raw_material_id,
-          cloud_kitchen_id: session.cloud_kitchen_id
-        },
-        ip_address: null, // Could be captured from request if available
-        user_agent: navigator.userAgent || null
+      // Call edge function to adjust inventory
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/adjust-inventory`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authSession.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            cloud_kitchen_id: session.cloud_kitchen_id,
+            raw_material_id: editingItem.raw_material_id,
+            new_quantity: newQuantity,
+            reason: adjustmentForm.reason,
+            details: adjustmentForm.details || null
+          })
+        }
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to adjust inventory')
       }
 
-      // Add reason and details to audit log
-      auditLogData.old_values.reason = adjustmentForm.reason
-      auditLogData.old_values.details = adjustmentForm.details || null
-      auditLogData.old_values.adjustment_type = calculatedAdjustmentType
-      auditLogData.old_values.adjustment_amount = adjustmentAmount
+      // Refresh inventory to get updated quantity from trigger
+      await fetchInventory()
 
-      const { error: auditError } = await supabase
-        .from('audit_logs')
-        .insert(auditLogData)
-
-      if (auditError) {
-        console.error('Error creating audit log:', auditError)
-        // Don't fail the update if audit log fails, but log it
-      }
-
-      // Update local state
-      setInventory(prev => prev.map(item => 
-        item.id === editingItem.id 
-          ? { 
-              ...item, 
-              quantity: parseFloat(updatedData.quantity),
-              last_updated_at: updatedData.last_updated_at,
-              updated_by: updatedData.updated_by
-            }
-          : item
-      ))
-
-      setAlert({ type: 'success', message: 'Inventory updated successfully!' })
+      setAlert({ 
+        type: 'success', 
+        message: `Inventory ${result.adjustment_type}ed successfully! ${result.adjustment_type === 'increment' ? 'Added' : 'Removed'} ${Math.abs(result.adjustment_amount).toFixed(3)} units.` 
+      })
       closeEditModal()
     } catch (err) {
       console.error('Error updating inventory:', err)

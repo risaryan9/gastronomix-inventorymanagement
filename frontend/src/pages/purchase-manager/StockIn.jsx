@@ -580,10 +580,9 @@ const StockIn = () => {
 
       if (stockInError) throw stockInError
 
-      // Check if materials exist in inventory, create entries if they don't
-      // This must happen BEFORE creating stock_in_batches
+      // Ensure inventory entries exist for all materials
+      // The trigger will automatically set quantity from batches
       for (const item of validPurchaseItems) {
-        // Check if inventory entry exists
         const { data: existingInventory } = await supabase
           .from('inventory')
           .select('id')
@@ -591,21 +590,19 @@ const StockIn = () => {
           .eq('raw_material_id', item.raw_material_id)
           .maybeSingle()
 
-        // If inventory entry doesn't exist, create it with quantity 0
-        // (The trigger should handle this, but we ensure it exists)
+        // Create inventory entry if it doesn't exist (quantity will be set by trigger)
         if (!existingInventory) {
           const { error: inventoryError } = await supabase
             .from('inventory')
             .insert({
               cloud_kitchen_id: session.cloud_kitchen_id,
               raw_material_id: item.raw_material_id,
-              quantity: 0, // Will be updated when batches are created
+              quantity: 0, // Trigger will update this from batches
               updated_by: session.id
             })
 
           if (inventoryError) {
             console.error('Error creating inventory entry:', inventoryError)
-            // Continue even if inventory creation fails
           }
         }
       }
@@ -631,52 +628,8 @@ const StockIn = () => {
 
       if (batchesError) throw batchesError
 
-      // Update inventory quantities by incrementing with the new batch quantities
-      for (const item of validPurchaseItems) {
-        const quantity = parseFloat(item.quantity)
-        
-        // Fetch current inventory
-        const { data: currentInventory } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .eq('raw_material_id', item.raw_material_id)
-          .maybeSingle()
-
-        if (currentInventory) {
-          // Update existing inventory by adding the new quantity
-          const newQuantity = parseFloat(currentInventory.quantity || 0) + quantity
-          
-          const { error: updateError } = await supabase
-            .from('inventory')
-            .update({
-              quantity: newQuantity,
-              last_updated_at: new Date().toISOString(),
-              updated_by: session.id
-            })
-            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-            .eq('raw_material_id', item.raw_material_id)
-
-          if (updateError) {
-            console.error('Error updating inventory quantity:', updateError)
-          }
-        } else {
-          // If inventory entry still doesn't exist, create it with the quantity
-          const { error: insertError } = await supabase
-            .from('inventory')
-            .insert({
-              cloud_kitchen_id: session.cloud_kitchen_id,
-              raw_material_id: item.raw_material_id,
-              quantity: quantity,
-              last_updated_at: new Date().toISOString(),
-              updated_by: session.id
-            })
-
-          if (insertError) {
-            console.error('Error creating inventory entry:', insertError)
-          }
-        }
-      }
+      // Note: inventory.quantity is automatically updated by the trigger
+      // sync_inventory_quantity_from_batches when batches are inserted
 
       // Close modals and refresh
       setShowConfirmModal(false)
