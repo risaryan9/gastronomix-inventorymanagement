@@ -158,7 +158,7 @@ async function seedMaterials() {
           console.warn(`   ⚠ Vendor "${vendorName}" not found - material will have no vendor`)
         }
         
-        // Prepare material data
+        // Prepare material data (material_type: 'raw_material' per schema; trigger creates inventory for new material)
         const materialData = {
           name: row.name.trim(),
           code,
@@ -168,7 +168,8 @@ async function seedMaterials() {
           low_stock_threshold: lowStockThreshold, // Will be stored as 45.000 in numeric(10,3)
           is_active: row.is_active === 'TRUE' || row.is_active === 'true' || row.is_active === '1',
           brand: row.brand ? row.brand.trim() : null,
-          vendor_id: vendorId
+          vendor_id: vendorId,
+          material_type: 'raw_material'
         }
         
         // Insert material
