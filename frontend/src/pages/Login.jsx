@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const Login = () => {
+  const navigate = useNavigate()
   const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -52,8 +54,8 @@ const Login = () => {
       localStorage.setItem('user_session', JSON.stringify(sessionData))
       sessionStorage.setItem('user', JSON.stringify(sessionData))
 
-      // Redirect to role-based dashboard
-      window.location.href = `/invmanagement/dashboard/${userData.role}`
+      // Redirect to role-based dashboard (client-side navigation)
+      navigate(`/invmanagement/dashboard/${userData.role}`, { replace: true })
     } catch (err) {
       setError(err.message || 'Failed to login')
     } finally {
@@ -195,8 +197,8 @@ const Login = () => {
       // Also set in sessionStorage for immediate access
       sessionStorage.setItem('user', JSON.stringify(sessionData))
 
-      // Redirect to role-based dashboard
-      window.location.href = `/invmanagement/dashboard/${userData.role}`
+      // Redirect to role-based dashboard (client-side navigation)
+      navigate(`/invmanagement/dashboard/${userData.role}`, { replace: true })
     } catch (err) {
       setError(err.message || 'Failed to login')
     } finally {
