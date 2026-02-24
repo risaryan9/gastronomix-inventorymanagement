@@ -1,58 +1,94 @@
-name,unit,description,category,low_stock_threshold,is_active,brand,vendor
-Amul Butter,kg,Premium quality butter,Dairy,45.000,TRUE,Amul,Hyperpure
-Amul Fresh Cream,kg,Fresh dairy cream,Dairy,30.000,TRUE,Amul,Hyperpure
-Amul Process Cheese,kg,Processed cheese block,Dairy,25.000,TRUE,Amul,Hyperpure
-Balck Papper,kg,Black pepper spice,Spices,15.000,TRUE,East Made,Hyperpure
-Black Salt,kg,Rock salt for seasoning,Spices,20.000,TRUE,Sparsh,Hyperpure
-Chat Masala,kg,Tangy spice blend,Spices,18.000,TRUE,East Made,Hyperpure
-Chicken Breast Boneless,kg,Fresh boneless chicken breast,Meat,12.000,TRUE,Local,Fresko Choice
-Chicken Thigh Boneless,kg,Fresh boneless chicken thigh,Meat,10.000,TRUE,Local,Fresko Choice
-Chilli powder (Eastera),kg,Red chilli powder,Spices,22.000,TRUE,Eastern,Hyperpure
-Cinnamon sticks,kg,Aromatic cinnamon bark,Spices,8.000,TRUE,East Made,Hyperpure
-Cloves,kg,Dried flower buds spice,Spices,12.000,TRUE,East Made,Hyperpure
-Coriander Powder,kg,Ground coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure
-Corn Flour,kg,Fine cornstarch,Grains,35.000,TRUE,ATC,Hyperpure
-Deggi mirch,kg,Kashmiri red chilli powder,Spices,16.000,TRUE,MDH,Hyperpure
-Dry coconut,kg,Desiccated coconut,Misc,14.000,TRUE,Minar,Hyperpure
-Dry mango powder,kg,Amchur powder,Spices,11.000,TRUE,East Made,Hyperpure
-Garlic Powder,kg,Dehydrated garlic powder,Spices,19.000,TRUE,Bakers,Punjab Store
-Green Cardamon,kg,Premium green cardamom pods,Spices,7.000,TRUE,East Made,Hyperpure
-Guntur Chilli Whole,kg,Whole dried red chillies,Spices,24.000,TRUE,East Made,Hyperpure
-Jeera Powder,kg,Cumin powder,Spices,26.000,TRUE,East Made,Hyperpure
-Jeera rice,kg,Aromatic jeera rice,Grains,40.000,TRUE,Malik Deenar,Hyperpure
-Kaju,kg,Cashew nuts,Misc,9.000,TRUE,Bolas,Hyperpure
-Kasoori Methi,kg,Dried fenugreek leaves,Spices,13.000,TRUE,MDH,Hyperpure
-Mayonnaise,kg,Creamy mayonnaise,Misc,32.000,TRUE,Foodrite,Hyperpure
-Meethi Seed,kg,Fenugreek seeds,Spices,17.000,TRUE,East Made,Hyperpure
-Mix Veg Pickel,kg,Mixed vegetable pickle,Misc,21.000,TRUE,Swastiks,Hyperpure
-MSG,kg,Monosodium glutamate,Misc,23.000,TRUE,Springburst,Hyperpure
-Mustard oil,liter,Cooking mustard oil,Oils,38.000,TRUE,Fortune,Hyperpure
-Mustard Seed,kg,Yellow mustard seeds,Spices,27.000,TRUE,East Made,Hyperpure
-Nutmeg,kg,Whole nutmeg spice,Spices,6.000,TRUE,East Made,Hyperpure
-Red chilli powder (Tikhalal ),kg,Spicy red chilli powder,Spices,29.000,TRUE,Everest,Hyperpure
-Rostated chana,kg,Roasted chickpeas,Grains,33.000,TRUE,ZKP,Hyperpure
-Saunf,kg,Fennel seeds,Spices,31.000,TRUE,East Made,Hyperpure
-Soxin wine,btl,Cooking wine,Misc,15.000,TRUE,No Brand,Punjab Store
-Soya Chaap Trinity,kg,Soya chaap chunks,Vegetables,18.000,TRUE,Maharaja,SB Interprice
-Star anis,kg,Star anise spice,Spices,10.000,TRUE,Minar,Hyperpure
-Stone flower,kg,Dried lichen spice,Spices,8.000,TRUE,East Made,Hyperpure
-Sugar,kg,White granulated sugar,Misc,50.000,TRUE,ZKP,Hyperpure
-Sunpure Refine Oil,kg,Refined cooking oil,Oils,42.000,TRUE,Sunpure,Hyperpure
-Tamarind,kg,Tamarind pulp,Misc,25.000,TRUE,Eastern,Hyperpure
-Tata Salt,kg,Iodized table salt,Misc,60.000,TRUE,Tata,Hyperpure
-Tomato ketchup,kg,Tomato sauce,Misc,36.000,TRUE,Kissan,Hyperpure
-Turmeric Powder MDH,kg,Ground turmeric powder,Spices,34.000,TRUE,MDH,Hyperpure
-Viniger Synthetic,btl,Synthetic vinegar,Misc,20.000,TRUE,Golden Corn,Hyperpure
-VKL Peri Peri Marinated,kg,Peri peri marinade,Misc,12.000,TRUE,VKL,Hyperpure
-White pepper powder,kg,White pepper spice,Spices,14.000,TRUE,East Made,Hyperpure
-Whole Coriander Seed,kg,Whole coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure
-Whole Jeera,kg,Whole cumin seeds,Spices,30.000,TRUE,East Made,Hyperpure
-MDH Chat Masala,liter,Chat masala blend,Spices,16.000,TRUE,MDH,Hyperpure
-Ghee,liter,Clarified butter,Dairy,22.000,TRUE,Nandini,Hyperpure
-Sahi Jeera,kg,Premium cumin seeds,Spices,11.000,TRUE,East Made,Hyperpure
-Burger Patty,kg,Frozen burger patties,Meat,15.000,TRUE,Roi Poltry,Rai Poltry
-Rumali Roti,nos,Thin flatbread,Grains,100.000,TRUE,Local,Local
-Gungra Pickel,kg,Gongura pickle,Misc,18.000,TRUE,Priya,Priya Foods
-Amul Cheese slice,nos,Cheese slices,Dairy,50.000,TRUE,Amul,Hyperpure
-barguer bun,kg,Burger buns,Grains,45.000,TRUE,English Oven,English Oven
-Bamboo Skewer,kg,Wooden skewers,Misc,24.000,TRUE,Local,
+name,unit,description,category,low_stock_threshold,is_active,brand,vendor,material_type
+Amul Butter,kg,Premium quality butter,Dairy,45.000,TRUE,Amul,Hyperpure,raw_material
+Amul Fresh Cream,kg,Fresh dairy cream,Dairy,30.000,TRUE,Amul,Hyperpure,raw_material
+Amul Processed Cheese,kg,Processed cheese block,Dairy,25.000,TRUE,Amul,Hyperpure,raw_material
+Black Pepper,kg,Black pepper spice,Spices,15.000,TRUE,East Made,Hyperpure,raw_material
+Black Salt,kg,Rock salt for seasoning,Spices,20.000,TRUE,Sparsh,Hyperpure,raw_material
+Chaat Masala,kg,Tangy spice blend,Spices,18.000,TRUE,East Made,Hyperpure,raw_material
+Chicken Breast Boneless,kg,Fresh boneless chicken breast,Meat,12.000,TRUE,Local,Fresko Choice,raw_material
+Chicken Thigh Boneless,kg,Fresh boneless chicken thigh,Meat,10.000,TRUE,Local,Fresko Choice,raw_material
+Chilli Powder (Eastern),kg,Red chilli powder,Spices,22.000,TRUE,Eastern,Hyperpure,raw_material
+Cinnamon Sticks,kg,Aromatic cinnamon bark,Spices,8.000,TRUE,East Made,Hyperpure,raw_material
+Cloves,kg,Dried flower buds spice,Spices,12.000,TRUE,East Made,Hyperpure,raw_material
+Coriander Powder,kg,Ground coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure,raw_material
+Corn Flour,kg,Fine cornstarch,Grains,35.000,TRUE,ATC,Hyperpure,raw_material
+Deggi Mirch,kg,Kashmiri red chilli powder,Spices,16.000,TRUE,MDH,Hyperpure,raw_material
+Dry Coconut,kg,Desiccated coconut,Misc,14.000,TRUE,Minar,Hyperpure,raw_material
+Dry Mango Powder,kg,Amchur powder,Spices,11.000,TRUE,East Made,Hyperpure,raw_material
+Garlic Powder,kg,Dehydrated garlic powder,Spices,19.000,TRUE,Bakers,Punjab Store,raw_material
+Green Cardamom,kg,Premium green cardamom pods,Spices,7.000,TRUE,East Made,Hyperpure,raw_material
+Guntur Chilli Whole,kg,Whole dried red chillies,Spices,24.000,TRUE,East Made,Hyperpure,raw_material
+Jeera Powder,kg,Cumin powder,Spices,26.000,TRUE,East Made,Hyperpure,raw_material
+Jeera Rice,kg,Aromatic jeera rice,Grains,40.000,TRUE,Malik Deenar,Hyperpure,raw_material
+Kaju,kg,Cashew nuts,Misc,9.000,TRUE,Bolas,Hyperpure,raw_material
+Kasoori Methi,kg,Dried fenugreek leaves,Spices,13.000,TRUE,MDH,Hyperpure,raw_material
+Mayonnaise,kg,Creamy mayonnaise,Misc,32.000,TRUE,Foodrite,Hyperpure,raw_material
+Methi Seed,kg,Fenugreek seeds,Spices,17.000,TRUE,East Made,Hyperpure,raw_material
+Mixed Veg Pickle,kg,Mixed vegetable pickle,Misc,21.000,TRUE,Swastiks,Hyperpure,raw_material
+MSG,kg,Monosodium glutamate,Misc,23.000,TRUE,Springburst,Hyperpure,raw_material
+Mustard Oil,liter,Cooking mustard oil,Oils,38.000,TRUE,Fortune,Hyperpure,raw_material
+Mustard Seed,kg,Yellow mustard seeds,Spices,27.000,TRUE,East Made,Hyperpure,raw_material
+Nutmeg,kg,Whole nutmeg spice,Spices,6.000,TRUE,East Made,Hyperpure,raw_material
+Red Chilli Powder (Tikhalal),kg,Spicy red chilli powder,Spices,29.000,TRUE,Everest,Hyperpure,raw_material
+Roasted Chana,kg,Roasted chickpeas,Grains,33.000,TRUE,ZKP,Hyperpure,raw_material
+Saunf,kg,Fennel seeds,Spices,31.000,TRUE,East Made,Hyperpure,raw_material
+Soxin Wine,btl,Cooking wine,Misc,15.000,TRUE,No Brand,Punjab Store,raw_material
+Soya Chaap Trinity,kg,Soya chaap chunks,Vegetables,18.000,TRUE,Maharaja,SB Interprice,raw_material
+Star Anise,kg,Star anise spice,Spices,10.000,TRUE,Minar,Hyperpure,raw_material
+Stone Flower,kg,Dried lichen spice,Spices,8.000,TRUE,East Made,Hyperpure,raw_material
+Sugar,kg,White granulated sugar,Misc,50.000,TRUE,ZKP,Hyperpure,raw_material
+Sunpure Refined Oil,kg,Refined cooking oil,Oils,42.000,TRUE,Sunpure,Hyperpure,raw_material
+Tamarind,kg,Tamarind pulp,Misc,25.000,TRUE,Eastern,Hyperpure,raw_material
+Tata Salt,kg,Iodized table salt,Misc,60.000,TRUE,Tata,Hyperpure,raw_material
+Tomato Ketchup,kg,Tomato sauce,Misc,36.000,TRUE,Kissan,Hyperpure,raw_material
+Turmeric Powder (MDH),kg,Ground turmeric powder,Spices,34.000,TRUE,MDH,Hyperpure,raw_material
+Vinegar Synthetic,btl,Synthetic vinegar,Misc,20.000,TRUE,Golden Corn,Hyperpure,raw_material
+VKL Peri Peri Marinade,kg,Peri peri marinade,Misc,12.000,TRUE,VKL,Hyperpure,raw_material
+White Pepper Powder,kg,White pepper spice,Spices,14.000,TRUE,East Made,Hyperpure,raw_material
+Whole Coriander Seed,kg,Whole coriander seeds,Spices,28.000,TRUE,East Made,Hyperpure,raw_material
+Whole Jeera,kg,Whole cumin seeds,Spices,30.000,TRUE,East Made,Hyperpure,raw_material
+MDH Chaat Masala,liter,Chaat masala blend,Spices,16.000,TRUE,MDH,Hyperpure,raw_material
+Ghee,liter,Clarified butter,Dairy,22.000,TRUE,Nandini,Hyperpure,raw_material
+Shahi Jeera,kg,Premium cumin seeds,Spices,11.000,TRUE,East Made,Hyperpure,raw_material
+Burger Patty,kg,Frozen burger patties,Meat,15.000,TRUE,Roi Poultry,Rai Poultry,raw_material
+Rumali Roti,nos,Thin flatbread,Grains,100.000,TRUE,Local,Local,raw_material
+Gongura Pickle,kg,Gongura pickle,Misc,18.000,TRUE,Priya,Priya Foods,raw_material
+Amul Cheese Slice,nos,Cheese slices,Dairy,50.000,TRUE,Amul,Hyperpure,raw_material
+Burger Bun,kg,Burger buns,Grains,45.000,TRUE,English Oven,English Oven,raw_material
+Bamboo Skewer,kg,Wooden skewers,Misc,24.000,TRUE,Local,,raw_material
+Poolish,gm,Pre-fermented dough used for pizza and bread fermentation,NULL,8.000,TRUE,NULL,NULL,semi_finished
+Pizza Dough Std,gm,Standard pizza dough prepared for daily service,NULL,20.000,TRUE,NULL,NULL,semi_finished
+Marinara - Boom,gm,Classic tomato-based marinara sauce,NULL,15.000,TRUE,NULL,NULL,semi_finished
+Basil Pesto - Boom,gm,Fresh basil pesto sauce with herbs and oil,NULL,10.000,TRUE,NULL,NULL,semi_finished
+Bechamel Sauce,gm,White sauce made from milk butter and flour,NULL,12.000,TRUE,NULL,NULL,semi_finished
+Tandoori Chicken,gm,Chicken marinated with tandoori spices and cooked,NULL,10.000,TRUE,NULL,NULL,semi_finished
+Chicken Basic Marination,gm,Basic spiced chicken marinade for multiple dishes,NULL,14.000,TRUE,NULL,NULL,semi_finished
+Cilantro Pesto - Boom,gm,Fresh coriander based pesto sauce,NULL,9.000,TRUE,NULL,NULL,semi_finished
+Dough,gm,Fresh dough prepared for daily kitchen use,NULL,25.000,TRUE,NULL,NULL,semi_finished
+Ghee Roast Masala,gm,Spice blend used for ghee roast preparations,NULL,6.000,TRUE,NULL,NULL,semi_finished
+Mushroom Pate - Boom,gm,Creamy mushroom pate spread,NULL,7.000,TRUE,NULL,NULL,semi_finished
+Ginger Garlic Paste,gm,Fresh paste of ginger and garlic,NULL,18.000,TRUE,NULL,NULL,semi_finished
+Tandoori Marinated,gm,Raw chicken marinated with tandoori spices,NULL,12.000,TRUE,NULL,NULL,semi_finished
+Makhani Gravy,gm,Rich buttery tomato based gravy,NULL,14.000,TRUE,NULL,NULL,semi_finished
+Smoked Chilli Oil,gm,Oil infused with smoked chillies,NULL,6.000,TRUE,NULL,NULL,semi_finished
+Gongura Aioli,gm,Creamy aioli flavoured with gongura,NULL,5.000,TRUE,NULL,NULL,semi_finished
+Thyme and Pepper Dip,gm,Herb infused pepper dip,NULL,6.000,TRUE,NULL,NULL,semi_finished
+Garlic Butter,gm,Butter blended with garlic and herbs,NULL,16.000,TRUE,NULL,NULL,semi_finished
+Lemon Juice,gm,Fresh extracted lemon juice,NULL,20.000,TRUE,NULL,NULL,semi_finished
+Chicken Basic Marination (Raw),gm,Raw chicken marinated with basic spices,NULL,10.000,TRUE,NULL,NULL,semi_finished
+Basic Marinated Paneer,gm,Paneer marinated with mild spices,NULL,9.000,TRUE,NULL,NULL,semi_finished
+Processed Sun Dried Tomato,gm,Sun dried tomatoes processed for sauces,NULL,7.000,TRUE,NULL,NULL,semi_finished
+Pizza Flour Mix,gm,Flour blend optimized for pizza dough,NULL,30.000,TRUE,NULL,NULL,semi_finished
+Peri Peri Soya Chaap,nos,Soya chaap marinated with peri peri spices and grilled,NULL,10.000,TRUE,NULL,NULL,finished
+Achari Soya Chaap,nos,Soya chaap marinated with traditional achari spices,NULL,10.000,TRUE,NULL,NULL,finished
+Lahsuni Soya Chaap,nos,Soya chaap flavoured with garlic based marinade,NULL,10.000,TRUE,NULL,NULL,finished
+Afghani Soya Chaap,nos,Creamy Afghani style marinated soya chaap,NULL,9.000,TRUE,NULL,NULL,finished
+Tandoori Grilled Veggies,nos,Mixed vegetables marinated and grilled in tandoori spices,NULL,12.000,TRUE,NULL,NULL,finished
+Thecha Paneer Tikka,nos,Paneer tikka tossed in spicy green chilli thecha,NULL,9.000,TRUE,NULL,NULL,finished
+Tandoori Mushrooms,nos,Mushrooms marinated in tandoori spices and grilled,NULL,8.000,TRUE,NULL,NULL,finished
+Andhra Kabab,nos,Spicy Andhra style kabab preparation,NULL,8.000,TRUE,NULL,NULL,finished
+Malai Kabab,nos,Creamy mild flavoured kabab,NULL,8.000,TRUE,NULL,NULL,finished
+Peri Peri Kabab,nos,Kabab marinated with peri peri seasoning,NULL,8.000,TRUE,NULL,NULL,finished
+Hariyali Kabab,nos,Green herb and mint flavoured kabab,NULL,8.000,TRUE,NULL,NULL,finished
+Lemon Kabab,nos,Light lemon flavoured kabab,NULL,8.000,TRUE,NULL,NULL,finished
+Gongura Kabab,nos,Kabab flavoured with tangy gongura leaves,NULL,8.000,TRUE,NULL,NULL,finished

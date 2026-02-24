@@ -157,8 +157,27 @@ async function seedMaterials() {
         if (vendorName && !vendorId) {
           console.warn(`   ⚠ Vendor "${vendorName}" not found - material will have no vendor`)
         }
+
+        // Handle material_type column (raw_material / semi_finished / finished)
+        const rawMaterialType = (row.material_type || '').trim().toLowerCase()
+        let materialType
+        if (!rawMaterialType) {
+          // Default when column is missing or empty (matches existing behavior)
+          materialType = 'raw_material'
+        } else if (['raw_material', 'semi_finished', 'finished'].includes(rawMaterialType)) {
+          materialType = rawMaterialType
+        } else if (rawMaterialType === 'raw') {
+          materialType = 'raw_material'
+        } else if (rawMaterialType === 'semi-finished' || rawMaterialType === 'semi finished') {
+          materialType = 'semi_finished'
+        } else {
+          console.warn(
+            `   ⚠ Invalid material_type "${row.material_type}" for "${row.name}", defaulting to 'raw_material'`
+          )
+          materialType = 'raw_material'
+        }
         
-        // Prepare material data (material_type: 'raw_material' per schema; trigger creates inventory for new material)
+        // Prepare material data; trigger creates inventory for new material
         const materialData = {
           name: row.name.trim(),
           code,
@@ -169,7 +188,7 @@ async function seedMaterials() {
           is_active: row.is_active === 'TRUE' || row.is_active === 'true' || row.is_active === '1',
           brand: row.brand ? row.brand.trim() : null,
           vendor_id: vendorId,
-          material_type: 'raw_material'
+          material_type: materialType
         }
         
         // Insert material
