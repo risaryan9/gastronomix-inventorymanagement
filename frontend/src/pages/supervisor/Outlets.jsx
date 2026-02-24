@@ -123,6 +123,15 @@ const Outlets = () => {
   }, [searchTerm, allOutlets])
 
   const handleOutletClick = (outlet) => {
+    const status = todayAllocationStatus[outlet.id]
+    if (status?.isPacked) {
+      setAlert({
+        type: 'warning',
+        message: 'Today\'s allocation request for this outlet has already been packed. You cannot create another request for today.'
+      })
+      return
+    }
+
     navigate(`/invmanagement/dashboard/supervisor/outlets/${outlet.id}`, { state: { outlet } })
   }
 
@@ -234,14 +243,18 @@ const Outlets = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
-                {outlets.map((outlet) => (
+                {outlets.map((outlet) => {
+                  const status = todayAllocationStatus[outlet.id]
+                  const isPackedToday = !!status?.isPacked
+                  return (
                   <button
                     key={outlet.id}
+                    disabled={isPackedToday}
                     onClick={() => handleOutletClick(outlet)}
                     className={`bg-card border-2 rounded-xl p-4 lg:p-5 hover:border-accent hover:shadow-lg transition-all duration-200 text-left active:scale-98 touch-manipulation ${
-                      todayAllocationStatus[outlet.id]?.isPacked
+                      isPackedToday
                         ? 'border-green-500/70 bg-green-500/5'
-                        : todayAllocationStatus[outlet.id]?.hasRequest
+                        : status?.hasRequest
                           ? 'border-yellow-500/70 bg-yellow-500/5'
                           : 'border-border'
                     }`}
@@ -256,12 +269,12 @@ const Outlets = () => {
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1 ml-2">
-                        {todayAllocationStatus[outlet.id]?.isPacked && (
+                        {isPackedToday && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">
                             Today: Packed
                           </span>
                         )}
-                        {!todayAllocationStatus[outlet.id]?.isPacked && todayAllocationStatus[outlet.id]?.hasRequest && (
+                        {!isPackedToday && status?.hasRequest && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">
                             Today: Request sent
                           </span>
@@ -294,13 +307,17 @@ const Outlets = () => {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                      <span className="text-xs lg:text-sm text-accent font-semibold">View Details & Allocate</span>
+                      <span className={`text-xs lg:text-sm font-semibold ${
+                        isPackedToday ? 'text-muted-foreground' : 'text-accent'
+                      }`}>
+                        {isPackedToday ? 'Allocation already packed' : 'View Details & Allocate'}
+                      </span>
                       <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
                   </button>
-                ))}
+                )})}
               </div>
             )}
           </div>
