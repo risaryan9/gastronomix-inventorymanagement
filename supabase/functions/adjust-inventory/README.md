@@ -1,4 +1,4 @@
-# Adjust Inventory Edge Function
+# Adjust Inventory Edge Function.
 
 ## Purpose
 
