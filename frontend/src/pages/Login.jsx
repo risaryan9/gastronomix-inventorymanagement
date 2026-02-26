@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 
 const Login = () => {
   const navigate = useNavigate()
-  const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor'
+  const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginKey, setLoginKey] = useState('')
@@ -63,10 +63,10 @@ const Login = () => {
     }
   }
 
-  // Fetch cloud kitchens when login type is purchase_manager or supervisor
+  // Fetch cloud kitchens when login type is tied to a specific cloud kitchen
   useEffect(() => {
     const fetchCloudKitchens = async () => {
-      if (loginType === 'purchase_manager' || loginType === 'supervisor') {
+      if (['purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive'].includes(loginType)) {
         setLoadingCloudKitchens(true)
         try {
           const { data, error } = await supabase
@@ -250,6 +250,20 @@ const Login = () => {
               >
                 Supervisor
               </button>
+
+              <button
+                onClick={() => setLoginType('dispatch_executive')}
+                className="w-full bg-transparent text-accent font-black text-lg px-5 py-3 rounded-xl border-3 border-accent hover:bg-accent/10 transition-all duration-300"
+              >
+                Dispatch Executive
+              </button>
+
+              <button
+                onClick={() => setLoginType('kitchen_executive')}
+                className="w-full bg-transparent text-accent font-black text-lg px-5 py-3 rounded-xl border-3 border-accent hover:bg-accent/10 transition-all duration-300"
+              >
+                Kitchen Executive
+              </button>
             </div>
           </div>
         ) : (
@@ -257,9 +271,17 @@ const Login = () => {
           <div className="bg-card/90 backdrop-blur-md border-2 border-border rounded-2xl p-8 shadow-2xl shadow-black/50 animate-fade-in">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-foreground">
-                {loginType === 'admin' ? 'Admin Login' : 
-                 loginType === 'purchase_manager' ? 'Purchase Manager Login' : 
-                 'Supervisor Login'}
+                {loginType === 'admin'
+                  ? 'Admin Login'
+                  : loginType === 'purchase_manager'
+                  ? 'Purchase Manager Login'
+                  : loginType === 'supervisor'
+                  ? 'Supervisor Login'
+                  : loginType === 'dispatch_executive'
+                  ? 'Dispatch Executive Login'
+                  : loginType === 'kitchen_executive'
+                  ? 'Kitchen Executive Login'
+                  : 'Login'}
               </h2>
               <button
                 onClick={resetForm}

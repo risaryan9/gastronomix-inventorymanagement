@@ -3,6 +3,8 @@ import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
 import PurchaseManagerDashboard from './pages/PurchaseManagerDashboard'
 import SupervisorDashboard from './pages/SupervisorDashboard'
+import DispatchExecutiveDashboard from './pages/DispatchExecutiveDashboard'
+import KitchenExecutiveDashboard from './pages/KitchenExecutiveDashboard'
 import Overview from './pages/purchase-manager/Overview'
 import StockIn from './pages/purchase-manager/StockIn'
 import StockOut from './pages/purchase-manager/StockOut'
@@ -45,6 +47,24 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="/invmanagement/dashboard/dispatch_executive" 
+          element={
+            <ProtectedRoute allowedRoles={['dispatch_executive']}>
+              <DispatchExecutiveDashboard />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="/invmanagement/dashboard/kitchen_executive" 
+          element={
+            <ProtectedRoute allowedRoles={['kitchen_executive']}>
+              <KitchenExecutiveDashboard />
             </ProtectedRoute>
           } 
         />
