@@ -14,29 +14,20 @@ import SupervisorOutlets from './pages/supervisor/Outlets'
 import SupervisorOutletDetails from './pages/supervisor/OutletDetails'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
-import { getSession } from './lib/auth'
+import SessionRedirect from './components/SessionRedirect'
 import './App.css'
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Root redirect to /invmanagement */}
-        <Route path="/" element={<Navigate to="/invmanagement" replace />} />
-        
-        {/* /invmanagement redirect based on session */}
-        <Route 
-          path="/invmanagement" 
-          element={
-            (() => {
-              const session = getSession()
-              if (session) {
-                return <Navigate to={`/invmanagement/dashboard/${session.role}`} replace />
-              }
-              return <Navigate to="/invmanagement/login" replace />
-            })()
-          } 
-        />
+        {/* Root redirect to session-based destination or login */}
+        <Route path="/" element={<SessionRedirect />} />
+
+        {/* Generic entry paths that should honor session */}
+        <Route path="/invmanagement" element={<SessionRedirect />} />
+        <Route path="/invmanagement/dashboard" element={<SessionRedirect />} />
+        <Route path="/inventory" element={<SessionRedirect />} />
 
         {/* Public route - Login */}
         <Route 
