@@ -73,6 +73,16 @@ const Materials = () => {
   const [sortDirection, setSortDirection] = useState('asc')
   const [applyToAllBrands, setApplyToAllBrands] = useState(true)
 
+  // Ensure existing units from DB (even if not in UNITS list)
+  // still show up and are selectable when editing a material.
+  const effectiveUnitOptions = (() => {
+    const currentUnit = (formData.unit || '').trim()
+    if (currentUnit && !UNITS.includes(currentUnit)) {
+      return [currentUnit, ...UNITS]
+    }
+    return UNITS
+  })()
+
   // Fetch materials
   const fetchMaterials = async () => {
     try {
@@ -293,7 +303,28 @@ const Materials = () => {
   // Open modal for editing material
   const handleEdit = (material) => {
     setEditingMaterial(material)
-    const existingBrandCodes = material.brand_codes || null
+
+    // Normalize existing brand_codes so the capsules reflect current mapping:
+    // - NULL / empty -> "All Brands"
+    // - Non-empty array -> specific brands
+    // - String like "{nk,bp}" -> parse into ['nk','bp']
+    let existingBrandCodes = null
+    if (Array.isArray(material.brand_codes) && material.brand_codes.length > 0) {
+      existingBrandCodes = material.brand_codes
+    } else if (typeof material.brand_codes === 'string' && material.brand_codes.trim() !== '') {
+      const trimmed = material.brand_codes.trim()
+      const withoutBraces = trimmed.startsWith('{') && trimmed.endsWith('}')
+        ? trimmed.slice(1, -1)
+        : trimmed
+      const parts = withoutBraces
+        .split(',')
+        .map(p => p.trim())
+        .filter(Boolean)
+      existingBrandCodes = parts.length > 0 ? parts : null
+    } else {
+      existingBrandCodes = null
+    }
+
     setFormData({
       name: material.name || '',
       code: material.code || '',
@@ -860,7 +891,7 @@ const Materials = () => {
                       disabled={saving}
                     >
                       <option value="">Select unit</option>
-                      {UNITS.map(unit => (
+                      {effectiveUnitOptions.map(unit => (
                         <option key={unit} value={unit}>{unit}</option>
                       ))}
                     </select>
