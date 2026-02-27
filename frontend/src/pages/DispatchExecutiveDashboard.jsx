@@ -69,6 +69,10 @@ const DispatchExecutiveDashboard = () => {
   const [quantities, setQuantities] = useState({})
   const [savingPlan, setSavingPlan] = useState(false)
 
+  const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
+  const [materialSearchTerm, setMaterialSearchTerm] = useState('')
+  const [highlightMaterialId, setHighlightMaterialId] = useState(null)
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -80,6 +84,15 @@ const DispatchExecutiveDashboard = () => {
     }
     setLoading(false)
   }, [])
+
+  // Auto-clear highlight after a short blink
+  useEffect(() => {
+    if (!highlightMaterialId) return
+    const timeout = setTimeout(() => {
+      setHighlightMaterialId(null)
+    }, 1000)
+    return () => clearTimeout(timeout)
+  }, [highlightMaterialId])
 
   useEffect(() => {
     if (!selectedBrand || !cloudKitchenId) {
@@ -309,6 +322,23 @@ const DispatchExecutiveDashboard = () => {
     const nameB = (b.name || '').toLowerCase()
     return nameA.localeCompare(nameB)
   })
+
+  const handleScrollToMaterial = (materialId) => {
+    setIsMaterialSearchOpen(false)
+    setMaterialSearchTerm('')
+
+    // Defer scrolling slightly to ensure layout is stable
+    setTimeout(() => {
+      const rowElement = document.getElementById(`dispatch-material-row-${materialId}`)
+      if (rowElement) {
+        rowElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        })
+        setHighlightMaterialId(materialId)
+      }
+    }, 100)
+  }
 
   if (loading || !session) {
     return (
@@ -553,6 +583,32 @@ const DispatchExecutiveDashboard = () => {
                 </div>
               ) : (
                 <div className="px-2 lg:px-4 py-3 lg:py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs lg:text-sm text-muted-foreground">
+                      Materials mapped to this brand
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsMaterialSearchOpen(true)}
+                      className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5 text-yellow-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
+                        />
+                      </svg>
+                      <span className="font-medium">Search material</span>
+                    </button>
+                  </div>
+
                   <div className="border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse min-w-[480px] lg:min-w-[720px]">
@@ -597,8 +653,17 @@ const DispatchExecutiveDashboard = () => {
                                   </td>
                                 </tr>
                               ) : null,
-                              <tr key={material.id}>
-                                <td className="border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm bg-muted/40">
+                              <tr
+                                key={material.id}
+                                id={`dispatch-material-row-${material.id}`}
+                              >
+                                <td
+                                  className={`border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm bg-muted/40 transition-colors ${
+                                    highlightMaterialId === material.id
+                                      ? 'bg-yellow-100/70'
+                                      : ''
+                                  }`}
+                                >
                                   <div className="font-medium text-foreground truncate">
                                     {material.name}
                                   </div>
@@ -651,6 +716,76 @@ const DispatchExecutiveDashboard = () => {
               )}
             </div>
 
+            {isMaterialSearchOpen && (
+              <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+                <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <h3 className="text-sm lg:text-base font-semibold text-foreground">
+                      Search Materials
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMaterialSearchOpen(false)
+                        setMaterialSearchTerm('')
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="px-4 py-3 border-b border-border">
+                    <input
+                      type="text"
+                      value={materialSearchTerm}
+                      onChange={(e) => setMaterialSearchTerm(e.target.value)}
+                      placeholder="Search by material name or code..."
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-auto px-2 py-2">
+                    {orderedMaterials
+                      .filter((m) => {
+                        if (!materialSearchTerm.trim()) return true
+                        const term = materialSearchTerm.toLowerCase()
+                        return (
+                          (m.name || '').toLowerCase().includes(term) ||
+                          (m.code || '').toLowerCase().includes(term)
+                        )
+                      })
+                      .map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => handleScrollToMaterial(m.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted flex flex-col gap-0.5"
+                        >
+                          <span className="text-xs font-semibold text-foreground truncate">
+                            {m.name}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-mono truncate">
+                            {m.code} · {m.unit}
+                          </span>
+                          {m.material_type && (
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                              {m.material_type.replace('_', ' ')}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    {orderedMaterials.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        No materials available.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="px-4 py-3 lg:px-6 lg:py-4 border-t border-border bg-background flex flex-col-reverse lg:flex-row lg:items-center lg:justify-between gap-3">
               <button
                 type="button"
@@ -667,7 +802,7 @@ const DispatchExecutiveDashboard = () => {
                 className={`w-full lg:w-auto px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                   savingPlan || modalLoading || outlets.length === 0 || materials.length === 0
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                    : 'bg-accent text-accent-foreground hover:bg-accent/90'
+                    : 'bg-accent text-black hover:bg-accent/90'
                 }`}
               >
                 {savingPlan ? 'Saving Draft...' : 'Save Dispatch Plan Draft'}
