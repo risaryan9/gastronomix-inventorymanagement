@@ -32,6 +32,13 @@ const BRAND_CATEGORIES = [
   { label: 'El Chaapo', short: 'EC' }
 ]
 
+// Brand mapping options for raw material usage
+const BRAND_MAPPING_OPTIONS = [
+  { code: 'bp', label: 'Boom Pizza' },
+  { code: 'nk', label: 'Nippu Kodi' },
+  { code: 'ec', label: 'El Chaapo' }
+]
+
 const Materials = () => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
@@ -51,7 +58,8 @@ const Materials = () => {
     description: '',
     low_stock_threshold: '',
     vendor_id: '',
-    material_type: ''
+    material_type: '',
+    brand_codes: null
   })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
@@ -63,6 +71,7 @@ const Materials = () => {
   // Column sort for table: 'name' (material name) or 'low_stock_threshold'
   const [sortBy, setSortBy] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
+  const [applyToAllBrands, setApplyToAllBrands] = useState(true)
 
   // Fetch materials
   const fetchMaterials = async () => {
@@ -272,16 +281,19 @@ const Materials = () => {
       description: '',
       low_stock_threshold: '',
       vendor_id: '',
-      material_type: ''
+      material_type: '',
+      brand_codes: null
     })
     setError(null)
     setIsModalOpen(true)
     setShowConfirmModal(false)
+    setApplyToAllBrands(true)
   }
 
   // Open modal for editing material
   const handleEdit = (material) => {
     setEditingMaterial(material)
+    const existingBrandCodes = material.brand_codes || null
     setFormData({
       name: material.name || '',
       code: material.code || '',
@@ -291,11 +303,55 @@ const Materials = () => {
       description: material.description || '',
       low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
       vendor_id: material.vendor_id || '',
-      material_type: material.material_type || 'raw_material'
+      material_type: material.material_type || 'raw_material',
+      brand_codes: existingBrandCodes
     })
     setError(null)
     setIsModalOpen(true)
     setShowConfirmModal(false)
+    setApplyToAllBrands(!existingBrandCodes)
+  }
+
+  // Toggle a single brand code, enforcing rules:
+  // - "All" cannot be combined with specific brands
+  // - Multiple brands allowed (bp + nk, etc.)
+  // - If all three brands are selected, auto-collapse to "All"
+  const toggleBrandCode = (code) => {
+    setApplyToAllBrands(false)
+    setFormData(prev => {
+      const current = Array.isArray(prev.brand_codes) ? [...prev.brand_codes] : []
+      const exists = current.includes(code)
+      const without = current.filter(c => c !== code)
+      let next
+
+      if (exists) {
+        // Remove brand
+        next = without
+      } else {
+        // Add brand
+        next = [...current, code]
+      }
+
+      // If none selected, fall back to ALL
+      if (next.length === 0) {
+        setApplyToAllBrands(true)
+        return { ...prev, brand_codes: null }
+      }
+
+      // If all brands selected, treat as ALL
+      const allCodes = BRAND_MAPPING_OPTIONS.map(b => b.code)
+      const hasAll =
+        next.length === allCodes.length &&
+        allCodes.every(c => next.includes(c))
+
+      if (hasAll) {
+        setApplyToAllBrands(true)
+        return { ...prev, brand_codes: null }
+      }
+
+      // Otherwise, keep multi-select state
+      return { ...prev, brand_codes: next }
+    })
   }
 
   // Handle form submission - show confirmation for new materials
@@ -324,8 +380,8 @@ const Materials = () => {
       setError('Material code is required')
       return
     }
-    // Vendor and brand are only required for raw materials
-    if (formData.material_type === 'raw_material') {
+    // Vendor is only required for raw materials when creating a new material
+    if (!editingMaterial && formData.material_type === 'raw_material') {
       if (!formData.vendor_id) {
         setError('Vendor is required for raw materials')
         return
@@ -367,6 +423,11 @@ const Materials = () => {
           low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
           vendor_id: formData.vendor_id || null,
           material_type: formData.material_type,
+          brand_codes: applyToAllBrands
+            ? null
+            : (Array.isArray(formData.brand_codes) && formData.brand_codes.length > 0
+              ? formData.brand_codes
+              : null),
           updated_at: new Date().toISOString()
         }
 
@@ -390,7 +451,8 @@ const Materials = () => {
             category: editingMaterial.category,
             brand: editingMaterial.brand,
             description: editingMaterial.description,
-            low_stock_threshold: editingMaterial.low_stock_threshold
+            low_stock_threshold: editingMaterial.low_stock_threshold,
+            brand_codes: editingMaterial.brand_codes || null
           },
           new_values: {
             name: updateData.name,
@@ -399,7 +461,8 @@ const Materials = () => {
             category: updateData.category,
             brand: updateData.brand,
             description: updateData.description,
-            low_stock_threshold: updateData.low_stock_threshold
+            low_stock_threshold: updateData.low_stock_threshold,
+            brand_codes: updateData.brand_codes
           },
           ip_address: null,
           user_agent: navigator.userAgent || null
@@ -434,7 +497,12 @@ const Materials = () => {
             description: formData.description.trim() || null,
             low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
             vendor_id: formData.vendor_id || null,
-            material_type: formData.material_type
+            material_type: formData.material_type,
+            brand_codes: applyToAllBrands
+              ? null
+              : (Array.isArray(formData.brand_codes) && formData.brand_codes.length > 0
+                ? formData.brand_codes
+                : null)
           })
           .select()
           .single()
@@ -455,7 +523,8 @@ const Materials = () => {
             category: newMaterial.category,
             brand: newMaterial.brand,
             description: newMaterial.description,
-            low_stock_threshold: newMaterial.low_stock_threshold
+            low_stock_threshold: newMaterial.low_stock_threshold,
+            brand_codes: newMaterial.brand_codes || null
           },
           ip_address: null,
           user_agent: navigator.userAgent || null
@@ -831,7 +900,7 @@ const Materials = () => {
                     )}
                   </div>
 
-                  {/* Brand (only for raw materials) */}
+                  {/* Brand (name) - still only meaningful for raw materials for now */}
                   {formData.material_type === 'raw_material' && (
                     <div>
                       <label className="block text-sm font-semibold text-foreground mb-2">
@@ -847,6 +916,67 @@ const Materials = () => {
                       />
                     </div>
                   )}
+
+                  {/* Brand mapping for usage across brands - visible for all material types */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Brand Mapping (Usage)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {/* All brands capsule */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setApplyToAllBrands(true)
+                          setFormData(prev => ({ ...prev, brand_codes: null }))
+                        }}
+                        disabled={saving}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all ${
+                          applyToAllBrands
+                            ? 'bg-accent text-background border-accent'
+                            : 'bg-input text-foreground border-border hover:bg-accent/10'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-background/80 border border-border text-[9px] font-bold">
+                            *
+                          </span>
+                          <span>All Brands</span>
+                        </span>
+                      </button>
+
+                      {/* Individual brand capsules */}
+                      {BRAND_MAPPING_OPTIONS.map((option) => {
+                        const selected =
+                          !applyToAllBrands &&
+                          Array.isArray(formData.brand_codes) &&
+                          formData.brand_codes.includes(option.code)
+                        return (
+                          <button
+                            key={option.code}
+                            type="button"
+                            onClick={() => toggleBrandCode(option.code)}
+                            disabled={saving}
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all ${
+                              selected
+                                ? 'bg-accent text-background border-accent'
+                                : 'bg-input text-foreground border-border hover:bg-accent/10'
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-background/80 border border-border text-[9px] font-bold uppercase">
+                                {option.code}
+                              </span>
+                              <span>{option.label}</span>
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Choose whether this material is shared across all brands or specific to one or more brands.
+                    </p>
+                  </div>
 
                   {/* Material Code - Always shown, always read-only */}
                   <div>
@@ -871,10 +1001,10 @@ const Materials = () => {
                   {formData.material_type === 'raw_material' && (
                     <div>
                       <label className="block text-sm font-semibold text-foreground mb-2">
-                        Vendor <span className="text-destructive">*</span>
+                        Vendor{!editingMaterial && <span className="text-destructive"> *</span>}
                       </label>
                       <select
-                        required
+                        required={!editingMaterial}
                         value={formData.vendor_id}
                         onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
                         className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
