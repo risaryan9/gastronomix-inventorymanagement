@@ -37,6 +37,18 @@ const BRANDS = [
   }
 ]
 
+const MATERIAL_TYPE_ORDER = {
+  finished: 0,
+  semi_finished: 1,
+  raw_material: 2
+}
+
+const MATERIAL_TYPE_LABELS = {
+  finished: 'Finished Materials',
+  semi_finished: 'Semi-Finished Materials',
+  raw_material: 'Raw Materials'
+}
+
 const DispatchExecutiveDashboard = () => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -288,6 +300,16 @@ const DispatchExecutiveDashboard = () => {
     }
   }
 
+  // Order materials for UI: Finished → Semi-Finished → Raw, then by name
+  const orderedMaterials = [...materials].sort((a, b) => {
+    const orderA = MATERIAL_TYPE_ORDER[a.material_type] ?? 99
+    const orderB = MATERIAL_TYPE_ORDER[b.material_type] ?? 99
+    if (orderA !== orderB) return orderA - orderB
+    const nameA = (a.name || '').toLowerCase()
+    const nameB = (b.name || '').toLowerCase()
+    return nameA.localeCompare(nameB)
+  })
+
   if (loading || !session) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -389,14 +411,11 @@ const DispatchExecutiveDashboard = () => {
                     className={`w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors ${
                       hasTodayPlan
                         ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                        : 'bg-accent text-accent-foreground hover:bg-accent/90'
+                        : 'bg-accent text-black hover:bg-accent/90'
                     }`}
                   >
                     Add Dispatch Plan for Today
                   </button>
-                  <p className="text-[11px] text-muted-foreground text-center lg:text-right">
-                    Dispatch plans are created as <span className="font-semibold">draft</span> and can be locked later.
-                  </p>
                 </div>
               </div>
 
@@ -558,48 +577,68 @@ const DispatchExecutiveDashboard = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {materials.map(material => (
-                            <tr key={material.id}>
-                              <td className="border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm bg-muted/40">
-                                <div className="font-medium text-foreground truncate">
-                                  {material.name}
-                                </div>
-                                <div className="text-[11px] text-muted-foreground font-mono truncate">
-                                  {material.code} · {material.unit}
-                                </div>
-                                {material.material_type && (
-                                  <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    {material.material_type.replace('_', ' ')}
-                                  </div>
-                                )}
-                              </td>
-                              {outlets.map(outlet => {
-                                const value = quantities[material.id]?.[outlet.id] ?? ''
-                                return (
+                          {orderedMaterials.map((material, index) => {
+                            const prevType =
+                              index > 0 ? orderedMaterials[index - 1].material_type : null
+                            const sectionChanged = material.material_type !== prevType
+                            const sectionLabel =
+                              sectionChanged && MATERIAL_TYPE_LABELS[material.material_type]
+                                ? MATERIAL_TYPE_LABELS[material.material_type]
+                                : null
+
+                            return [
+                              sectionLabel ? (
+                                <tr key={`section-${material.material_type}-${index}`}>
                                   <td
-                                    key={outlet.id}
-                                    className="border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle"
+                                    colSpan={1 + outlets.length}
+                                    className="bg-background/80 border-t border-border px-3 lg:px-4 py-1.5 text-[11px] lg:text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                   >
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      inputMode="decimal"
-                                      value={value}
-                                      onChange={(e) =>
-                                        handleQuantityChange(
-                                          material.id,
-                                          outlet.id,
-                                          e.target.value
-                                        )
-                                      }
-                                      className="w-full bg-input border border-border rounded-md px-1.5 py-1 text-[11px] lg:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                                    />
+                                    {sectionLabel}
                                   </td>
-                                )
-                              })}
-                            </tr>
-                          ))}
+                                </tr>
+                              ) : null,
+                              <tr key={material.id}>
+                                <td className="border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm bg-muted/40">
+                                  <div className="font-medium text-foreground truncate">
+                                    {material.name}
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground font-mono truncate">
+                                    {material.code} · {material.unit}
+                                  </div>
+                                  {material.material_type && (
+                                    <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                      {material.material_type.replace('_', ' ')}
+                                    </div>
+                                  )}
+                                </td>
+                                {outlets.map(outlet => {
+                                  const value = quantities[material.id]?.[outlet.id] ?? ''
+                                  return (
+                                    <td
+                                      key={outlet.id}
+                                      className="border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle"
+                                    >
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        inputMode="decimal"
+                                        value={value}
+                                        onChange={(e) =>
+                                          handleQuantityChange(
+                                            material.id,
+                                            outlet.id,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-full bg-input border border-border rounded-md px-1.5 py-1 text-[11px] lg:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                                      />
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ]
+                          })}
                         </tbody>
                       </table>
                     </div>
