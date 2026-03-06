@@ -39,7 +39,7 @@ Required columns: `name`, `unit`, `category`
 
 Valid categories: `Meat`, `Grains`, `Vegetables`, `Oils`, `Spices`, `Dairy`, `Packaging`, `Sanitary`, `Misc`
 
-Valid units: `nos`, `kg`, `liter`, `packets`, `btl`
+Valid units: `nos`, `kg`, `gm`, `liter`, `packets`, `btl`
 
 ---
 

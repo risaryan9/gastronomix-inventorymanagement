@@ -23,7 +23,7 @@ The CSV should have these columns (tab or comma separated):
 | Column | Required | Description | Example Values |
 |--------|----------|-------------|----------------|
 | `name` | ✅ Yes | Material name | `Amul Butter`, `Chicken Breast` |
-| `unit` | ✅ Yes | Unit of measurement | `kg`, `liter`, `nos`, `packets`, `btl` |
+| `unit` | ✅ Yes | Unit of measurement | `kg`, `gm`, `liter`, `nos`, `packets`, `btl` |
 | `description` | No | Material description | `Premium quality butter` |
 | `category` | ✅ Yes | Material category | `Dairy`, `Meat`, `Spices`, etc. |
 | `low_stock_threshold` | No | Alert threshold | `45.000`, `12.500` |
@@ -49,6 +49,7 @@ Must be one of these (case-sensitive):
 Must be one of these:
 - `nos` (numbers/pieces)
 - `kg` (kilograms)
+- `gm` (grams)
 - `liter` (liters)
 - `packets` (packets)
 - `btl` (bottles)

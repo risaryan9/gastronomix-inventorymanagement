@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 
 // Unit options
-const UNITS = ['nos', 'kg', 'liter', 'packets', 'btl']
+const UNITS = ['nos', 'kg', 'gm', 'liter', 'packets', 'btl']
 
 // Material Type options
 const MATERIAL_TYPES = [

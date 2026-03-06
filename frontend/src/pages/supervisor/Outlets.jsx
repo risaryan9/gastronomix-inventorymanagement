@@ -116,7 +116,6 @@ const Outlets = () => {
     const term = searchTerm.toLowerCase()
     const filtered = allOutlets.filter(outlet =>
       outlet.name.toLowerCase().includes(term) ||
-      (outlet.address && outlet.address.toLowerCase().includes(term)) ||
       (outlet.code && outlet.code.toLowerCase().includes(term))
     )
     setOutlets(filtered)
@@ -200,7 +199,7 @@ const Outlets = () => {
                 <input
                   id="outlet-search"
                   type="text"
-                  placeholder="Search by outlet name, code (e.g. NK1001) or address..."
+                  placeholder="Search by outlet name or code (e.g. NK1001)..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
@@ -242,82 +241,51 @@ const Outlets = () => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
-                {outlets.map((outlet) => {
-                  const status = todayAllocationStatus[outlet.id]
-                  const isPackedToday = !!status?.isPacked
-                  return (
-                  <button
-                    key={outlet.id}
-                    disabled={isPackedToday}
-                    onClick={() => handleOutletClick(outlet)}
-                    className={`bg-card border-2 rounded-xl p-4 lg:p-5 hover:border-accent hover:shadow-lg transition-all duration-200 text-left active:scale-98 touch-manipulation ${
-                      isPackedToday
-                        ? 'border-green-500/70 bg-green-500/5'
-                        : status?.hasRequest
-                          ? 'border-yellow-500/70 bg-yellow-500/5'
-                          : 'border-border'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base lg:text-lg font-bold text-foreground mb-1 truncate">
-                          {outlet.name}
-                        </h3>
-                        <p className="text-xs lg:text-sm text-muted-foreground font-mono">
-                          {outlet.code}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 ml-2">
-                        {isPackedToday && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">
-                            Today: Packed
-                          </span>
-                        )}
-                        {!isPackedToday && status?.hasRequest && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">
-                            Today: Request sent
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm lg:text-base">
-                      <div className="flex items-start">
-                        <svg className="w-4 h-4 lg:w-5 lg:h-5 text-muted-foreground mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span className="text-muted-foreground">{outlet.address}</span>
-                      </div>
-
-                      <div className="flex items-center">
-                        <svg className="w-4 h-4 lg:w-5 lg:h-5 text-muted-foreground mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span className="text-muted-foreground">{outlet.contact_person}</span>
-                      </div>
-
-                      <div className="flex items-center">
-                        <svg className="w-4 h-4 lg:w-5 lg:h-5 text-muted-foreground mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                        <span className="text-muted-foreground">{outlet.contact_phone}</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                      <span className={`text-xs lg:text-sm font-semibold ${
-                        isPackedToday ? 'text-muted-foreground' : 'text-accent'
-                      }`}>
-                        {isPackedToday ? 'Allocation already packed' : 'View Details & Allocate'}
-                      </span>
-                      <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </button>
-                )})}
+              <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
+                <div className="divide-y divide-border">
+                  {outlets.map((outlet) => {
+                    const status = todayAllocationStatus[outlet.id]
+                    const isPackedToday = !!status?.isPacked
+                    return (
+                      <button
+                        key={outlet.id}
+                        disabled={isPackedToday}
+                        onClick={() => handleOutletClick(outlet)}
+                        className={`w-full flex items-center justify-between px-4 py-3 lg:px-5 lg:py-4 text-left hover:bg-accent/5 transition-all duration-200 touch-manipulation ${
+                          isPackedToday
+                            ? 'bg-green-500/5'
+                            : status?.hasRequest
+                              ? 'bg-yellow-500/5'
+                              : ''
+                        } ${isPackedToday ? 'cursor-not-allowed opacity-80' : ''}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm lg:text-base font-semibold text-foreground truncate">
+                            {outlet.name}
+                          </p>
+                          <p className="text-xs lg:text-sm text-muted-foreground font-mono">
+                            {outlet.code}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-3">
+                          {isPackedToday && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">
+                              Today: Packed
+                            </span>
+                          )}
+                          {!isPackedToday && status?.hasRequest && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">
+                              Today: Request sent
+                            </span>
+                          )}
+                          <svg className="w-4 h-4 lg:w-5 lg:h-5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>

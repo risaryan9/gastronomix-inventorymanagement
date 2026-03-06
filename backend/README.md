@@ -50,7 +50,7 @@ Seeds raw materials from a CSV file. Automatically generates material codes and 
 **CSV Format:**
 The `materials.csv` file should have these columns (tab or comma separated):
 - `name` - Material name (required)
-- `unit` - Unit of measurement: nos, kg, liter, packets, btl (required)
+- `unit` - Unit of measurement: nos, kg, gm, liter, packets, btl (required)
 - `description` - Description of the material
 - `category` - One of: Meat, Grains, Vegetables, Oils, Spices, Dairy, Packaging, Sanitary, Misc (required)
 - `low_stock_threshold` - Low stock alert threshold (e.g., 45.000)
