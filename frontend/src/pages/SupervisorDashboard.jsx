@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Outlet } from 'react-router-dom'
+import { useNavigate, Outlet, useLocation } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 
@@ -7,6 +7,7 @@ const SupervisorDashboard = () => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const currentSession = getSession()
@@ -30,9 +31,13 @@ const SupervisorDashboard = () => {
   const firstName = session.full_name?.split(' ')[0] || 'User'
   const cloudKitchenName = session.cloud_kitchen_name
 
+  const isActiveRoute = (path) => {
+    return location.pathname.includes(path)
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top bar with branding and supervisor context, but no nav */}
+      {/* Top bar with branding and supervisor context */}
       <header className="bg-card border-b border-border px-4 lg:px-8 py-3 lg:py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
@@ -62,7 +67,33 @@ const SupervisorDashboard = () => {
         </div>
       </header>
 
-      {/* Main content shows only the nested page (Outlets / Outlet details) */}
+      {/* Navigation Tabs */}
+      <nav className="bg-card border-b border-border px-4 lg:px-8">
+        <div className="max-w-7xl mx-auto flex gap-1">
+          <button
+            onClick={() => navigate('/invmanagement/dashboard/supervisor/outlets')}
+            className={`px-4 py-3 text-sm font-semibold transition-colors border-b-2 ${
+              isActiveRoute('/outlets')
+                ? 'text-accent border-accent'
+                : 'text-muted-foreground border-transparent hover:text-foreground'
+            }`}
+          >
+            Outlets
+          </button>
+          <button
+            onClick={() => navigate('/invmanagement/dashboard/supervisor/checkout')}
+            className={`px-4 py-3 text-sm font-semibold transition-colors border-b-2 ${
+              isActiveRoute('/checkout')
+                ? 'text-accent border-accent'
+                : 'text-muted-foreground border-transparent hover:text-foreground'
+            }`}
+          >
+            Check Out
+          </button>
+        </div>
+      </nav>
+
+      {/* Main content shows only the nested page (Outlets / Outlet details / Checkout) */}
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
