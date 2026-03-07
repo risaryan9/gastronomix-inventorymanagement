@@ -72,6 +72,9 @@ const KitchenExecutiveDashboard = () => {
   const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
   const [materialSearchTerm, setMaterialSearchTerm] = useState('')
   const [highlightMaterialId, setHighlightMaterialId] = useState(null)
+  const [isOutletSearchOpen, setIsOutletSearchOpen] = useState(false)
+  const [outletSearchTerm, setOutletSearchTerm] = useState('')
+  const [highlightOutletId, setHighlightOutletId] = useState(null)
 
   const [showLockConfirm, setShowLockConfirm] = useState(false)
   const [isLocking, setIsLocking] = useState(false)
@@ -106,6 +109,12 @@ const KitchenExecutiveDashboard = () => {
     }, 1000)
     return () => clearTimeout(timeout)
   }, [highlightMaterialId])
+
+  useEffect(() => {
+    if (!highlightOutletId) return
+    const timeout = setTimeout(() => setHighlightOutletId(null), 1000)
+    return () => clearTimeout(timeout)
+  }, [highlightOutletId])
 
   const handleLogout = () => {
     clearSession()
@@ -338,6 +347,18 @@ const KitchenExecutiveDashboard = () => {
           block: 'center'
         })
         setHighlightMaterialId(materialId)
+      }
+    }, 100)
+  }
+
+  const handleScrollToOutlet = (outletId) => {
+    setIsOutletSearchOpen(false)
+    setOutletSearchTerm('')
+    setTimeout(() => {
+      const colEl = document.getElementById(`kitchen-outlet-column-${outletId}`)
+      if (colEl) {
+        colEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        setHighlightOutletId(outletId)
       }
     }, 100)
   }
@@ -760,26 +781,48 @@ const KitchenExecutiveDashboard = () => {
                       Only materials with at least one outlet quantity are listed. Inventory is shown
                       for this cloud kitchen.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsMaterialSearchOpen(true)}
-                      className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5 text-yellow-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsMaterialSearchOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
-                        />
-                      </svg>
-                      <span className="font-medium">Search material</span>
-                    </button>
+                        <svg
+                          className="w-3.5 h-3.5 text-yellow-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
+                          />
+                        </svg>
+                        <span className="font-medium">Search material</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsOutletSearchOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 text-yellow-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
+                          />
+                        </svg>
+                        <span className="font-medium">Search outlet</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="border border-border rounded-xl overflow-hidden">
@@ -796,7 +839,10 @@ const KitchenExecutiveDashboard = () => {
                             {planOutlets.map(outlet => (
                               <th
                                 key={outlet.id}
-                                className="border-b border-l border-border px-2 lg:px-3 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center whitespace-nowrap"
+                                id={`kitchen-outlet-column-${outlet.id}`}
+                                className={`border-b border-l border-border px-2 lg:px-3 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center whitespace-nowrap transition-colors ${
+                                  highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
+                                }`}
                               >
                                 <div className="font-mono text-[11px] lg:text-xs">
                                   {outlet.code}
@@ -867,7 +913,9 @@ const KitchenExecutiveDashboard = () => {
                                   return (
                                     <td
                                       key={outlet.id}
-                                      className="border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle"
+                                      className={`border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle transition-colors ${
+                                        highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
+                                      }`}
                                     >
                                       <input
                                         type="number"
@@ -990,6 +1038,67 @@ const KitchenExecutiveDashboard = () => {
                     {orderedMaterials.length === 0 && (
                       <p className="px-3 py-2 text-xs text-muted-foreground">
                         No materials available.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {isOutletSearchOpen && (
+              <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+                <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <h3 className="text-sm lg:text-base font-semibold text-foreground">
+                      Search Outlets
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOutletSearchOpen(false)
+                        setOutletSearchTerm('')
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="px-4 py-3 border-b border-border">
+                    <input
+                      type="text"
+                      value={outletSearchTerm}
+                      onChange={(e) => setOutletSearchTerm(e.target.value)}
+                      placeholder="Search by outlet code..."
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-auto px-2 py-2">
+                    {planOutlets
+                      .filter((o) => {
+                        if (!outletSearchTerm.trim()) return true
+                        const term = (o.code || '').toLowerCase()
+                        return term.includes(outletSearchTerm.trim().toLowerCase())
+                      })
+                      .map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => handleScrollToOutlet(o.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted flex flex-col gap-0.5"
+                        >
+                          <span className="text-xs font-semibold text-foreground font-mono">
+                            {o.code}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate">
+                            {o.name}
+                          </span>
+                        </button>
+                      ))}
+                    {planOutlets.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        No outlets available.
                       </p>
                     )}
                   </div>

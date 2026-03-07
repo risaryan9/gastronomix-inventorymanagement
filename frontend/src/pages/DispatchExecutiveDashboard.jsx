@@ -64,6 +64,7 @@ const DispatchExecutiveDashboard = () => {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState(null)
+  const [editingPlan, setEditingPlan] = useState(null)
   const [outlets, setOutlets] = useState([])
   const [materials, setMaterials] = useState([])
   const [quantities, setQuantities] = useState({})
@@ -72,6 +73,10 @@ const DispatchExecutiveDashboard = () => {
   const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
   const [materialSearchTerm, setMaterialSearchTerm] = useState('')
   const [highlightMaterialId, setHighlightMaterialId] = useState(null)
+
+  const [isOutletSearchOpen, setIsOutletSearchOpen] = useState(false)
+  const [outletSearchTerm, setOutletSearchTerm] = useState('')
+  const [highlightOutletId, setHighlightOutletId] = useState(null)
 
   const navigate = useNavigate()
 
@@ -93,6 +98,12 @@ const DispatchExecutiveDashboard = () => {
     }, 1000)
     return () => clearTimeout(timeout)
   }, [highlightMaterialId])
+
+  useEffect(() => {
+    if (!highlightOutletId) return
+    const timeout = setTimeout(() => setHighlightOutletId(null), 1000)
+    return () => clearTimeout(timeout)
+  }, [highlightOutletId])
 
   useEffect(() => {
     if (!selectedBrand || !cloudKitchenId) {
@@ -157,6 +168,7 @@ const DispatchExecutiveDashboard = () => {
       return
     }
 
+    setEditingPlan(null)
     setIsPlanModalOpen(true)
     setModalLoading(true)
     setModalError(null)
@@ -199,6 +211,75 @@ const DispatchExecutiveDashboard = () => {
     } catch (error) {
       console.error('Error preparing dispatch plan modal:', error)
       setModalError('Failed to load outlets or materials. Please try again.')
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  const openPlanModalForEdit = async (plan) => {
+    if (!selectedBrand || !cloudKitchenId || plan?.status !== 'draft') return
+    const brandMeta = getBrandMeta(selectedBrand)
+    if (!brandMeta) return
+
+    setEditingPlan(plan)
+    setIsPlanModalOpen(true)
+    setModalLoading(true)
+    setModalError(null)
+    setOutlets([])
+    setMaterials([])
+    setQuantities({})
+
+    try {
+      const [
+        { data: outletsData, error: outletsError },
+        { data: materialsData, error: materialsError },
+        { data: itemsData, error: itemsError }
+      ] = await Promise.all([
+        supabase
+          .from('outlets')
+          .select('id, name, code')
+          .eq('cloud_kitchen_id', cloudKitchenId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .ilike('code', `${brandMeta.id}%`)
+          .order('name', { ascending: true }),
+        supabase
+          .from('raw_materials')
+          .select('id, name, code, unit, material_type, category, brand_codes')
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .order('name', { ascending: true }),
+        supabase
+          .from('dispatch_plan_items')
+          .select('raw_material_id, outlet_id, quantity')
+          .eq('dispatch_plan_id', plan.id)
+      ])
+
+      if (outletsError) throw outletsError
+      if (materialsError) throw materialsError
+      if (itemsError) throw itemsError
+
+      const brandCode = brandMeta.materialBrandCode
+      const filteredMaterials = (materialsData || []).filter(material => {
+        const codes = material.brand_codes
+        if (!codes || codes.length === 0) return true
+        return Array.isArray(codes) && codes.includes(brandCode)
+      })
+
+      const qtyMap = {}
+      ;(itemsData || []).forEach(item => {
+        const mid = item.raw_material_id
+        const oid = item.outlet_id
+        if (!qtyMap[mid]) qtyMap[mid] = {}
+        qtyMap[mid][oid] = item.quantity != null ? String(item.quantity) : ''
+      })
+
+      setOutlets(outletsData || [])
+      setMaterials(filteredMaterials)
+      setQuantities(qtyMap)
+    } catch (error) {
+      console.error('Error loading dispatch plan for edit:', error)
+      setModalError('Failed to load dispatch plan. Please try again.')
     } finally {
       setModalLoading(false)
     }
@@ -253,6 +334,48 @@ const DispatchExecutiveDashboard = () => {
       setSavingPlan(true)
       setModalError(null)
 
+      if (editingPlan) {
+        // Edit existing draft: check if still unlocked, then replace items
+        const { data: planRow, error: fetchError } = await supabase
+          .from('dispatch_plan')
+          .select('id, status')
+          .eq('id', editingPlan.id)
+          .single()
+
+        if (fetchError) throw fetchError
+        if (!planRow || planRow.status !== 'draft') {
+          setModalError('This dispatch plan has been locked and can no longer be edited.')
+          return
+        }
+
+        const { error: deleteError } = await supabase
+          .from('dispatch_plan_items')
+          .delete()
+          .eq('dispatch_plan_id', editingPlan.id)
+
+        if (deleteError) throw deleteError
+
+        const payload = items.map(item => ({
+          dispatch_plan_id: editingPlan.id,
+          raw_material_id: item.raw_material_id,
+          outlet_id: item.outlet_id,
+          quantity: item.quantity
+        }))
+
+        const { error: insertError } = await supabase
+          .from('dispatch_plan_items')
+          .insert(payload)
+
+        if (insertError) throw insertError
+
+        await fetchDispatchPlansForBrand()
+        setIsPlanModalOpen(false)
+        setEditingPlan(null)
+        setQuantities({})
+        return
+      }
+
+      // Create new plan
       const today = new Date().toISOString().split('T')[0]
 
       const { data: existingPlans, error: existingError } = await supabase
@@ -336,6 +459,18 @@ const DispatchExecutiveDashboard = () => {
           block: 'center'
         })
         setHighlightMaterialId(materialId)
+      }
+    }, 100)
+  }
+
+  const handleScrollToOutlet = (outletId) => {
+    setIsOutletSearchOpen(false)
+    setOutletSearchTerm('')
+    setTimeout(() => {
+      const colEl = document.getElementById(`dispatch-outlet-column-${outletId}`)
+      if (colEl) {
+        colEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        setHighlightOutletId(outletId)
       }
     }, 100)
   }
@@ -484,6 +619,7 @@ const DispatchExecutiveDashboard = () => {
                           <th className="py-2.5 px-4">Status</th>
                           <th className="py-2.5 px-4 hidden sm:table-cell">Created At</th>
                           <th className="py-2.5 px-4 hidden md:table-cell">Notes</th>
+                          <th className="py-2.5 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -512,6 +648,18 @@ const DispatchExecutiveDashboard = () => {
                             </td>
                             <td className="py-2.5 px-4 hidden md:table-cell text-muted-foreground">
                               {plan.notes || '-'}
+                            </td>
+                            <td className="py-2.5 px-4 text-right">
+                              {plan.status === 'draft' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openPlanModalForEdit(plan)}
+                                  className="text-accent hover:underline font-medium"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {plan.status !== 'draft' && <span className="text-muted-foreground">—</span>}
                             </td>
                           </tr>
                         ))}
@@ -542,17 +690,20 @@ const DispatchExecutiveDashboard = () => {
             <div className="flex items-start justify-between gap-3 px-4 py-3 lg:px-6 lg:py-4 border-b border-border">
               <div className="min-w-0">
                 <p className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wide">
-                  New Dispatch Plan Draft
+                  {editingPlan ? 'Edit Dispatch Plan Draft' : 'New Dispatch Plan Draft'}
                 </p>
                 <h2 className="text-sm lg:text-lg font-semibold text-foreground truncate">
-                  {getBrandMeta(selectedBrand)?.name} · {new Date().toISOString().split('T')[0]}
+                  {getBrandMeta(selectedBrand)?.name} · {editingPlan ? editingPlan.plan_date : new Date().toISOString().split('T')[0]}
                 </h2>
                 <p className="text-[11px] lg:text-xs text-muted-foreground mt-1">
                   Fill quantities for each material and outlet. Scroll horizontally on smaller screens to see all outlets.
                 </p>
               </div>
               <button
-                onClick={() => setIsPlanModalOpen(false)}
+                onClick={() => {
+                  setIsPlanModalOpen(false)
+                  setEditingPlan(null)
+                }}
                 className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                 aria-label="Close"
               >
@@ -587,26 +738,48 @@ const DispatchExecutiveDashboard = () => {
                     <p className="text-xs lg:text-sm text-muted-foreground">
                       Materials mapped to this brand
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsMaterialSearchOpen(true)}
-                      className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5 text-yellow-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsMaterialSearchOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
-                        />
-                      </svg>
-                      <span className="font-medium">Search material</span>
-                    </button>
+                        <svg
+                          className="w-3.5 h-3.5 text-yellow-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
+                          />
+                        </svg>
+                        <span className="font-medium">Search material</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsOutletSearchOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-[11px] lg:text-xs px-3.5 py-1.5 rounded-full border border-border text-foreground hover:bg-muted bg-background/70 shadow-sm"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 text-yellow-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-4.35-4.35M11 5a6 6 0 100 12 6 6 0 000-12z"
+                          />
+                        </svg>
+                        <span className="font-medium">Search outlet</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="border border-border rounded-xl overflow-hidden">
@@ -620,7 +793,10 @@ const DispatchExecutiveDashboard = () => {
                             {outlets.map(outlet => (
                               <th
                                 key={outlet.id}
-                                className="border-b border-l border-border px-2 lg:px-3 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center whitespace-nowrap"
+                                id={`dispatch-outlet-column-${outlet.id}`}
+                                className={`border-b border-l border-border px-2 lg:px-3 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center whitespace-nowrap transition-colors ${
+                                  highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
+                                }`}
                               >
                                 <div className="font-mono text-[11px] lg:text-xs">
                                   {outlet.code}
@@ -681,7 +857,9 @@ const DispatchExecutiveDashboard = () => {
                                   return (
                                     <td
                                       key={outlet.id}
-                                      className="border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle"
+                                      className={`border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle transition-colors ${
+                                        highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
+                                      }`}
                                     >
                                       <input
                                         type="number"
@@ -786,6 +964,68 @@ const DispatchExecutiveDashboard = () => {
               </div>
             )}
 
+            {isOutletSearchOpen && (
+              <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+                <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <h3 className="text-sm lg:text-base font-semibold text-foreground">
+                      Search Outlets
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOutletSearchOpen(false)
+                        setOutletSearchTerm('')
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="px-4 py-3 border-b border-border">
+                    <input
+                      type="text"
+                      value={outletSearchTerm}
+                      onChange={(e) => setOutletSearchTerm(e.target.value)}
+                      placeholder="Search by outlet code..."
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-auto px-2 py-2">
+                    {outlets
+                      .filter((o) => {
+                        if (!outletSearchTerm.trim()) return true
+                        const term = (o.code || '').toLowerCase()
+                        return term.includes(outletSearchTerm.trim().toLowerCase())
+                      })
+                      .map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => handleScrollToOutlet(o.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted flex flex-col gap-0.5"
+                        >
+                          <span className="text-xs font-semibold text-foreground font-mono">
+                            {o.code}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate">
+                            {o.name}
+                          </span>
+                        </button>
+                      ))}
+                    {outlets.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        No outlets available.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="px-4 py-3 lg:px-6 lg:py-4 border-t border-border bg-background flex flex-col-reverse lg:flex-row lg:items-center lg:justify-between gap-3">
               <button
                 type="button"
@@ -805,7 +1045,7 @@ const DispatchExecutiveDashboard = () => {
                     : 'bg-accent text-black hover:bg-accent/90'
                 }`}
               >
-                {savingPlan ? 'Saving Draft...' : 'Save Dispatch Plan Draft'}
+                {savingPlan ? (editingPlan ? 'Updating Draft...' : 'Saving Draft...') : (editingPlan ? 'Update Draft' : 'Save Dispatch Plan Draft')}
               </button>
             </div>
           </div>
