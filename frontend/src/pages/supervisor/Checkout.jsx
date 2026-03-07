@@ -206,7 +206,7 @@ const Checkout = () => {
       
       setCurrentStep(2)
     } else if (currentStep === 2) {
-      // Validate wastage quantities don't exceed dispatched quantities
+      // Validate wastage quantities don't exceed dispatched, and return + wastage don't exceed dispatched
       let hasError = false
       let errorMessage = ''
       
@@ -216,11 +216,17 @@ const Checkout = () => {
           if (dispatchedQty === 0) continue
           
           const key = `${outlet.id}_${material.id}`
+          const returnQty = parseFloat(returnQuantities[key]) || 0
           const wastageQty = parseFloat(wastageQuantities[key]) || 0
           
           if (wastageQty > dispatchedQty) {
             hasError = true
             errorMessage = `Wastage quantity for ${material.name} at ${outlet.name} (${wastageQty}) cannot exceed dispatched quantity (${dispatchedQty})`
+            break
+          }
+          if (returnQty + wastageQty > dispatchedQty) {
+            hasError = true
+            errorMessage = `Return (${returnQty}) + wastage (${wastageQty}) for ${material.name} at ${outlet.name} cannot exceed dispatched quantity (${dispatchedQty})`
             break
           }
         }
@@ -925,15 +931,17 @@ const Checkout = () => {
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Available Dispatch Plans (Last 24 Hours)
             </h3>
-            {dispatchPlans.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No locked dispatch plans available for checkout.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {dispatchPlans.map(plan => {
-                  const hasCheckout = checkoutForms.some(c => c.dispatch_plan_id === plan.id)
-                  return (
+            {(() => {
+              const availablePlans = dispatchPlans.filter(
+                plan => !checkoutForms.some(c => c.dispatch_plan_id === plan.id)
+              )
+              return availablePlans.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  No locked dispatch plans available for checkout. Plans that are already checked out are not shown here.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {availablePlans.map(plan => (
                     <div
                       key={plan.id}
                       className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors"
@@ -950,24 +958,18 @@ const Checkout = () => {
                             Locked: {new Date(plan.locked_at).toLocaleString()}
                           </p>
                         </div>
-                        {hasCheckout ? (
-                          <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
-                            Checked Out
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => openCheckoutModal(plan)}
-                            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors text-sm font-semibold"
-                          >
-                            Create Checkout
-                          </button>
-                        )}
+                        <button
+                          onClick={() => openCheckoutModal(plan)}
+                          className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors text-sm font-semibold"
+                        >
+                          Create Checkout
+                        </button>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
 
           <div className="bg-card border border-border rounded-lg p-6">
