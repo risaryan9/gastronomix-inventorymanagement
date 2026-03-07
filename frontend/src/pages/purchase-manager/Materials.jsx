@@ -18,6 +18,7 @@ const RAW_MATERIAL_CATEGORIES = [
   { label: 'Grains', short: 'GRNS' },
   { label: 'Vegetables', short: 'VEGT' },
   { label: 'Oils', short: 'OIL' },
+  { label: 'Breads', short: 'BRD' },
   { label: 'Spices', short: 'SPCE' },
   { label: 'Dairy', short: 'DARY' },
   { label: 'Packaging', short: 'PKG' },

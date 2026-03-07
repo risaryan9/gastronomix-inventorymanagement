@@ -11,6 +11,7 @@ const CATEGORIES = [
   'Grains',
   'Vegetables',
   'Oils',
+  'Breads',
   'Spices',
   'Dairy',
   'Packaging',
