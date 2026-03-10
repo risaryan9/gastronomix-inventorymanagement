@@ -3,8 +3,40 @@ import { useNavigate } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 
+const NAV_STRUCTURE = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    children: [
+      { id: 'cloud-kitchen', label: 'Cloud Kitchen' },
+      { id: 'outlets', label: 'Outlets' },
+      { id: 'audits', label: 'Audits' },
+    ],
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    children: [
+      { id: 'sales', label: 'Sales' },
+      { id: 'performance', label: 'Performance' },
+      { id: 'trends', label: 'Trends' },
+    ],
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    children: [
+      { id: 'materials', label: 'Materials' },
+      { id: 'users', label: 'Users' },
+      { id: 'preferences', label: 'Preferences' },
+    ],
+  },
+]
+
 const AdminDashboard = () => {
   const [session, setSession] = useState(null)
+  const [activeParentId, setActiveParentId] = useState('overview')
+  const [activeChildId, setActiveChildId] = useState('cloud-kitchen')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -23,6 +55,9 @@ const AdminDashboard = () => {
   }
 
   if (!session) return null
+
+  const activeParent = NAV_STRUCTURE.find((p) => p.id === activeParentId)
+  const activeChild = activeParent?.children.find((c) => c.id === activeChildId)
 
   return (
     <div className="min-h-screen bg-background">
@@ -45,61 +80,104 @@ const AdminDashboard = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Session Info Card */}
-        <div className="bg-card border border-border rounded-xl p-6 mb-6">
-          <h2 className="text-xl font-bold text-foreground mb-4">Session Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Full Name</p>
-              <p className="font-semibold text-foreground">{session.full_name}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Role</p>
-              <p className="font-semibold text-foreground capitalize">{session.role}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Email</p>
-              <p className="font-semibold text-foreground">{session.email}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Login Type</p>
-              <p className="font-semibold text-foreground capitalize">{session.login_type}</p>
-            </div>
-            {session.cloud_kitchen_id && (
-              <div>
-                <p className="text-sm text-muted-foreground">Cloud Kitchen ID</p>
-                <p className="font-semibold text-foreground">{session.cloud_kitchen_id}</p>
+      <main className="px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex gap-8">
+          {/* Sidebar */}
+          <aside className="w-72 shrink-0">
+            <div className="space-y-4">
+              <div className="bg-card border border-border rounded-xl p-4">
+                {NAV_STRUCTURE.map((parent) => (
+                  <div key={parent.id} className="mb-4 last:mb-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveParentId(parent.id)
+                        // Default to first child when switching parent
+                        if (parent.children?.length) {
+                          setActiveChildId(parent.children[0].id)
+                        }
+                      }}
+                      className={`w-full text-left px-1.5 py-2 rounded-md text-base font-semibold tracking-tight transition-colors ${
+                        activeParentId === parent.id
+                          ? 'bg-accent text-black'
+                          : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {parent.label}
+                    </button>
+                    <div className="mt-1 space-y-0.5 pl-1">
+                      {parent.children.map((child) => (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveParentId(parent.id)
+                            setActiveChildId(child.id)
+                          }}
+                          className={`w-full text-left pl-6 pr-2 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                            activeParentId === parent.id && activeChildId === child.id
+                              ? 'bg-muted text-foreground'
+                              : 'text-muted-foreground hover:bg-muted/60'
+                          }`}
+                        >
+                          {child.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Dashboard Content */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-lg font-bold text-foreground mb-2">User Management</h3>
-            <p className="text-sm text-muted-foreground mb-4">Manage users and roles</p>
-            <button className="bg-accent text-background font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition-all">
-              Manage Users
-            </button>
-          </div>
+              {/* Session Info under sidebar */}
+              <div className="bg-card border border-border rounded-xl p-4">
+                <h2 className="text-sm font-semibold text-foreground mb-3">Session Information</h2>
+                <dl className="space-y-2 text-xs">
+                  <div>
+                    <dt className="text-muted-foreground">Full Name</dt>
+                    <dd className="font-semibold text-foreground">{session.full_name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Role</dt>
+                    <dd className="font-semibold text-foreground capitalize">{session.role}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Email</dt>
+                    <dd className="font-semibold text-foreground break-all">{session.email}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Login Type</dt>
+                    <dd className="font-semibold text-foreground capitalize">{session.login_type}</dd>
+                  </div>
+                  {session.cloud_kitchen_id && (
+                    <div>
+                      <dt className="text-muted-foreground">Cloud Kitchen ID</dt>
+                      <dd className="font-semibold text-foreground">{session.cloud_kitchen_id}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            </div>
+          </aside>
 
-          <div className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-lg font-bold text-foreground mb-2">Inventory</h3>
-            <p className="text-sm text-muted-foreground mb-4">View and manage inventory</p>
-            <button className="bg-accent text-background font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition-all">
-              View Inventory
-            </button>
-          </div>
-
-          <div className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-lg font-bold text-foreground mb-2">Reports</h3>
-            <p className="text-sm text-muted-foreground mb-4">Generate and view reports</p>
-            <button className="bg-accent text-background font-semibold px-4 py-2 rounded-lg hover:brightness-110 transition-all">
-              View Reports
-            </button>
-          </div>
+          {/* Content Area */}
+          <section className="flex-1">
+            {/* Placeholder Content */}
+            <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {activeParent?.label} / {activeChild?.label}
+              </p>
+              <h2 className="text-2xl font-bold text-foreground">
+                {activeChild?.label} <span className="text-muted-foreground text-base">section</span>
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-xl">
+                This is a placeholder for the{' '}
+                <span className="font-semibold text-foreground">
+                  {activeParent?.label} &gt; {activeChild?.label}
+                </span>{' '}
+                area of the admin dashboard. We&apos;ll build out this section in detail next.
+              </p>
+            </div>
+          </section>
         </div>
       </main>
     </div>
