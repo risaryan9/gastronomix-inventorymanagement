@@ -394,7 +394,7 @@ const Login = () => {
                       autoFocus
                     />
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Enter your unique login key for {cloudKitchens.find(ck => ck.id === selectedCloudKitchenId)?.name || 'this cloud kitchen'}
+                      Enter your unique login key for {cloudKitchens.find(ck => ck.id === selectedCloudKitchenId)?.name || 'this cloud kitchen'}. You can use any format (e.g. DE-CK1-A23F, deck1a23f, de-ck1-a23f).
                     </p>
                   </div>
                 )}

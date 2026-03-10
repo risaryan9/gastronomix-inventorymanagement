@@ -2,9 +2,10 @@
  * Script to seed raw materials from CSV file
  * 
  * Usage: 
- *   1. Place your materials.csv in the backend/ folder
+ *   1. Place your materials_new.csv in the backend/ folder
  *   2. Run: node backend/seed-raw-materials.js
  * 
+ * CSV brand_codes: use "all" for all brands (bp,nk,ec), or comma-separated e.g. "nk,ec", or array style ["bp"]
  * The trigger will automatically create inventory entries for all active cloud kitchens
  */
 
@@ -55,7 +56,39 @@ const CATEGORY_CODES = {
   'Dairy': 'DARY',
   'Packaging': 'PKG',
   'Sanitary': 'SAN',
-  'Misc': 'MISC'
+  'Misc': 'MISC',
+  'Breads': 'BRED'
+}
+
+/** Allowed brand_codes (must match DB check constraint) */
+const ALLOWED_BRAND_CODES = ['bp', 'nk', 'ec']
+
+/**
+ * Parse brand_codes from CSV cell.
+ * - "all" (case-insensitive) → all allowed codes ['bp','nk','ec']
+ * - Comma-separated e.g. "nk,ec" or "bp"
+ * - Array-style e.g. ["ec"] or ["nk","ec"] (with or without escaped quotes)
+ * Returns null if empty/invalid; otherwise array of allowed codes.
+ */
+function parseBrandCodes(value) {
+  if (value == null || String(value).trim() === '') return null
+  const raw = String(value).trim()
+  const lower = raw.toLowerCase()
+  if (lower === 'all') return [...ALLOWED_BRAND_CODES]
+  // Array-style: ["ec"] or ["nk","ec"] or [""ec""]
+  if (raw.startsWith('[')) {
+    const inner = raw.replace(/^\[|\]$/g, '').replace(/""/g, '"')
+    const codes = inner
+      .split(',')
+      .map(s => s.replace(/^["']|["']$/g, '').trim().toLowerCase())
+      .filter(Boolean)
+    const valid = codes.filter(c => ALLOWED_BRAND_CODES.includes(c))
+    return valid.length === 0 ? null : valid
+  }
+  // Comma-separated
+  const codes = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  const valid = codes.filter(c => ALLOWED_BRAND_CODES.includes(c))
+  return valid.length === 0 ? null : valid
 }
 
 /**
@@ -110,12 +143,13 @@ async function seedMaterials() {
     console.log('Starting raw materials seeding...\n')
     
     // Read and parse CSV
-    const csvPath = join(__dirname, 'materials.csv')
+    const csvPath = join(__dirname, 'materials_new.csv')
     const csvContent = readFileSync(csvPath, 'utf-8')
-    const records = parse(csvContent, { 
-      columns: true, 
+    const records = parse(csvContent, {
+      columns: true,
       skip_empty_lines: true,
-      trim: true
+      trim: true,
+      relax_column_count: true
     })
     
     console.log(`Found ${records.length} materials to seed\n`)
@@ -143,7 +177,9 @@ async function seedMaterials() {
       
       try {
         // Generate material code
-        const code = await generateMaterialCode(row.category)
+        const categoryRaw = row.category != null ? String(row.category).trim() : ''
+        const category = (categoryRaw === '' || categoryRaw.toUpperCase() === 'NULL') ? 'Misc' : categoryRaw
+        const code = await generateMaterialCode(category)
         
         // Parse low_stock_threshold - keep the exact decimal value (e.g., 45.000)
         // PostgreSQL numeric(10, 3) will preserve the 3 decimal places
@@ -176,6 +212,9 @@ async function seedMaterials() {
           )
           materialType = 'raw_material'
         }
+
+        // Parse brand_codes: optional CSV column, comma-separated e.g. "nk,ec" or "bp"
+        const brandCodes = parseBrandCodes(row.brand_codes)
         
         // Prepare material data; trigger creates inventory for new material
         const materialData = {
@@ -183,12 +222,13 @@ async function seedMaterials() {
           code,
           unit: row.unit.trim(),
           description: row.description ? row.description.trim() : null,
-          category: row.category.trim(),
+          category,
           low_stock_threshold: lowStockThreshold, // Will be stored as 45.000 in numeric(10,3)
           is_active: row.is_active === 'TRUE' || row.is_active === 'true' || row.is_active === '1',
           brand: row.brand ? row.brand.trim() : null,
           vendor_id: vendorId,
-          material_type: materialType
+          material_type: materialType,
+          brand_codes: brandCodes
         }
         
         // Insert material
@@ -224,7 +264,7 @@ async function seedMaterials() {
     console.error('Fatal error:', error.message)
     
     if (error.code === 'ENOENT') {
-      console.error('\nMake sure materials.csv exists in the backend/ folder')
+      console.error('\nMake sure materials_new.csv exists in the backend/ folder')
     }
     
     process.exit(1)
