@@ -40,7 +40,7 @@ const BRAND_MAPPING_OPTIONS = [
   { code: 'ec', label: 'El Chaapo' }
 ]
 
-const Materials = () => {
+const Materials = ({ isAdminMode = false }) => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,6 +49,8 @@ const Materials = () => {
   const [typeFilter, setTypeFilter] = useState('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false)
+  const [showActivateModal, setShowActivateModal] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
@@ -171,6 +173,13 @@ const Materials = () => {
 
   // Apply column sort to filtered materials
   const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+    // Active materials first, then inactive
+    const aActive = a.is_active !== false
+    const bActive = b.is_active !== false
+    if (aActive !== bActive) {
+      return aActive ? -1 : 1
+    }
+
     let cmp = 0
     if (sortBy === 'name') {
       const nameA = (a.name || '').toLowerCase()
@@ -229,6 +238,7 @@ const Materials = () => {
         .select('code')
         .eq('material_type', materialType)
         .eq('category', category)
+        .eq('is_active', true)
         .is('deleted_at', null)
 
       if (error) throw error
@@ -711,6 +721,7 @@ const Materials = () => {
                         )}
                       </button>
                     </th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -718,7 +729,9 @@ const Materials = () => {
                   {paginatedMaterials.map((material) => (
                     <tr
                       key={material.id}
-                      className="border-b border-border hover:bg-background/30 transition-colors duration-200"
+                      className={`border-b border-border hover:bg-background/30 transition-colors duration-200 ${
+                        material.is_active === false ? 'opacity-70' : ''
+                      }`}
                     >
                       <td className="px-4 py-3">
                         <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
@@ -741,6 +754,17 @@ const Materials = () => {
                         {material.low_stock_threshold !== null && material.low_stock_threshold !== undefined
                           ? parseFloat(material.low_stock_threshold).toFixed(3)
                           : '0.000'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {material.is_active === false ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                            Inactive
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            Active
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -1092,22 +1116,45 @@ const Materials = () => {
                   )}
 
                   {/* Form Actions */}
-                  <div className="flex items-center justify-end gap-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setIsModalOpen(false)}
-                      disabled={saving}
-                      className="px-5 py-2.5 bg-muted text-foreground border-2 border-border rounded-lg hover:bg-muted/80 transition-all duration-200 font-semibold disabled:opacity-50 touch-manipulation"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="px-5 py-2.5 bg-accent text-background font-black rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
-                    >
-                      {saving ? 'Saving...' : editingMaterial ? 'Update Material' : 'Continue'}
-                    </button>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4">
+                    {isAdminMode && editingMaterial && (
+                      editingMaterial.is_active === false ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowActivateModal(true)}
+                          disabled={saving}
+                          className="sm:self-start px-5 py-2.5 bg-emerald-500/10 text-emerald-500 border-2 border-emerald-500/40 rounded-lg hover:bg-emerald-500/15 hover:border-emerald-500/60 transition-all duration-200 font-semibold disabled:opacity-50 touch-manipulation"
+                        >
+                          Activate material
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setShowDeactivateModal(true)}
+                          disabled={saving}
+                          className="sm:self-start px-5 py-2.5 bg-destructive/10 text-destructive border-2 border-destructive/40 rounded-lg hover:bg-destructive/15 hover:border-destructive/60 transition-all duration-200 font-semibold disabled:opacity-50 touch-manipulation"
+                        >
+                          Deactivate material
+                        </button>
+                      )
+                    )}
+                    <div className="flex-1 flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsModalOpen(false)}
+                        disabled={saving}
+                        className="px-5 py-2.5 bg-muted text-foreground border-2 border-border rounded-lg hover:bg-muted/80 transition-all duration-200 font-semibold disabled:opacity-50 touch-manipulation"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="px-5 py-2.5 bg-accent text-background font-black rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                      >
+                        {saving ? 'Saving...' : editingMaterial ? 'Update Material' : 'Continue'}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -1212,6 +1259,189 @@ const Materials = () => {
                     className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
                   >
                     {saving ? 'Creating...' : 'Confirm & Create Material'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Deactivate Material Confirmation (Admin only) */}
+        {isAdminMode && editingMaterial && showDeactivateModal && (
+          <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-card/95 backdrop-blur-md border-2 border-destructive rounded-t-2xl lg:rounded-2xl shadow-2xl shadow-black/50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="p-5 lg:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl lg:text-2xl font-bold text-destructive">
+                    Deactivate material?
+                  </h2>
+                  <button
+                    onClick={() => !saving && setShowDeactivateModal(false)}
+                    className="text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
+                    disabled={saving}
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mb-4 p-4 bg-background border border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    You are about to deactivate this material. It will:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-foreground space-y-1">
+                    <li>No longer appear in Materials lists for new actions.</li>
+                    <li>No longer be selectable in stock-in, stock-out, and related flows.</li>
+                    <li>Remain in inventory and historical records wherever it is already used.</li>
+                  </ul>
+                  <p className="mt-3 text-sm">
+                    <span className="font-semibold">Material:</span>{' '}
+                    <span className="font-semibold text-foreground">
+                      {editingMaterial.name} ({editingMaterial.code})
+                    </span>
+                  </p>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-3">
+                  <button
+                    onClick={() => !saving && setShowDeactivateModal(false)}
+                    disabled={saving}
+                    className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setSaving(true)
+                        setError(null)
+                        const session = getSession()
+                        if (!session?.id) {
+                          throw new Error('Session expired. Please login again.')
+                        }
+
+                        const { error: deactivateError } = await supabase
+                          .from('raw_materials')
+                          .update({
+                            is_active: false,
+                            updated_at: new Date().toISOString()
+                          })
+                          .eq('id', editingMaterial.id)
+
+                        if (deactivateError) throw deactivateError
+
+                        setShowDeactivateModal(false)
+                        setIsModalOpen(false)
+                        setAlert({
+                          type: 'success',
+                          message:
+                            'Material deactivated. It will no longer be available for new stock movements, but existing inventory and history remain.'
+                        })
+                        await fetchMaterials()
+                      } catch (err) {
+                        console.error('Error deactivating material:', err)
+                        setError(err.message || 'Failed to deactivate material. Please try again.')
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                    disabled={saving}
+                    className="w-full lg:flex-1 bg-destructive text-destructive-foreground font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-destructive shadow-[0.1em_0.1em_0_0_rgba(239,68,68,0.4)] hover:shadow-[0.15em_0.15em_0_0_rgba(239,68,68,0.6)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
+                  >
+                    {saving ? 'Deactivating...' : 'Confirm & Deactivate'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Activate Material Confirmation (Admin only) */}
+        {isAdminMode && editingMaterial && showActivateModal && (
+          <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-card/95 backdrop-blur-md border-2 border-emerald-500 rounded-t-2xl lg:rounded-2xl shadow-2xl shadow-black/50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="p-5 lg:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl lg:text-2xl font-bold text-emerald-400">
+                    Activate material?
+                  </h2>
+                  <button
+                    onClick={() => !saving && setShowActivateModal(false)}
+                    className="text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
+                    disabled={saving}
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mb-4 p-4 bg-background border border-border rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Re-activating this material will:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-foreground space-y-1">
+                    <li>Make it visible again in the Materials list.</li>
+                    <li>Allow it to be selected in stock-in, stock-out, and related flows.</li>
+                    <li>Keep all existing inventory and historical records intact.</li>
+                  </ul>
+                  <p className="mt-3 text-sm">
+                    <span className="font-semibold">Material:</span>{' '}
+                    <span className="font-semibold text-foreground">
+                      {editingMaterial.name} ({editingMaterial.code})
+                    </span>
+                  </p>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-3">
+                  <button
+                    onClick={() => !saving && setShowActivateModal(false)}
+                    disabled={saving}
+                    className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setSaving(true)
+                        setError(null)
+                        const session = getSession()
+                        if (!session?.id) {
+                          throw new Error('Session expired. Please login again.')
+                        }
+
+                        const { error: activateError } = await supabase
+                          .from('raw_materials')
+                          .update({
+                            is_active: true,
+                            updated_at: new Date().toISOString()
+                          })
+                          .eq('id', editingMaterial.id)
+
+                        if (activateError) throw activateError
+
+                        setShowActivateModal(false)
+                        // Keep edit modal open so user can continue editing details if needed
+                        setEditingMaterial(prev => prev ? { ...prev, is_active: true } : prev)
+                        setAlert({
+                          type: 'success',
+                          message:
+                            'Material activated. It is now available again for new stock movements.'
+                        })
+                        await fetchMaterials()
+                      } catch (err) {
+                        console.error('Error activating material:', err)
+                        setError(err.message || 'Failed to activate material. Please try again.')
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                    disabled={saving}
+                    className="w-full lg:flex-1 bg-emerald-500 text-white font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-emerald-500 shadow-[0.1em_0.1em_0_0_rgba(16,185,129,0.4)] hover:shadow-[0.15em_0.15em_0_0_rgba(16,185,129,0.6)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
+                  >
+                    {saving ? 'Activating...' : 'Confirm & Activate'}
                   </button>
                 </div>
               </div>
