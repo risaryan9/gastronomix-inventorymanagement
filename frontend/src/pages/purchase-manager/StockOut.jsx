@@ -2050,7 +2050,6 @@ const StockOut = () => {
                         <th className="px-3 py-2 w-10"></th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Current Stock</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Today's Total</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
                         <th className="px-3 py-2 w-12"></th>
                       </tr>
@@ -2142,11 +2141,6 @@ const StockOut = () => {
                                 ) : 'bg-muted/50 text-muted-foreground'
                               }`}>
                                 {item.raw_material_id ? `${item.current_inventory.toFixed(3)} ${item.unit}` : '—'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span className="block px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground text-sm font-medium">
-                                {item.raw_material_id ? `${item.todays_total.toFixed(3)} ${item.unit}` : '—'}
                               </span>
                             </td>
                             <td className="px-3 py-2">
