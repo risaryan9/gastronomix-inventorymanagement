@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
 
 const StockOut = () => {
   const [allocationRequests, setAllocationRequests] = useState([])
@@ -192,6 +195,246 @@ const StockOut = () => {
       setAlert({ type: 'error', message: 'Failed to fetch allocation requests' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const downloadStockOutCSV = (record) => {
+    if (!record) return
+    const session = getSession()
+    const isKitchen = record.self_stock_out
+
+    const headers = ['Material Name', 'Code', 'Unit', 'Quantity']
+    const rows = (record.stock_out_items || []).map((item) => [
+      item.raw_materials?.name || 'N/A',
+      item.raw_materials?.code || 'N/A',
+      item.raw_materials?.unit || 'N/A',
+      parseFloat(item.quantity || 0).toFixed(3)
+    ])
+
+    const metaLines = [
+      isKitchen ? 'Kitchen Stock-Out Details' : 'Outlet Stock-Out Details',
+      `Generated: ${new Date().toLocaleString()}`,
+      `Cloud Kitchen: ${session?.cloud_kitchen_name || session?.cloud_kitchen_id || 'N/A'}`,
+      `User: ${session?.full_name || 'N/A'}`,
+      `Role: ${session?.role || 'N/A'}`,
+      `Email: ${session?.email || 'N/A'}`,
+      '',
+      `Allocation Date: ${new Date(record.allocation_date).toLocaleDateString()}`,
+      !isKitchen && record.outlets?.name ? `Outlet: ${record.outlets.name} (${record.outlets.code || ''})` : null,
+      isKitchen && record.reason ? `Reason: ${record.reason.replace(/-/g, ' ')}` : null,
+      record.notes ? `Notes: ${record.notes}` : null
+    ].filter(Boolean)
+
+    const csvContent = [
+      ['Gastronomix Inventory Management - Stock-Out Record'],
+      ...metaLines.map(line => [line]),
+      [],
+      headers,
+      ...rows
+    ].map(row => row.join(',')).join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `stock_out_${record.id}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const downloadStockOutExcel = (record) => {
+    if (!record) return
+    const session = getSession()
+    const workbook = XLSX.utils.book_new()
+    const isKitchen = record.self_stock_out
+
+    const summaryData = [
+      ['Gastronomix Inventory Management - Stock-Out Record'],
+      ['Generated:', new Date().toLocaleString()],
+      [],
+      ['Cloud Kitchen Information'],
+      ['Name:', session?.cloud_kitchen_name || 'N/A'],
+      ['ID:', session?.cloud_kitchen_id || 'N/A'],
+      [],
+      ['User Information'],
+      ['Name:', session?.full_name || 'N/A'],
+      ['Role:', session?.role || 'N/A'],
+      ['Email:', session?.email || 'N/A'],
+      [],
+      ['Stock-Out Summary'],
+      ['Type:', isKitchen ? 'Kitchen Stock-Out' : 'Outlet Stock-Out'],
+      ['Allocation Date:', new Date(record.allocation_date).toLocaleDateString()],
+      !isKitchen && record.outlets?.name ? ['Outlet:', `${record.outlets.name} (${record.outlets.code || ''})`] : null,
+      isKitchen && record.reason ? ['Reason:', record.reason.replace(/-/g, ' ')] : null,
+      record.notes ? ['Notes:', record.notes] : null
+    ].filter(Boolean)
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+    const data = [
+      ['Material Name', 'Code', 'Unit', 'Quantity'],
+      ...(record.stock_out_items || []).map((item) => [
+        item.raw_materials?.name || 'N/A',
+        item.raw_materials?.code || 'N/A',
+        item.raw_materials?.unit || 'N/A',
+        parseFloat(item.quantity || 0)
+      ])
+    ]
+
+    const sheet = XLSX.utils.aoa_to_sheet(data)
+
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C })
+      const cell = sheet[cellAddress]
+      if (cell) {
+        cell.s = {
+          font: { bold: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Items')
+    XLSX.writeFile(workbook, `stock_out_${record.id}.xlsx`)
+  }
+
+  const downloadStockOutPDF = (record) => {
+    if (!record) return
+    const session = getSession()
+    const isKitchen = record.self_stock_out
+
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    let yPos = 20
+
+    doc.setFontSize(20)
+    doc.setFont(undefined, 'bold')
+    doc.text('Gastronomix', pageWidth / 2, yPos, { align: 'center' })
+    yPos += 8
+    doc.setFontSize(14)
+    doc.setFont(undefined, 'normal')
+    doc.text(
+      isKitchen ? 'Kitchen Stock-Out Details' : 'Outlet Stock-Out Details',
+      pageWidth / 2,
+      yPos,
+      { align: 'center' }
+    )
+    yPos += 10
+
+    doc.setFontSize(10)
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPos)
+    yPos += 6
+
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('Cloud Kitchen Information', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(`Name: ${session?.cloud_kitchen_name || 'N/A'}`, 25, yPos)
+    yPos += 5
+    doc.text(`ID: ${session?.cloud_kitchen_id || 'N/A'}`, 25, yPos)
+    yPos += 8
+
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('User Information', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(`Name: ${session?.full_name || 'N/A'}`, 25, yPos)
+    yPos += 5
+    doc.text(
+      `Role: ${
+        session?.role
+          ? session.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+          : 'N/A'
+      }`,
+      25,
+      yPos
+    )
+    yPos += 5
+    doc.text(`Email: ${session?.email || 'N/A'}`, 25, yPos)
+    yPos += 8
+
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('Stock-Out Summary', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(`Allocation Date: ${new Date(record.allocation_date).toLocaleDateString()}`, 25, yPos)
+    yPos += 5
+    if (!isKitchen && record.outlets?.name) {
+      doc.text(`Outlet: ${record.outlets.name}${record.outlets.code ? ` (${record.outlets.code})` : ''}`, 25, yPos)
+      yPos += 5
+    }
+    if (isKitchen && record.reason) {
+      doc.text(`Reason: ${record.reason.replace(/-/g, ' ')}`, 25, yPos)
+      yPos += 5
+    }
+    if (record.notes) {
+      doc.text(`Notes: ${record.notes}`, 25, yPos)
+      yPos += 7
+    }
+
+    if (yPos > pageHeight - 60) {
+      doc.addPage()
+      yPos = 20
+    }
+
+    const tableData = (record.stock_out_items || []).map((item) => [
+      item.raw_materials?.name || 'N/A',
+      item.raw_materials?.code || 'N/A',
+      `${parseFloat(item.quantity || 0).toFixed(3)} ${item.raw_materials?.unit || ''}`
+    ])
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Material', 'Code', 'Quantity']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 2 },
+      margin: { left: 20, right: 20 }
+    })
+
+    const finalY = doc.lastAutoTable?.finalY || yPos
+    doc.setFontSize(8)
+    doc.text(
+      `This report was generated on ${new Date().toLocaleString()} by ${session?.full_name || 'System'}`,
+      pageWidth / 2,
+      pageHeight - 10,
+      { align: 'center' }
+    )
+
+    doc.save(`stock_out_${record.id}.pdf`)
+  }
+
+  const handleExportStockOut = (format, record) => {
+    if (!record) return
+    switch (format) {
+      case 'csv':
+        downloadStockOutCSV(record)
+        break
+      case 'excel':
+        downloadStockOutExcel(record)
+        break
+      case 'pdf':
+        downloadStockOutPDF(record)
+        break
+      default:
+        break
     }
   }
 
@@ -1985,6 +2228,30 @@ const StockOut = () => {
                   </svg>
                 </button>
               </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => handleExportStockOut('csv', stockOutDetails)}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+              >
+                Download CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportStockOut('excel', stockOutDetails)}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-green-500/70 bg-green-500/10 hover:bg-green-500/20 text-green-500 transition-all"
+              >
+                Download Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportStockOut('pdf', stockOutDetails)}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-red-500/70 bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all"
+              >
+                Download PDF
+              </button>
+            </div>
 
               <div className="mb-6 space-y-3">
                 <div className="grid grid-cols-2 gap-4">

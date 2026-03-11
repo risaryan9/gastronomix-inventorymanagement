@@ -615,12 +615,14 @@ const Materials = ({ isAdminMode = false }) => {
           <p className="text-sm sm:text-base text-muted-foreground mb-4">
             Manage material catalog. New materials automatically create inventory entries for all cloud kitchens.
           </p>
-          <button
-            onClick={handleAddNew}
-            className="bg-accent text-background font-black px-5 py-3 text-lg rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all duration-300"
-          >
-            + Add New Material
-          </button>
+          {isAdminMode && (
+            <button
+              onClick={handleAddNew}
+              className="bg-accent text-background font-black px-5 py-3 text-lg rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all duration-300"
+            >
+              + Add New Material
+            </button>
+          )}
         </div>
         
         {/* Search & Filter Bar */}

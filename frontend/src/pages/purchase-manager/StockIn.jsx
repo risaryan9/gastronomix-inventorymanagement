@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
 
 const StockIn = () => {
   const [stockInRecords, setStockInRecords] = useState([])
@@ -346,6 +349,316 @@ const StockIn = () => {
       .toLowerCase()
       .replace(/\s+/g, '_')
       .replace(/[^a-z0-9_\-]/g, '')
+  }
+
+  const downloadStockInCSV = (record) => {
+    if (!record) return
+    const session = getSession()
+
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+    const headers = [
+      'Material Name',
+      'Code',
+      'Unit',
+      'Quantity Purchased',
+      'Quantity Remaining',
+      'Unit Cost',
+      'GST (%)',
+      'Total Cost'
+    ]
+
+    const rows = (record.stock_in_batches || []).map((batch) => {
+      const qty = parseFloat(batch.quantity_purchased) || 0
+      const unitCost = parseFloat(batch.unit_cost || 0)
+      const gstPercent = parseFloat(batch.gst_percent || 0)
+      const base = qty * unitCost
+      const totalCost = base + (base * gstPercent / 100)
+
+      return [
+        batch.raw_materials?.name || 'N/A',
+        batch.raw_materials?.code || 'N/A',
+        batch.raw_materials?.unit || 'N/A',
+        qty.toFixed(3),
+        parseFloat(batch.quantity_remaining || 0).toFixed(3),
+        unitCost.toFixed(2),
+        gstPercent.toFixed(2),
+        totalCost.toFixed(2)
+      ]
+    })
+
+    const meta = [
+      isKitchen ? 'Kitchen Stock-In Details' : 'Purchase Stock-In Details',
+      `Generated: ${new Date().toLocaleString()}`,
+      `Cloud Kitchen: ${session?.cloud_kitchen_name || session?.cloud_kitchen_id || 'N/A'}`,
+      `User: ${session?.full_name || 'N/A'}`,
+      `Role: ${session?.role || 'N/A'}`,
+      `Email: ${session?.email || 'N/A'}`,
+      '',
+      `Receipt Date: ${new Date(record.receipt_date).toLocaleDateString()}`,
+      !isKitchen && record.supplier_name ? `Supplier: ${record.supplier_name}` : null,
+      !isKitchen && record.invoice_number ? `Invoice #: ${record.invoice_number}` : null,
+      `Total Cost: ₹${parseFloat(record.total_cost || 0).toFixed(2)}`,
+      ''
+    ].filter(Boolean)
+
+    const csvContent = [
+      ['Gastronomix Inventory Management - Stock-In Record'],
+      ...meta.map(line => [line]),
+      [],
+      headers,
+      ...rows
+    ].map(row => row.join(',')).join('\n')
+
+    const safeId = sanitizeForFilename(record.invoice_number || record.id || 'stock_in')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${safeId}_stock_in_${new Date(record.receipt_date).toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const downloadStockInExcel = (record) => {
+    if (!record) return
+    const session = getSession()
+    const workbook = XLSX.utils.book_new()
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+
+    const summaryData = [
+      ['Gastronomix Inventory Management - Stock-In Record'],
+      ['Generated:', new Date().toLocaleString()],
+      [],
+      ['Cloud Kitchen Information'],
+      ['Name:', session?.cloud_kitchen_name || 'N/A'],
+      ['ID:', session?.cloud_kitchen_id || 'N/A'],
+      [],
+      ['User Information'],
+      ['Name:', session?.full_name || 'N/A'],
+      ['Role:', session?.role || 'N/A'],
+      ['Email:', session?.email || 'N/A'],
+      [],
+      ['Stock-In Summary'],
+      ['Type:', isKitchen ? 'Kitchen Stock-In' : 'Purchase Stock-In'],
+      ['Receipt Date:', new Date(record.receipt_date).toLocaleDateString()],
+      !isKitchen && record.supplier_name ? ['Supplier:', record.supplier_name] : null,
+      !isKitchen && record.invoice_number ? ['Invoice #:', record.invoice_number] : null,
+      ['Total Cost:', `₹${parseFloat(record.total_cost || 0).toFixed(2)}`]
+    ].filter(Boolean)
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+    const data = [
+      ['Material Name', 'Code', 'Unit', 'Quantity Purchased', 'Quantity Remaining', 'Unit Cost', 'GST (%)', 'Total Cost'],
+      ...(record.stock_in_batches || []).map((batch) => {
+        const qty = parseFloat(batch.quantity_purchased) || 0
+        const unitCost = parseFloat(batch.unit_cost || 0)
+        const gstPercent = parseFloat(batch.gst_percent || 0)
+        const base = qty * unitCost
+        const totalCost = base + (base * gstPercent / 100)
+
+        return [
+          batch.raw_materials?.name || 'N/A',
+          batch.raw_materials?.code || 'N/A',
+          batch.raw_materials?.unit || 'N/A',
+          qty,
+          parseFloat(batch.quantity_remaining || 0),
+          unitCost,
+          gstPercent,
+          totalCost
+        ]
+      })
+    ]
+
+    const sheet = XLSX.utils.aoa_to_sheet(data)
+
+    // Style header row: bold with simple borders
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C })
+      const cell = sheet[cellAddress]
+      if (cell) {
+        cell.s = {
+          font: { bold: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Items')
+
+    const safeId = sanitizeForFilename(record.invoice_number || record.id || 'stock_in')
+    XLSX.writeFile(workbook, `${safeId}_stock_in_${new Date(record.receipt_date).toISOString().split('T')[0]}.xlsx`)
+  }
+
+  const downloadStockInPDF = (record) => {
+    if (!record) return
+    const session = getSession()
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    let yPos = 20
+
+    // Header
+    doc.setFontSize(20)
+    doc.setFont(undefined, 'bold')
+    doc.text('Gastronomix', pageWidth / 2, yPos, { align: 'center' })
+    yPos += 8
+    doc.setFontSize(14)
+    doc.setFont(undefined, 'normal')
+    doc.text(
+      isKitchen ? 'Kitchen Stock-In Details' : 'Purchase Stock-In Details',
+      pageWidth / 2,
+      yPos,
+      { align: 'center' }
+    )
+    yPos += 10
+
+    // Metadata
+    doc.setFontSize(10)
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPos)
+    yPos += 6
+
+    // Cloud kitchen + user
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('Cloud Kitchen Information', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(`Name: ${session?.cloud_kitchen_name || 'N/A'}`, 25, yPos)
+    yPos += 5
+    doc.text(`ID: ${session?.cloud_kitchen_id || 'N/A'}`, 25, yPos)
+    yPos += 8
+
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('User Information', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(`Name: ${session?.full_name || 'N/A'}`, 25, yPos)
+    yPos += 5
+    doc.text(
+      `Role: ${
+        session?.role
+          ? session.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+          : 'N/A'
+      }`,
+      25,
+      yPos
+    )
+    yPos += 5
+    doc.text(`Email: ${session?.email || 'N/A'}`, 25, yPos)
+    yPos += 8
+
+    // Stock-in summary
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(12)
+    doc.text('Stock-In Summary', 20, yPos)
+    yPos += 7
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(10)
+    doc.text(
+      `Type: ${isKitchen ? (record.stock_in_type === 'inter_cloud' ? 'Inter-Cloud Stock-In' : 'Kitchen Stock-In') : 'Purchase Stock-In'}`,
+      25,
+      yPos
+    )
+    yPos += 5
+    doc.text(`Receipt Date: ${new Date(record.receipt_date).toLocaleDateString()}`, 25, yPos)
+    yPos += 5
+    if (!isKitchen && record.supplier_name) {
+      doc.text(`Supplier: ${record.supplier_name}`, 25, yPos)
+      yPos += 5
+    }
+    if (!isKitchen && record.invoice_number) {
+      doc.text(`Invoice #: ${record.invoice_number}`, 25, yPos)
+      yPos += 5
+    }
+    doc.text(`Total Cost: ₹${parseFloat(record.total_cost || 0).toFixed(2)}`, 25, yPos)
+    yPos += 10
+
+    if (yPos > pageHeight - 60) {
+      doc.addPage()
+      yPos = 20
+    }
+
+    const tableData = (record.stock_in_batches || []).map((batch) => {
+      const qty = parseFloat(batch.quantity_purchased) || 0
+      const unitCost = parseFloat(batch.unit_cost || 0)
+      const gstPercent = parseFloat(batch.gst_percent || 0)
+      const base = qty * unitCost
+      const totalCost = base + (base * gstPercent / 100)
+
+      return [
+        batch.raw_materials?.name || 'N/A',
+        batch.raw_materials?.code || 'N/A',
+        batch.raw_materials?.unit || 'N/A',
+        qty.toFixed(3),
+        parseFloat(batch.quantity_remaining || 0).toFixed(3),
+        `₹${unitCost.toFixed(2)}`,
+        `${gstPercent.toFixed(2)}%`,
+        `₹${totalCost.toFixed(2)}`
+      ]
+    })
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [[
+        'Material',
+        'Code',
+        'Unit',
+        'Qty Purchased',
+        'Qty Remaining',
+        'Unit Cost',
+        'GST',
+        'Total Cost'
+      ]],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+      margin: { left: 10, right: 10 }
+    })
+
+    const finalY = doc.lastAutoTable?.finalY || yPos
+    doc.setFontSize(8)
+    doc.text(
+      `This report was generated on ${new Date().toLocaleString()} by ${session?.full_name || 'System'}`,
+      pageWidth / 2,
+      pageHeight - 10,
+      { align: 'center' }
+    )
+
+    const safeId = sanitizeForFilename(record.invoice_number || record.id || 'stock_in')
+    doc.save(`${safeId}_stock_in_${new Date(record.receipt_date).toISOString().split('T')[0]}.pdf`)
+  }
+
+  const handleExportStockIn = (format, record) => {
+    if (!record) return
+    switch (format) {
+      case 'csv':
+        downloadStockInCSV(record)
+        break
+      case 'excel':
+        downloadStockInExcel(record)
+        break
+      case 'pdf':
+        downloadStockInPDF(record)
+        break
+      default:
+        break
+    }
   }
 
   const handleInvoiceFileChange = (event) => {
@@ -1813,6 +2126,30 @@ const StockIn = () => {
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => handleExportStockIn('csv', selectedRecord)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                >
+                  Download CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportStockIn('excel', selectedRecord)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-green-500/70 bg-green-500/10 hover:bg-green-500/20 text-green-500 transition-all"
+                >
+                  Download Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportStockIn('pdf', selectedRecord)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-red-500/70 bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all"
+                >
+                  Download PDF
                 </button>
               </div>
 
