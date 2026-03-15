@@ -27,6 +27,7 @@ const OutletDetails = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
   const [editingRequest, setEditingRequest] = useState(null) // The allocation request being edited
+  const [supervisorName, setSupervisorName] = useState('') // Required when creating/editing allocation request (supervisor dashboard only)
 
   useEffect(() => {
     if (!outlet) {
@@ -155,11 +156,13 @@ const OutletDetails = () => {
       setSelectedRows(new Set())
       setOpenDropdownRow(-1)
       setEditingRequest(null)
+      setSupervisorName('')
     }
   }
 
   const handleEditRequest = (request) => {
     setEditingRequest(request)
+    setSupervisorName(request.supervisor_name ?? '')
     const rows = request.allocation_request_items.map(item => ({
       id: `row-${item.id}`,
       raw_material_id: item.raw_materials.id,
@@ -247,6 +250,11 @@ const OutletDetails = () => {
         return
       }
     }
+    const nameTrimmed = (supervisorName || '').trim()
+    if (!nameTrimmed) {
+      setAlert({ type: 'error', message: 'Supervisor name is required.' })
+      return
+    }
     setShowConfirmModal(true)
   }
 
@@ -277,7 +285,8 @@ const OutletDetails = () => {
         const { error: updateError } = await supabase
           .from('allocation_requests')
           .update({
-            notes: editingRequest.notes // Preserve notes if any
+            notes: editingRequest.notes, // Preserve notes if any
+            supervisor_name: (supervisorName || '').trim() || null
           })
           .eq('id', editingRequest.id)
 
@@ -419,7 +428,8 @@ const OutletDetails = () => {
             cloud_kitchen_id: session.cloud_kitchen_id,
             requested_by: session.id,
             request_date: new Date().toISOString().split('T')[0],
-            is_packed: false
+            is_packed: false,
+            supervisor_name: (supervisorName || '').trim() || null
           })
           .select()
           .single()
@@ -450,6 +460,7 @@ const OutletDetails = () => {
       setShowAllocateModal(false)
       setAllocationRows([])
       setEditingRequest(null)
+      setSupervisorName('')
       fetchAllocationRequests()
     } catch (err) {
       console.error('Error saving allocation request:', err)
@@ -639,6 +650,9 @@ const OutletDetails = () => {
                     </div>
                   </div>
 
+                  {request.supervisor_name && (
+                    <p className="text-xs text-muted-foreground mb-2">Supervisor: <span className="text-foreground font-medium">{request.supervisor_name}</span></p>
+                  )}
                   {request.notes && (
                     <div className="mb-3 p-2 bg-background rounded-lg">
                       <p className="text-xs text-muted-foreground mb-1">Notes:</p>
@@ -736,6 +750,7 @@ const OutletDetails = () => {
                   setShowAllocateModal(false)
                   setEditingRequest(null)
                   setAllocationRows([])
+                  setSupervisorName('')
                 }}
                 className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
                 disabled={requesting}
@@ -898,6 +913,22 @@ const OutletDetails = () => {
               )}
             </div>
 
+            {/* Supervisor name (required) */}
+            <div className="mt-4">
+              <label htmlFor="supervisor-name" className="block text-sm font-semibold text-foreground mb-2">
+                Supervisor name <span className="text-destructive">*</span>
+              </label>
+              <input
+                id="supervisor-name"
+                type="text"
+                value={supervisorName}
+                onChange={(e) => setSupervisorName(e.target.value)}
+                placeholder="Enter your name"
+                disabled={requesting}
+                className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+              />
+            </div>
+
             {/* Actions */}
             <div className="flex flex-col lg:flex-row gap-3 mt-6">
               <button
@@ -905,6 +936,7 @@ const OutletDetails = () => {
                   setShowAllocateModal(false)
                   setEditingRequest(null)
                   setAllocationRows([])
+                  setSupervisorName('')
                 }}
                 disabled={requesting}
                 className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 lg:py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50 text-base touch-manipulation"
@@ -913,7 +945,7 @@ const OutletDetails = () => {
               </button>
               <button
                 onClick={handleFinalizeAllocation}
-                disabled={requesting || getSelectedItemsForSubmit().length === 0}
+                disabled={requesting || getSelectedItemsForSubmit().length === 0 || !(supervisorName || '').trim()}
                 className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 lg:py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base touch-manipulation"
               >
                 {requesting 

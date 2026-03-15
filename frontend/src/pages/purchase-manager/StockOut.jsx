@@ -21,6 +21,11 @@ const StockOut = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [outletPreviousDaysPage, setOutletPreviousDaysPage] = useState(1)
   const outletPreviousDaysPerPage = 50
+  // View all allocation requests modal (non-today's requests, with search + pagination)
+  const [showViewAllAllocationModal, setShowViewAllAllocationModal] = useState(false)
+  const [viewAllSearchTerm, setViewAllSearchTerm] = useState('')
+  const [viewAllPage, setViewAllPage] = useState(1)
+  const viewAllPerPage = 50
 
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
@@ -625,7 +630,8 @@ const StockOut = () => {
           doc.setFontSize(9)
           const reqDate = new Date(req.created_at).toLocaleString()
           const requestedBy = req.users?.full_name || '—'
-          doc.text(`Request: ${req.id.substring(0, 8)} • Requested by: ${requestedBy} • ${reqDate}`, margin, yPosOut)
+          const supervisorName = req.supervisor_name || '—'
+          doc.text(`Request: ${req.id.substring(0, 8)} • Requested by: ${requestedBy} • Supervisor: ${supervisorName} • ${reqDate}`, margin, yPosOut)
           yPosOut += 5
 
           const items = req.allocation_request_items || []
@@ -1377,19 +1383,23 @@ const StockOut = () => {
     }
   }
 
-  // Helper: request matches search (outlet name, code, requested by)
-  const outletMatchesSearch = (request) => {
-    if (!searchTerm.trim()) return true
-    const q = searchTerm.toLowerCase()
+  // Helper: request matches search by term (outlet name, code, requested by, supervisor name)
+  const allocationRequestMatchesSearch = (request, term) => {
+    if (!(term || '').trim()) return true
+    const q = (term || '').toLowerCase()
     const outletName = request.outlets?.name?.toLowerCase() || ''
     const outletCode = request.outlets?.code?.toLowerCase() || ''
     const requestedBy = request.users?.full_name?.toLowerCase() || ''
+    const supervisorName = (request.supervisor_name || '').toLowerCase()
     return (
       outletName.includes(q) ||
       outletCode.includes(q) ||
-      requestedBy.includes(q)
+      requestedBy.includes(q) ||
+      supervisorName.includes(q)
     )
   }
+
+  const outletMatchesSearch = (request) => allocationRequestMatchesSearch(request, searchTerm)
 
   const todayStart = (() => {
     const d = new Date()
@@ -1403,10 +1413,13 @@ const StockOut = () => {
     return recordDate.getTime() === todayStart
   }
 
-  // Segment 1: Today's pending (request_date = today, not packed), search applied
-  const todayPendingRequests = allocationRequests.filter(
-    (r) => isRequestDateToday(r) && !r.is_packed && outletMatchesSearch(r)
-  )
+  // Segment 1: Today's requests (pending + packed for today), search applied, pending first then packed
+  const todayRequests = allocationRequests
+    .filter((r) => isRequestDateToday(r) && outletMatchesSearch(r))
+    .sort((a, b) => {
+      if (a.is_packed !== b.is_packed) return a.is_packed ? 1 : -1
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
 
   // Segment 2: Previous days — request_date < today; sort unpacked first then packed, then date desc
   const previousDaysRequests = allocationRequests
@@ -1426,6 +1439,17 @@ const StockOut = () => {
   const outletPreviousDaysPaginated = previousDaysRequests.slice(
     outletPreviousDaysStart,
     outletPreviousDaysStart + outletPreviousDaysPerPage
+  )
+
+  // View all modal: filter previous-days requests by modal search, then paginate (50 per page)
+  const viewAllFilteredRequests = previousDaysRequests.filter((r) =>
+    allocationRequestMatchesSearch(r, viewAllSearchTerm)
+  )
+  const viewAllTotalPages = Math.ceil(viewAllFilteredRequests.length / viewAllPerPage) || 1
+  const viewAllStart = (viewAllPage - 1) * viewAllPerPage
+  const viewAllPaginated = viewAllFilteredRequests.slice(
+    viewAllStart,
+    viewAllStart + viewAllPerPage
   )
 
   // Helper to filter kitchen/self stock-out records
@@ -1506,6 +1530,11 @@ const StockOut = () => {
   useEffect(() => {
     setOutletPreviousDaysPage(1)
   }, [searchTerm])
+
+  // Reset View all modal page when modal opens or modal search changes
+  useEffect(() => {
+    if (showViewAllAllocationModal) setViewAllPage(1)
+  }, [showViewAllAllocationModal, viewAllSearchTerm])
 
   useEffect(() => {
     setKitchenCurrentPage(1)
@@ -1629,6 +1658,13 @@ const StockOut = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowViewAllAllocationModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                >
+                  View all
+                </button>
+                <button
+                  type="button"
                   onClick={() => setLayoutMode(layoutMode === 'outlet-full' ? 'split' : 'outlet-full')}
                   className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
                 >
@@ -1639,11 +1675,11 @@ const StockOut = () => {
 
             <div className="p-4 border-b border-border">
               <label className="block text-xs font-semibold text-foreground mb-1">
-                Search (Outlet / Code / Requested By)
+                Search (Outlet / Code / Requested By / Supervisor)
               </label>
               <input
                 type="text"
-                placeholder="Search by outlet name, outlet code, or requested by..."
+                placeholder="Search by outlet name, code, requested by, or supervisor name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
@@ -1651,20 +1687,20 @@ const StockOut = () => {
             </div>
 
             <div className="overflow-x-auto">
-              {/* Segment 1: Today's pending requests */}
+              {/* Segment 1: Today's requests (pending + packed) */}
               <div className="px-4 pt-4 pb-2 border-b border-border/60">
                 <h3 className="text-sm font-semibold text-foreground text-opacity-90">
-                  Today&apos;s pending requests
+                  Today&apos;s requests
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Pending allocation requests for today. Empty if none.
+                  Pending and packed allocation requests for today. Empty if none.
                 </p>
               </div>
               <div className="min-h-[80px]">
-                {todayPendingRequests.length === 0 ? (
+                {todayRequests.length === 0 ? (
                   <div className="px-4 py-6 text-center">
                     <p className="text-sm text-muted-foreground">
-                      No pending requests for today.
+                      No requests for today.
                     </p>
                   </div>
                 ) : (
@@ -1686,6 +1722,9 @@ const StockOut = () => {
                               Requested By
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                              Supervisor
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
                               Request Date
                             </th>
                           </>
@@ -1702,10 +1741,14 @@ const StockOut = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {todayPendingRequests.map((request) => (
+                      {todayRequests.map((request) => (
                         <tr
                           key={request.id}
-                          className="border-b border-border hover:bg-background/30 transition-colors"
+                          className={`border-b border-border transition-colors ${
+                            request.is_packed
+                              ? 'bg-accent/5 hover:bg-accent/10'
+                              : 'hover:bg-background/30'
+                          }`}
                         >
                           <td className="px-4 py-3 text-foreground text-sm">
                             {new Date(request.request_date).toLocaleDateString()}
@@ -1728,212 +1771,53 @@ const StockOut = () => {
                               <td className="px-4 py-3 text-foreground text-sm">
                                 {request.users?.full_name || 'N/A'}
                               </td>
+                              <td className="px-4 py-3 text-foreground text-sm">
+                                {request.supervisor_name || '—'}
+                              </td>
                               <td className="px-4 py-3 text-foreground text-xs">
                                 {new Date(request.created_at).toLocaleString()}
                               </td>
                             </>
                           )}
                           <td className="px-4 py-3">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
-                              ⏳ Pending
-                            </span>
+                            {request.is_packed ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
+                                ✓ Packed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
+                                ⏳ Pending
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
-                            <button
-                              onClick={() => openAllocationModal(request)}
-                              className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
-                            >
-                              Allocate Stock
-                            </button>
+                            {request.is_packed ? (
+                              <span className="text-sm text-muted-foreground">Completed</span>
+                            ) : (
+                              <button
+                                onClick={() => openAllocationModal(request)}
+                                className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
+                              >
+                                Allocate Stock
+                              </button>
+                            )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-xs text-muted-foreground">—</span>
+                            {request.is_packed ? (
+                              <button
+                                onClick={() => openStockOutDetailsModal(request)}
+                                className="text-accent hover:text-accent/80 font-semibold text-xs"
+                              >
+                                View Details
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )}
-              </div>
-
-              {/* Segment 2: Previous days (unpacked first, then packed); 50 per page */}
-              <div className="px-4 pt-4 pb-2 border-b border-border/60 mt-2">
-                <h3 className="text-sm font-semibold text-foreground text-opacity-90">
-                  Previous days
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Non-packed first, then packed. Paginated 50 per page.
-                </p>
-              </div>
-              <div className="min-h-[80px]">
-                {previousDaysRequests.length === 0 ? (
-                  <div className="px-4 py-6 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      No allocation requests from previous days.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <table className="w-full">
-                      <thead className="bg-background border-b border-border">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Date
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Outlet
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Items
-                          </th>
-                          {layoutMode === 'outlet-full' && (
-                            <>
-                              <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                                Requested By
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                                Request Date
-                              </th>
-                            </>
-                          )}
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Status
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Actions
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
-                            Details
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {outletPreviousDaysPaginated.map((request) => (
-                          <tr
-                            key={request.id}
-                            className={`border-b border-border transition-colors ${
-                              request.is_packed
-                                ? 'bg-accent/5 hover:bg-accent/10'
-                                : 'hover:bg-background/30'
-                            }`}
-                          >
-                            <td className="px-4 py-3 text-foreground text-sm">
-                              {new Date(request.request_date).toLocaleDateString()}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div>
-                                <p className="font-semibold text-foreground text-sm">
-                                  {request.outlets?.name || 'N/A'}
-                                </p>
-                                <p className="text-xs text-muted-foreground font-mono">
-                                  {request.outlets?.code || ''}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-foreground text-sm">
-                              {request.allocation_request_items?.length || 0}
-                            </td>
-                            {layoutMode === 'outlet-full' && (
-                              <>
-                                <td className="px-4 py-3 text-foreground text-sm">
-                                  {request.users?.full_name || 'N/A'}
-                                </td>
-                                <td className="px-4 py-3 text-foreground text-xs">
-                                  {new Date(request.created_at).toLocaleString()}
-                                </td>
-                              </>
-                            )}
-                            <td className="px-4 py-3">
-                              {request.is_packed ? (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
-                                  ✓ Packed
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
-                                  ⏳ Pending
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {request.is_packed ? (
-                                <span className="text-sm text-muted-foreground">Completed</span>
-                              ) : (
-                                <button
-                                  onClick={() => openAllocationModal(request)}
-                                  className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
-                                >
-                                  Allocate Stock
-                                </button>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {request.is_packed ? (
-                                <button
-                                  onClick={() => openStockOutDetailsModal(request)}
-                                  className="text-accent hover:text-accent/80 font-semibold text-xs"
-                                >
-                                  View Details
-                                </button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    <div className="border-t border-border px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs text-muted-foreground">
-                        Showing {outletPreviousDaysStart + 1} to{' '}
-                        {Math.min(
-                          outletPreviousDaysStart + outletPreviousDaysPerPage,
-                          previousDaysRequests.length
-                        )}{' '}
-                        of {previousDaysRequests.length} • {outletPreviousDaysPerPage} per page
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setOutletPreviousDaysPage((prev) => Math.max(1, prev - 1))
-                          }
-                          disabled={outletPreviousDaysPage === 1}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Previous
-                        </button>
-                        <div className="flex items-center gap-1">
-                          {Array.from(
-                            { length: outletPreviousDaysTotalPages },
-                            (_, i) => i + 1
-                          ).map((page) => (
-                            <button
-                              key={page}
-                              onClick={() => setOutletPreviousDaysPage(page)}
-                              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                outletPreviousDaysPage === page
-                                  ? 'bg-accent text-background'
-                                  : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() =>
-                            setOutletPreviousDaysPage((prev) =>
-                              Math.min(outletPreviousDaysTotalPages, prev + 1)
-                            )
-                          }
-                          disabled={outletPreviousDaysPage === outletPreviousDaysTotalPages}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  </>
                 )}
               </div>
             </div>
@@ -2211,6 +2095,9 @@ const StockOut = () => {
                   <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     {selectedRequest.outlets?.name} • {new Date(selectedRequest.request_date).toLocaleDateString()}
+                    {selectedRequest.supervisor_name && (
+                      <> • Supervisor: {selectedRequest.supervisor_name}</>
+                    )}
                   </p>
                 </div>
                 <button
@@ -2299,6 +2186,207 @@ const StockOut = () => {
                   {allocating ? 'Allocating...' : 'Confirm Allocation'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* View all allocation requests modal (non-today's, search + pagination 50) */}
+        {showViewAllAllocationModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-card border-2 border-border rounded-xl overflow-hidden flex flex-col max-w-6xl w-full max-h-[90vh]">
+              <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-lg font-bold text-foreground">All allocation requests (other than today)</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowViewAllAllocationModal(false)}
+                  className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 border-b border-border">
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Search (Outlet / Code / Requested By / Supervisor)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by outlet name, code, requested by, or supervisor name..."
+                  value={viewAllSearchTerm}
+                  onChange={(e) => setViewAllSearchTerm(e.target.value)}
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+              <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+                {viewAllFilteredRequests.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {previousDaysRequests.length === 0
+                        ? 'No allocation requests from previous days.'
+                        : 'No requests match your search.'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <table className="w-full">
+                      <thead className="bg-background border-b border-border sticky top-0 z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Outlet
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Items
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Requested By
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Supervisor
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Request Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Actions
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Details
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewAllPaginated.map((request) => (
+                          <tr
+                            key={request.id}
+                            className={`border-b border-border transition-colors ${
+                              request.is_packed
+                                ? 'bg-accent/5 hover:bg-accent/10'
+                                : 'hover:bg-background/30'
+                            }`}
+                          >
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {new Date(request.request_date).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-semibold text-foreground text-sm">
+                                  {request.outlets?.name || 'N/A'}
+                                </p>
+                                <p className="text-xs text-muted-foreground font-mono">
+                                  {request.outlets?.code || ''}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {request.allocation_request_items?.length || 0}
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {request.users?.full_name || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {request.supervisor_name || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-xs">
+                              {new Date(request.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
+                                  ✓ Packed
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
+                                  ⏳ Pending
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <span className="text-sm text-muted-foreground">Completed</span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setShowViewAllAllocationModal(false)
+                                    openAllocationModal(request)
+                                  }}
+                                  className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
+                                >
+                                  Allocate Stock
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <button
+                                  onClick={() => {
+                                    setShowViewAllAllocationModal(false)
+                                    openStockOutDetailsModal(request)
+                                  }}
+                                  className="text-accent hover:text-accent/80 font-semibold text-xs"
+                                >
+                                  View Details
+                                </button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+              {viewAllFilteredRequests.length > 0 && (
+                <div className="border-t border-border px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-card">
+                  <div className="text-xs text-muted-foreground">
+                    Showing {viewAllStart + 1} to{' '}
+                    {Math.min(viewAllStart + viewAllPerPage, viewAllFilteredRequests.length)} of{' '}
+                    {viewAllFilteredRequests.length} • {viewAllPerPage} per page
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViewAllPage((p) => Math.max(1, p - 1))}
+                      disabled={viewAllPage === 1}
+                      className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: viewAllTotalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          onClick={() => setViewAllPage(page)}
+                          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                            viewAllPage === page
+                              ? 'bg-accent text-background'
+                              : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() =>
+                        setViewAllPage((p) => Math.min(viewAllTotalPages, p + 1))
+                      }
+                      disabled={viewAllPage === viewAllTotalPages}
+                      className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

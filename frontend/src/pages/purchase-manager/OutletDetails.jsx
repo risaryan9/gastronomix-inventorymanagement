@@ -653,6 +653,9 @@ const OutletDetails = () => {
                     </div>
                   </div>
 
+                  {request.supervisor_name && (
+                    <p className="text-xs text-muted-foreground mb-2">Supervisor: <span className="text-foreground font-medium">{request.supervisor_name}</span></p>
+                  )}
                   {request.notes && (
                     <div className="mb-3 p-2 bg-background rounded-lg">
                       <p className="text-xs text-muted-foreground mb-1">Notes:</p>
