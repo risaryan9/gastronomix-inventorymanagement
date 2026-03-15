@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -78,6 +78,9 @@ const DispatchExecutiveDashboard = () => {
   const [outletSearchTerm, setOutletSearchTerm] = useState('')
   const [highlightOutletId, setHighlightOutletId] = useState(null)
 
+  const dispatchTableScrollRef = useRef(null)
+  const dragRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 })
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -104,6 +107,31 @@ const DispatchExecutiveDashboard = () => {
     const timeout = setTimeout(() => setHighlightOutletId(null), 1000)
     return () => clearTimeout(timeout)
   }, [highlightOutletId])
+
+  const handleDispatchTableMouseDown = (e) => {
+    if (e.button !== 0 || !dispatchTableScrollRef.current) return
+    if (e.target.closest('input, textarea, button')) return
+    e.preventDefault()
+    dragRef.current = { isDragging: true, startX: e.clientX, startScrollLeft: dispatchTableScrollRef.current.scrollLeft }
+    const onMove = (e2) => {
+      if (!dragRef.current.isDragging || !dispatchTableScrollRef.current) return
+      const dx = dragRef.current.startX - e2.clientX
+      dispatchTableScrollRef.current.scrollLeft = dragRef.current.startScrollLeft + dx
+    }
+    const onUp = () => {
+      dragRef.current.isDragging = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.removeAttribute('data-dragging')
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.setAttribute('data-dragging', 'true')
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   useEffect(() => {
     if (!selectedBrand || !cloudKitchenId) {
@@ -783,11 +811,15 @@ const DispatchExecutiveDashboard = () => {
                   </div>
 
                   <div className="border border-border rounded-xl overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div
+                      ref={dispatchTableScrollRef}
+                      onMouseDown={handleDispatchTableMouseDown}
+                      className="overflow-x-auto select-none cursor-grab active:cursor-grabbing"
+                    >
                       <table className="w-full border-collapse min-w-[480px] lg:min-w-[720px]">
                         <thead>
-                          <tr className="bg-muted/60">
-                            <th className="border-b border-border px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm font-semibold text-muted-foreground text-left">
+                          <tr className="bg-muted">
+                            <th className="sticky left-0 z-20 border-b border-border px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm font-semibold text-muted-foreground text-left bg-muted min-w-[140px] lg:min-w-[180px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                               Materials
                             </th>
                             {outlets.map(outlet => (
@@ -800,9 +832,6 @@ const DispatchExecutiveDashboard = () => {
                               >
                                 <div className="font-mono text-[11px] lg:text-xs">
                                   {outlet.code}
-                                </div>
-                                <div className="text-[10px] lg:text-[11px] truncate max-w-[96px] lg:max-w-[144px]">
-                                  {outlet.name}
                                 </div>
                               </th>
                             ))}
@@ -834,10 +863,10 @@ const DispatchExecutiveDashboard = () => {
                                 id={`dispatch-material-row-${material.id}`}
                               >
                                 <td
-                                  className={`border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm bg-muted/40 transition-colors ${
+                                  className={`sticky left-0 z-10 border-t border-border px-3 lg:px-4 py-2 lg:py-2.5 align-top text-xs lg:text-sm min-w-[140px] lg:min-w-[180px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] transition-colors ${
                                     highlightMaterialId === material.id
                                       ? 'bg-yellow-100/70'
-                                      : ''
+                                      : 'bg-muted'
                                   }`}
                                 >
                                   <div className="font-medium text-foreground truncate">
