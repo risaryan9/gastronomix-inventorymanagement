@@ -18,11 +18,9 @@ const StockOut = () => {
   const [alert, setAlert] = useState(null)
 
   // Outlet stock-out panel state (allocation requests)
-  const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [outletDateFilter, setOutletDateFilter] = useState('all')
-  const [outletDateFrom, setOutletDateFrom] = useState('')
-  const [outletDateTo, setOutletDateTo] = useState('')
+  const [outletPreviousDaysPage, setOutletPreviousDaysPage] = useState(1)
+  const outletPreviousDaysPerPage = 50
 
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
@@ -33,8 +31,7 @@ const StockOut = () => {
   const [kitchenDateTo, setKitchenDateTo] = useState('')
 
   // Pagination per panel
-  const itemsPerPage = 10
-  const [outletCurrentPage, setOutletCurrentPage] = useState(1)
+  const kitchenPerPage = 50
   const [kitchenCurrentPage, setKitchenCurrentPage] = useState(1)
 
   // Layout mode for desktop panels: 'split' | 'outlet-full' | 'kitchen-full'
@@ -67,7 +64,7 @@ const StockOut = () => {
   // Fetch allocation requests and kitchen stock-out records
   useEffect(() => {
     fetchAllocationRequests()
-  }, [statusFilter])
+  }, [])
 
   // When reason is inter-cloud-kitchen, fetch other cloud kitchens for destination dropdown
   useEffect(() => {
@@ -165,8 +162,7 @@ const StockOut = () => {
     try {
       setLoading(true)
 
-      // Base query (no date range filter; show all matching status)
-      let dateQuery = supabase
+      const { data, error } = await supabase
         .from('allocation_requests')
         .select(`
           *,
@@ -184,13 +180,6 @@ const StockOut = () => {
           )
         `)
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-
-      // Apply status filter
-      if (statusFilter !== 'all') {
-        dateQuery = dateQuery.eq('is_packed', statusFilter === 'packed')
-      }
-
-      const { data, error } = await dateQuery
         .order('is_packed', { ascending: true }) // Unpacked first
         .order('request_date', { ascending: false })
         .order('created_at', { ascending: false })
@@ -489,6 +478,213 @@ const StockOut = () => {
         break
       default:
         break
+    }
+  }
+
+  // Download today's allocation requests as PDF (outlet-wise, no page cut inside an outlet)
+  const [downloadingAllocationPdf, setDownloadingAllocationPdf] = useState(false)
+  const downloadAllocationRequestsPDF = () => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayTime = today.getTime()
+    const isToday = (req) => {
+      const d = new Date(req.request_date)
+      d.setHours(0, 0, 0, 0)
+      return d.getTime() === todayTime
+    }
+    const todayRequests = allocationRequests.filter(isToday)
+    if (todayRequests.length === 0) {
+      setAlert({
+        type: 'error',
+        message: 'No allocation requests available for the day.'
+      })
+      return
+    }
+
+    setDownloadingAllocationPdf(true)
+    try {
+      const session = getSession()
+      const doc = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 20
+      const safeBottom = pageHeight - 18
+
+      // Aggregate total quantity per material across all today's requests
+      const totalByMaterial = new Map()
+      todayRequests.forEach((req) => {
+        (req.allocation_request_items || []).forEach((item) => {
+          const id = item.raw_material_id || item.raw_materials?.id
+          const name = item.raw_materials?.name || 'N/A'
+          const code = item.raw_materials?.code || '—'
+          const unit = item.raw_materials?.unit || ''
+          const qty = parseFloat(item.quantity ?? 0)
+          const key = id || `${name}|${code}|${unit}`
+          if (!totalByMaterial.has(key)) {
+            totalByMaterial.set(key, { name, code, unit, totalQty: 0 })
+          }
+          totalByMaterial.get(key).totalQty += qty
+        })
+      })
+      const summaryRows = Array.from(totalByMaterial.values())
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map((r) => [
+          r.name,
+          r.code,
+          r.totalQty.toFixed(3),
+          r.unit
+        ])
+
+      // Group by outlet (outlet_id), preserve request order per outlet
+      const byOutlet = new Map()
+      todayRequests.forEach((req) => {
+        const key = req.outlet_id || req.outlets?.id || 'unknown'
+        if (!byOutlet.has(key)) {
+          byOutlet.set(key, {
+            name: req.outlets?.name || 'Unknown Outlet',
+            code: req.outlets?.code || '',
+            requests: []
+          })
+        }
+        byOutlet.get(key).requests.push(req)
+      })
+      const outletList = Array.from(byOutlet.entries())
+        .map(([_, info]) => info)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+      // —— Page 1: Total quantity summary ——
+      let yPos = margin
+      doc.setFontSize(20)
+      doc.setFont(undefined, 'bold')
+      doc.text('Gastronomix', pageWidth / 2, yPos, { align: 'center' })
+      yPos += 8
+      doc.setFontSize(14)
+      doc.setFont(undefined, 'normal')
+      doc.text(
+        `Allocation Requests — ${today.toLocaleDateString()}`,
+        pageWidth / 2,
+        yPos,
+        { align: 'center' }
+      )
+      yPos += 6
+      doc.setFontSize(9)
+      doc.setTextColor(100, 100, 100)
+      doc.text(
+        `Generated: ${new Date().toLocaleString()} • ${session?.cloud_kitchen_name || 'Cloud Kitchen'}`,
+        pageWidth / 2,
+        yPos,
+        { align: 'center' }
+      )
+      doc.setTextColor(0, 0, 0)
+      yPos += 12
+
+      doc.setFontSize(12)
+      doc.setFont(undefined, 'bold')
+      doc.text('Total quantity requested (all outlets)', margin, yPos)
+      yPos += 8
+
+      if (summaryRows.length > 0) {
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Material', 'Code', 'Total quantity', 'Unit']],
+          body: summaryRows,
+          theme: 'striped',
+          headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 3 },
+          margin: { left: margin, right: margin },
+          rowPageBreak: 'avoid'
+        })
+        yPos = doc.lastAutoTable?.finalY ?? yPos
+      } else {
+        doc.setFont(undefined, 'normal')
+        doc.setFontSize(10)
+        doc.text('No items in requests.', margin, yPos)
+      }
+
+      // —— From page 2: Outlet-wise requests (multiple outlets per page when they fit; flow to next page when an outlet's content would be cut)
+      doc.addPage()
+      let yPosOut = margin
+      const minSpaceForOutletHeader = 15
+
+      outletList.forEach((outlet) => {
+        if (yPosOut + minSpaceForOutletHeader > safeBottom) {
+          doc.addPage()
+          yPosOut = margin
+        }
+
+        doc.setFontSize(12)
+        doc.setFont(undefined, 'bold')
+        const outletTitle = outlet.code
+          ? `${outlet.name} (${outlet.code})`
+          : outlet.name
+        doc.text(outletTitle, margin, yPosOut)
+        yPosOut += 7
+
+        outlet.requests.forEach((req) => {
+          doc.setFont(undefined, 'normal')
+          doc.setFontSize(9)
+          const reqDate = new Date(req.created_at).toLocaleString()
+          const requestedBy = req.users?.full_name || '—'
+          doc.text(`Request: ${req.id.substring(0, 8)} • Requested by: ${requestedBy} • ${reqDate}`, margin, yPosOut)
+          yPosOut += 5
+
+          const items = req.allocation_request_items || []
+          const tableData = items.map((item) => [
+            item.raw_materials?.name || 'N/A',
+            item.raw_materials?.code || '—',
+            `${parseFloat(item.quantity ?? 0).toFixed(3)}`,
+            item.raw_materials?.unit || ''
+          ])
+
+          if (tableData.length > 0) {
+            const tableHeightEstimate = 8 + tableData.length * 4
+            if (yPosOut + tableHeightEstimate > safeBottom) {
+              doc.addPage()
+              yPosOut = margin
+            }
+            autoTable(doc, {
+              startY: yPosOut,
+              head: [['Material', 'Code', 'Quantity', 'Unit']],
+              body: tableData,
+              theme: 'striped',
+              headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+              styles: { fontSize: 8, cellPadding: 2 },
+              margin: { left: margin, right: margin },
+              rowPageBreak: 'avoid'
+            })
+            yPosOut = doc.lastAutoTable?.finalY ?? yPosOut
+            yPosOut += 6
+          }
+
+          if (yPosOut > safeBottom) {
+            doc.addPage()
+            yPosOut = margin
+          }
+        })
+      })
+
+      const totalPages = doc.internal.getNumberOfPages()
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p)
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.text(
+          `Generated on ${new Date().toLocaleString()} by ${session?.full_name || 'System'} • Page ${p} of ${totalPages}`,
+          pageWidth / 2,
+          pageHeight - 10,
+          { align: 'center' }
+        )
+        doc.setTextColor(0, 0, 0)
+      }
+
+      const filename = `allocation_requests_${today.toISOString().split('T')[0]}.pdf`
+      doc.save(filename)
+      setAlert({ type: 'success', message: 'Allocation requests PDF downloaded.' })
+    } catch (err) {
+      console.error('Error generating allocation PDF:', err)
+      setAlert({ type: 'error', message: err.message || 'Failed to generate PDF.' })
+    } finally {
+      setDownloadingAllocationPdf(false)
     }
   }
 
@@ -1181,56 +1377,56 @@ const StockOut = () => {
     }
   }
 
-  // Apply filters for outlet panel (search + date)
-  const filteredRequests = allocationRequests.filter((request) => {
-    // Search by outlet name, outlet code, or requested by
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase()
-      const outletName = request.outlets?.name?.toLowerCase() || ''
-      const outletCode = request.outlets?.code?.toLowerCase() || ''
-      const requestedBy = request.users?.full_name?.toLowerCase() || ''
-      const matchesSearch =
-        outletName.includes(q) ||
-        outletCode.includes(q) ||
-        requestedBy.includes(q)
-      if (!matchesSearch) return false
-    }
+  // Helper: request matches search (outlet name, code, requested by)
+  const outletMatchesSearch = (request) => {
+    if (!searchTerm.trim()) return true
+    const q = searchTerm.toLowerCase()
+    const outletName = request.outlets?.name?.toLowerCase() || ''
+    const outletCode = request.outlets?.code?.toLowerCase() || ''
+    const requestedBy = request.users?.full_name?.toLowerCase() || ''
+    return (
+      outletName.includes(q) ||
+      outletCode.includes(q) ||
+      requestedBy.includes(q)
+    )
+  }
 
-    // Date filter (request_date)
-    if (outletDateFilter === 'custom') {
-      if (outletDateFrom || outletDateTo) {
-        const recordDate = new Date(request.request_date)
-        if (outletDateFrom && recordDate < new Date(outletDateFrom)) return false
-        if (outletDateTo && recordDate > new Date(outletDateTo)) return false
-      }
-    } else if (outletDateFilter === 'today') {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const recordDate = new Date(request.request_date)
-      recordDate.setHours(0, 0, 0, 0)
-      if (recordDate.getTime() !== today.getTime()) return false
-    } else if (outletDateFilter === 'this-week') {
-      const today = new Date()
-      const weekAgo = new Date(today)
-      weekAgo.setDate(today.getDate() - 7)
-      const recordDate = new Date(request.request_date)
-      if (recordDate < weekAgo || recordDate > today) return false
-    } else if (outletDateFilter === 'this-month') {
-      const today = new Date()
-      const monthAgo = new Date(today)
-      monthAgo.setMonth(today.getMonth() - 1)
-      const recordDate = new Date(request.request_date)
-      if (recordDate < monthAgo || recordDate > today) return false
-    }
+  const todayStart = (() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d.getTime()
+  })()
 
-    return true
-  })
+  const isRequestDateToday = (request) => {
+    const recordDate = new Date(request.request_date)
+    recordDate.setHours(0, 0, 0, 0)
+    return recordDate.getTime() === todayStart
+  }
 
-  // Pagination for outlet panel
-  const outletTotalPages = Math.ceil(filteredRequests.length / itemsPerPage) || 1
-  const outletStartIndex = (outletCurrentPage - 1) * itemsPerPage
-  const outletEndIndex = outletStartIndex + itemsPerPage
-  const outletPaginated = filteredRequests.slice(outletStartIndex, outletEndIndex)
+  // Segment 1: Today's pending (request_date = today, not packed), search applied
+  const todayPendingRequests = allocationRequests.filter(
+    (r) => isRequestDateToday(r) && !r.is_packed && outletMatchesSearch(r)
+  )
+
+  // Segment 2: Previous days — request_date < today; sort unpacked first then packed, then date desc
+  const previousDaysRequests = allocationRequests
+    .filter((r) => !isRequestDateToday(r) && outletMatchesSearch(r))
+    .sort((a, b) => {
+      if (a.is_packed !== b.is_packed) return a.is_packed ? 1 : -1
+      const da = new Date(a.request_date).getTime()
+      const db = new Date(b.request_date).getTime()
+      if (da !== db) return db - da
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+  const outletPreviousDaysTotalPages =
+    Math.ceil(previousDaysRequests.length / outletPreviousDaysPerPage) || 1
+  const outletPreviousDaysStart =
+    (outletPreviousDaysPage - 1) * outletPreviousDaysPerPage
+  const outletPreviousDaysPaginated = previousDaysRequests.slice(
+    outletPreviousDaysStart,
+    outletPreviousDaysStart + outletPreviousDaysPerPage
+  )
 
   // Helper to filter kitchen/self stock-out records
   const kitchenFiltered = kitchenStockOutRecords.filter((record) => {
@@ -1298,16 +1494,18 @@ const StockOut = () => {
     return true
   })
 
-  // Pagination for kitchen panel
-  const kitchenTotalPages = Math.ceil(kitchenFiltered.length / itemsPerPage) || 1
-  const kitchenStartIndex = (kitchenCurrentPage - 1) * itemsPerPage
-  const kitchenEndIndex = kitchenStartIndex + itemsPerPage
-  const kitchenPaginated = kitchenFiltered.slice(kitchenStartIndex, kitchenEndIndex)
+  // Pagination for kitchen panel (50 per page, same design as Outlet Stock Out)
+  const kitchenTotalPages = Math.ceil(kitchenFiltered.length / kitchenPerPage) || 1
+  const kitchenStartIndex = (kitchenCurrentPage - 1) * kitchenPerPage
+  const kitchenPaginated = kitchenFiltered.slice(
+    kitchenStartIndex,
+    kitchenStartIndex + kitchenPerPage
+  )
 
-  // Reset pages when filters change
+  // Reset previous-days page when search changes
   useEffect(() => {
-    setOutletCurrentPage(1)
-  }, [searchTerm, statusFilter, outletDateFilter, outletDateFrom, outletDateTo])
+    setOutletPreviousDaysPage(1)
+  }, [searchTerm])
 
   useEffect(() => {
     setKitchenCurrentPage(1)
@@ -1404,110 +1602,72 @@ const StockOut = () => {
           {/* Outlet Stock-Out Panel */}
           {layoutMode !== 'kitchen-full' && (
           <div className="bg-card border-2 border-border rounded-xl overflow-hidden transition-all duration-300">
-            <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
+            <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-foreground">Outlet Stock Out</h2>
                 <span className="text-xs text-muted-foreground">
                   {allocationRequests.length} request(s)
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setLayoutMode(layoutMode === 'outlet-full' ? 'split' : 'outlet-full')}
-                className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
-              >
-                {layoutMode === 'outlet-full' ? 'Restore Split' : 'Maximize'}
-              </button>
-            </div>
-
-            <div className="p-4 border-b border-border">
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1">
-                    Search (Outlet / Code / Requested By)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Search by outlet name, outlet code, or requested by..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="unpacked">Unpacked (Pending)</option>
-                      <option value="packed">Packed (Completed)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Date Range
-                    </label>
-                    <select
-                      value={outletDateFilter}
-                      onChange={(e) => setOutletDateFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All Dates</option>
-                      <option value="today">Today</option>
-                      <option value="this-week">This Week</option>
-                      <option value="this-month">This Month</option>
-                      <option value="custom">Custom Range</option>
-                    </select>
-                  </div>
-                </div>
-
-                {outletDateFilter === 'custom' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        From
-                      </label>
-                      <input
-                        type="date"
-                        value={outletDateFrom}
-                        onChange={(e) => setOutletDateFrom(e.target.value)}
-                        className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        To
-                      </label>
-                      <input
-                        type="date"
-                        value={outletDateTo}
-                        onChange={(e) => setOutletDateTo(e.target.value)}
-                        className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadAllocationRequestsPDF}
+                  disabled={downloadingAllocationPdf}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {downloadingAllocationPdf ? (
+                    'Generating…'
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Download PDF
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode(layoutMode === 'outlet-full' ? 'split' : 'outlet-full')}
+                  className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                >
+                  {layoutMode === 'outlet-full' ? 'Restore Split' : 'Maximize'}
+                </button>
               </div>
             </div>
 
+            <div className="p-4 border-b border-border">
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Search (Outlet / Code / Requested By)
+              </label>
+              <input
+                type="text"
+                placeholder="Search by outlet name, outlet code, or requested by..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+              />
+            </div>
+
             <div className="overflow-x-auto">
-              {filteredRequests.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-sm text-muted-foreground">
-                    {allocationRequests.length === 0
-                      ? 'No allocation requests found.'
-                      : 'No allocation requests match your filters.'}
-                  </p>
-                </div>
-              ) : (
-                <>
+              {/* Segment 1: Today's pending requests */}
+              <div className="px-4 pt-4 pb-2 border-b border-border/60">
+                <h3 className="text-sm font-semibold text-foreground text-opacity-90">
+                  Today&apos;s pending requests
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Pending allocation requests for today. Empty if none.
+                </p>
+              </div>
+              <div className="min-h-[80px]">
+                {todayPendingRequests.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No pending requests for today.
+                    </p>
+                  </div>
+                ) : (
                   <table className="w-full">
                     <thead className="bg-background border-b border-border">
                       <tr>
@@ -1542,14 +1702,10 @@ const StockOut = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {outletPaginated.map((request) => (
+                      {todayPendingRequests.map((request) => (
                         <tr
                           key={request.id}
-                          className={`border-b border-border transition-colors ${
-                            request.is_packed
-                              ? 'bg-accent/5 hover:bg-accent/10'
-                              : 'hover:bg-background/30'
-                          }`}
+                          className="border-b border-border hover:bg-background/30 transition-colors"
                         >
                           <td className="px-4 py-3 text-foreground text-sm">
                             {new Date(request.request_date).toLocaleDateString()}
@@ -1578,95 +1734,208 @@ const StockOut = () => {
                             </>
                           )}
                           <td className="px-4 py-3">
-                            {request.is_packed ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
-                                ✓ Packed
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
-                                ⏳ Pending
-                              </span>
-                            )}
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
+                              ⏳ Pending
+                            </span>
                           </td>
                           <td className="px-4 py-3">
-                            {request.is_packed ? (
-                              <span className="text-sm text-muted-foreground">Completed</span>
-                            ) : (
-                              <button
-                                onClick={() => openAllocationModal(request)}
-                                className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
-                              >
-                                Allocate Stock
-                              </button>
-                            )}
+                            <button
+                              onClick={() => openAllocationModal(request)}
+                              className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
+                            >
+                              Allocate Stock
+                            </button>
                           </td>
                           <td className="px-4 py-3">
-                            {request.is_packed ? (
-                              <button
-                                onClick={() => openStockOutDetailsModal(request)}
-                                className="text-accent hover:text-accent/80 font-semibold text-xs"
-                              >
-                                View Details
-                              </button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
+                            <span className="text-xs text-muted-foreground">—</span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                )}
+              </div>
 
-                  {outletTotalPages > 1 && (
-                    <div className="border-top border-border px-4 py-3 flex items-center justify-between">
+              {/* Segment 2: Previous days (unpacked first, then packed); 50 per page */}
+              <div className="px-4 pt-4 pb-2 border-b border-border/60 mt-2">
+                <h3 className="text-sm font-semibold text-foreground text-opacity-90">
+                  Previous days
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Non-packed first, then packed. Paginated 50 per page.
+                </p>
+              </div>
+              <div className="min-h-[80px]">
+                {previousDaysRequests.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No allocation requests from previous days.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <table className="w-full">
+                      <thead className="bg-background border-b border-border">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Outlet
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Items
+                          </th>
+                          {layoutMode === 'outlet-full' && (
+                            <>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                                Requested By
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                                Request Date
+                              </th>
+                            </>
+                          )}
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Actions
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-foreground uppercase tracking-wide">
+                            Details
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {outletPreviousDaysPaginated.map((request) => (
+                          <tr
+                            key={request.id}
+                            className={`border-b border-border transition-colors ${
+                              request.is_packed
+                                ? 'bg-accent/5 hover:bg-accent/10'
+                                : 'hover:bg-background/30'
+                            }`}
+                          >
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {new Date(request.request_date).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-semibold text-foreground text-sm">
+                                  {request.outlets?.name || 'N/A'}
+                                </p>
+                                <p className="text-xs text-muted-foreground font-mono">
+                                  {request.outlets?.code || ''}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-sm">
+                              {request.allocation_request_items?.length || 0}
+                            </td>
+                            {layoutMode === 'outlet-full' && (
+                              <>
+                                <td className="px-4 py-3 text-foreground text-sm">
+                                  {request.users?.full_name || 'N/A'}
+                                </td>
+                                <td className="px-4 py-3 text-foreground text-xs">
+                                  {new Date(request.created_at).toLocaleString()}
+                                </td>
+                              </>
+                            )}
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
+                                  ✓ Packed
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-yellow-500/20 text-yellow-600 border border-yellow-500/30">
+                                  ⏳ Pending
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <span className="text-sm text-muted-foreground">Completed</span>
+                              ) : (
+                                <button
+                                  onClick={() => openAllocationModal(request)}
+                                  className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-xs font-semibold"
+                                >
+                                  Allocate Stock
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {request.is_packed ? (
+                                <button
+                                  onClick={() => openStockOutDetailsModal(request)}
+                                  className="text-accent hover:text-accent/80 font-semibold text-xs"
+                                >
+                                  View Details
+                                </button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div className="border-t border-border px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs text-muted-foreground">
-                        Showing {outletStartIndex + 1} to{' '}
-                        {Math.min(outletEndIndex, filteredRequests.length)} of{' '}
-                        {filteredRequests.length} records
+                        Showing {outletPreviousDaysStart + 1} to{' '}
+                        {Math.min(
+                          outletPreviousDaysStart + outletPreviousDaysPerPage,
+                          previousDaysRequests.length
+                        )}{' '}
+                        of {previousDaysRequests.length} • {outletPreviousDaysPerPage} per page
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() =>
-                            setOutletCurrentPage((prev) => Math.max(1, prev - 1))
+                            setOutletPreviousDaysPage((prev) => Math.max(1, prev - 1))
                           }
-                          disabled={outletCurrentPage === 1}
+                          disabled={outletPreviousDaysPage === 1}
                           className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
                         >
                           Previous
                         </button>
                         <div className="flex items-center gap-1">
-                          {Array.from({ length: outletTotalPages }, (_, i) => i + 1).map(
-                            (page) => (
-                              <button
-                                key={page}
-                                onClick={() => setOutletCurrentPage(page)}
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                  outletCurrentPage === page
-                                    ? 'bg-accent text-background'
-                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            )
-                          )}
+                          {Array.from(
+                            { length: outletPreviousDaysTotalPages },
+                            (_, i) => i + 1
+                          ).map((page) => (
+                            <button
+                              key={page}
+                              onClick={() => setOutletPreviousDaysPage(page)}
+                              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                outletPreviousDaysPage === page
+                                  ? 'bg-accent text-background'
+                                  : 'bg-input border border-border text-foreground hover:bg-accent/10'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
                         </div>
                         <button
                           onClick={() =>
-                            setOutletCurrentPage((prev) =>
-                              Math.min(outletTotalPages, prev + 1)
+                            setOutletPreviousDaysPage((prev) =>
+                              Math.min(outletPreviousDaysTotalPages, prev + 1)
                             )
                           }
-                          disabled={outletCurrentPage === outletTotalPages}
+                          disabled={outletPreviousDaysPage === outletPreviousDaysTotalPages}
                           className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
                         >
                           Next
                         </button>
                       </div>
                     </div>
-                  )}
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
           )}
@@ -1875,12 +2144,15 @@ const StockOut = () => {
                     </tbody>
                   </table>
 
-                  {kitchenTotalPages > 1 && (
-                    <div className="border-top border-border px-4 py-3 flex items-center justify-between">
+                  {kitchenFiltered.length > 0 && (
+                    <div className="border-t border-border px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs text-muted-foreground">
                         Showing {kitchenStartIndex + 1} to{' '}
-                        {Math.min(kitchenEndIndex, kitchenFiltered.length)} of{' '}
-                        {kitchenFiltered.length} records
+                        {Math.min(
+                          kitchenStartIndex + kitchenPerPage,
+                          kitchenFiltered.length
+                        )}{' '}
+                        of {kitchenFiltered.length} • {kitchenPerPage} per page
                       </div>
                       <div className="flex items-center gap-2">
                         <button
