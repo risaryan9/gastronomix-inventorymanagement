@@ -256,7 +256,7 @@ const StockOut = () => {
       item.raw_materials?.name || 'N/A',
       item.raw_materials?.code || 'N/A',
       item.raw_materials?.unit || 'N/A',
-      parseFloat(item.quantity || 0).toFixed(3)
+      parseFloat(item.quantity || 0).toFixed(2)
     ])
 
     const metaLines = [
@@ -444,7 +444,7 @@ const StockOut = () => {
     const tableData = (record.stock_out_items || []).map((item) => [
       item.raw_materials?.name || 'N/A',
       item.raw_materials?.code || 'N/A',
-      `${parseFloat(item.quantity || 0).toFixed(3)} ${item.raw_materials?.unit || ''}`
+      `${parseFloat(item.quantity || 0).toFixed(2)} ${item.raw_materials?.unit || ''}`
     ])
 
     autoTable(doc, {
@@ -536,7 +536,7 @@ const StockOut = () => {
         .map((r) => [
           r.name,
           r.code,
-          r.totalQty.toFixed(3),
+          r.totalQty.toFixed(2),
           r.unit
         ])
 
@@ -638,7 +638,7 @@ const StockOut = () => {
           const tableData = items.map((item) => [
             item.raw_materials?.name || 'N/A',
             item.raw_materials?.code || '—',
-            `${parseFloat(item.quantity ?? 0).toFixed(3)}`,
+            `${parseFloat(item.quantity ?? 0).toFixed(2)}`,
             item.raw_materials?.unit || ''
           ])
 
@@ -1035,7 +1035,7 @@ const StockOut = () => {
 
     // Check if we have enough stock
     if (remainingQuantity > 0) {
-      throw new Error(`Insufficient stock. Short by ${remainingQuantity.toFixed(3)} units`)
+      throw new Error(`Insufficient stock. Short by ${remainingQuantity.toFixed(2)} units`)
     }
 
     // Update batches
@@ -1123,7 +1123,7 @@ const StockOut = () => {
         if (parseFloat(item.allocated_quantity) > availableInventory) {
           setAlert({ 
             type: 'error', 
-            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
+            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(2)} ${item.unit}` 
           })
           allocatingRef.current = false
           setAllocating(false)
@@ -1153,7 +1153,7 @@ const StockOut = () => {
         if (parseFloat(item.allocated_quantity) > availableInventory) {
           setAlert({ 
             type: 'error', 
-            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(3)} ${item.unit}` 
+            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(2)} ${item.unit}` 
           })
           allocatingRef.current = false
           setAllocating(false)
@@ -2139,13 +2139,13 @@ const StockOut = () => {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-foreground">
-                              {item.requested_quantity.toFixed(3)} {item.unit}
+                              {item.requested_quantity.toFixed(2)} {item.unit}
                             </td>
                             <td className="px-4 py-3 text-foreground">
-                              {todayTotal.toFixed(3)} {item.unit}
+                              {todayTotal.toFixed(2)} {item.unit}
                             </td>
                             <td className={`px-4 py-3 font-semibold ${isLowStock ? 'text-destructive' : 'text-foreground'}`}>
-                              {currentInventory.toFixed(3)} {item.unit}
+                              {currentInventory.toFixed(2)} {item.unit}
                               {isLowStock && (
                                 <p className="text-xs text-destructive mt-1">⚠ Insufficient stock</p>
                               )}
@@ -2619,7 +2619,7 @@ const StockOut = () => {
                                   'bg-muted/50 text-foreground'
                                 ) : 'bg-muted/50 text-muted-foreground'
                               }`}>
-                                {item.raw_material_id ? `${item.current_inventory.toFixed(3)} ${item.unit}` : '—'}
+                                {item.raw_material_id ? `${item.current_inventory.toFixed(2)} ${item.unit}` : '—'}
                               </span>
                             </td>
                             <td className="px-3 py-2">
@@ -2832,7 +2832,7 @@ const StockOut = () => {
                               {item.raw_materials?.code || '—'}
                             </td>
                             <td className="px-4 py-3 text-sm text-foreground">
-                              {parseFloat(item.quantity || 0).toFixed(3)} {item.raw_materials?.unit || ''}
+                              {parseFloat(item.quantity || 0).toFixed(2)} {item.raw_materials?.unit || ''}
                             </td>
                           </tr>
                         ))}

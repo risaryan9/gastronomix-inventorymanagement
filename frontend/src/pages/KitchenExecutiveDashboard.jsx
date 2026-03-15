@@ -312,7 +312,7 @@ const KitchenExecutiveDashboard = () => {
     }
 
     if (remaining > 0) {
-      throw new Error(`Insufficient stock. Short by ${remaining.toFixed(3)} units`)
+      throw new Error(`Insufficient stock. Short by ${remaining.toFixed(2)} units`)
     }
 
     for (const update of updates) {
@@ -411,7 +411,7 @@ const KitchenExecutiveDashboard = () => {
           const name = material?.name || 'Material'
           const unit = material?.unit || ''
           setDraftModalError(
-            `Insufficient stock for ${name}. Available: ${available.toFixed(3)} ${unit}, planned: ${totalQty.toFixed(3)} ${unit}.`
+            `Insufficient stock for ${name}. Available: ${available.toFixed(2)} ${unit}, planned: ${totalQty.toFixed(2)} ${unit}.`
           )
           setShowLockConfirm(false)
           setIsLocking(false)
@@ -443,7 +443,7 @@ const KitchenExecutiveDashboard = () => {
             const name = material?.name || 'Material'
             const unit = material?.unit || ''
             setDraftModalError(
-              `Insufficient stock for ${name}. Available: ${available.toFixed(3)} ${unit}, planned: ${totalQty.toFixed(3)} ${unit}.`
+              `Insufficient stock for ${name}. Available: ${available.toFixed(2)} ${unit}, planned: ${totalQty.toFixed(2)} ${unit}.`
             )
             setShowLockConfirm(false)
             setIsLocking(false)
@@ -905,7 +905,7 @@ const KitchenExecutiveDashboard = () => {
                                 </td>
                                 <td className="border-t border-l border-border px-3 lg:px-4 py-2 lg:py-2.5 align-middle text-right text-[11px] lg:text-xs text-foreground bg-background/40">
                                   <span className="font-mono">
-                                    {currentInv.toFixed(3)} {material.unit}
+                                    {currentInv.toFixed(2)} {material.unit}
                                   </span>
                                 </td>
                                 {planOutlets.map(outlet => {

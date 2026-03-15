@@ -311,7 +311,7 @@ const Inventory = () => {
 
       setAlert({ 
         type: 'success', 
-        message: `Inventory ${result.adjustment_type}ed successfully! ${result.adjustment_type === 'increment' ? 'Added' : 'Removed'} ${Math.abs(result.adjustment_amount).toFixed(3)} units.` 
+        message: `Inventory ${result.adjustment_type}ed successfully! ${result.adjustment_type === 'increment' ? 'Added' : 'Removed'} ${Math.abs(result.adjustment_amount).toFixed(2)} units.` 
       })
       closeEditModal()
     } catch (err) {
@@ -446,9 +446,9 @@ const Inventory = () => {
         material?.name || 'N/A',
         material?.code || 'N/A',
         material?.category || 'N/A',
-        parseFloat(item.quantity).toFixed(3),
+        parseFloat(item.quantity).toFixed(2),
         material?.unit || 'N/A',
-        lowStockThreshold.toFixed(3),
+        lowStockThreshold.toFixed(2),
         status,
         `₹${avgCost.toFixed(2)}`,
         `₹${totalValue.toFixed(2)}`
@@ -523,9 +523,9 @@ const Inventory = () => {
           material?.name || 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
-          parseFloat(item.quantity).toFixed(3),
+          parseFloat(item.quantity).toFixed(2),
           material?.unit || 'N/A',
-          lowStockThreshold.toFixed(3),
+          lowStockThreshold.toFixed(2),
           status,
           avgCost,
           totalValue
@@ -626,8 +626,8 @@ const Inventory = () => {
           `${material?.name || 'N/A'} (${material?.unit || ''})`,
           material?.code || 'N/A',
           material?.category || 'N/A',
-          parseFloat(item.quantity).toFixed(3),
-          lowStockThreshold.toFixed(3),
+          parseFloat(item.quantity).toFixed(2),
+          lowStockThreshold.toFixed(2),
           status,
           `₹${avgCost.toFixed(2)}`,
           `₹${totalValue.toFixed(2)}`
@@ -902,11 +902,11 @@ const Inventory = () => {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-foreground font-semibold">
-                            {parseFloat(item.quantity).toFixed(3)}
+                            {parseFloat(item.quantity).toFixed(2)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {lowStockThreshold.toFixed(3)}
+                          {lowStockThreshold.toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
                           {isOutOfStock ? (
@@ -1010,7 +1010,7 @@ const Inventory = () => {
                 {editingItem.raw_materials?.code} • {editingItem.raw_materials?.unit}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Current Quantity: <span className="font-semibold">{parseFloat(editingItem.quantity).toFixed(3)} {editingItem.raw_materials?.unit}</span>
+                Current Quantity: <span className="font-semibold">{parseFloat(editingItem.quantity).toFixed(2)} {editingItem.raw_materials?.unit}</span>
               </p>
             </div>
 
@@ -1083,13 +1083,13 @@ const Inventory = () => {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-muted-foreground">Current Quantity</p>
                 <p className="text-base font-bold text-foreground">
-                  {parseFloat(editingItem.quantity).toFixed(3)} {editingItem.raw_materials?.unit}
+                  {parseFloat(editingItem.quantity).toFixed(2)} {editingItem.raw_materials?.unit}
                 </p>
               </div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-muted-foreground">New Quantity</p>
                 <p className="text-base font-bold text-foreground">
-                  {parseFloat(editForm.quantity).toFixed(3)} {editingItem.raw_materials?.unit}
+                  {parseFloat(editForm.quantity).toFixed(2)} {editingItem.raw_materials?.unit}
                 </p>
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -1100,7 +1100,7 @@ const Inventory = () => {
                   calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment' ? 'text-green-500' : 'text-destructive'
                 }`}>
                   {calculateAdjustmentType(parseFloat(editForm.quantity), parseFloat(editingItem.quantity)) === 'increment' ? '+' : '-'}
-                  {Math.abs(parseFloat(editForm.quantity) - parseFloat(editingItem.quantity)).toFixed(3)} {editingItem.raw_materials?.unit}
+                  {Math.abs(parseFloat(editForm.quantity) - parseFloat(editingItem.quantity)).toFixed(2)} {editingItem.raw_materials?.unit}
                 </p>
               </div>
             </div>

@@ -297,9 +297,9 @@ const Inventory = () => {
         material?.name || 'N/A',
         material?.code || 'N/A',
         material?.category || 'N/A',
-        parseFloat(item.quantity).toFixed(3),
+        parseFloat(item.quantity).toFixed(2),
         material?.unit || 'N/A',
-        parseFloat(item.low_stock_threshold || 0).toFixed(3),
+        parseFloat(item.low_stock_threshold || 0).toFixed(2),
         status,
         `₹${(item.cost_per_unit || 0).toFixed(2)}`,
         `₹${totalValue.toFixed(2)}`
@@ -369,9 +369,9 @@ const Inventory = () => {
           material?.name || 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
-          parseFloat(item.quantity).toFixed(3),
+          parseFloat(item.quantity).toFixed(2),
           material?.unit || 'N/A',
-          parseFloat(item.low_stock_threshold || 0).toFixed(3),
+          parseFloat(item.low_stock_threshold || 0).toFixed(2),
           status,
           item.cost_per_unit || 0,
           totalValue
@@ -467,8 +467,8 @@ const Inventory = () => {
           material?.name || 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
-          `${parseFloat(item.quantity).toFixed(3)} ${material?.unit || ''}`,
-          parseFloat(item.low_stock_threshold || 0).toFixed(3),
+          `${parseFloat(item.quantity).toFixed(2)} ${material?.unit || ''}`,
+          parseFloat(item.low_stock_threshold || 0).toFixed(2),
           status,
           `₹${(item.cost_per_unit || 0).toFixed(2)}`,
           `₹${totalValue.toFixed(2)}`
@@ -668,13 +668,13 @@ const Inventory = () => {
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Quantity</p>
                           <p className="text-base font-bold text-foreground">
-                            {parseFloat(item.quantity).toFixed(3)} <span className="text-xs font-normal text-muted-foreground">{material.unit}</span>
+                            {parseFloat(item.quantity).toFixed(2)} <span className="text-xs font-normal text-muted-foreground">{material.unit}</span>
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Low Stock Threshold</p>
                           <p className="text-base font-semibold text-foreground">
-                            {parseFloat(item.low_stock_threshold || 0).toFixed(3)} <span className="text-xs font-normal text-muted-foreground">{material.unit}</span>
+                            {parseFloat(item.low_stock_threshold || 0).toFixed(2)} <span className="text-xs font-normal text-muted-foreground">{material.unit}</span>
                           </p>
                         </div>
                       </div>
@@ -729,14 +729,14 @@ const Inventory = () => {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-foreground font-semibold">
-                            {parseFloat(item.quantity).toFixed(3)}
+                            {parseFloat(item.quantity).toFixed(2)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {material.unit}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {parseFloat(item.low_stock_threshold || 0).toFixed(3)}
+                          {parseFloat(item.low_stock_threshold || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
                           {isOutOfStock ? (

@@ -378,8 +378,8 @@ const StockIn = () => {
         batch.raw_materials?.name || 'N/A',
         batch.raw_materials?.code || 'N/A',
         batch.raw_materials?.unit || 'N/A',
-        qty.toFixed(3),
-        parseFloat(batch.quantity_remaining || 0).toFixed(3),
+        qty.toFixed(2),
+        parseFloat(batch.quantity_remaining || 0).toFixed(2),
         unitCost.toFixed(2),
         gstPercent.toFixed(2),
         totalCost.toFixed(2)
@@ -604,8 +604,8 @@ const StockIn = () => {
         batch.raw_materials?.name || 'N/A',
         batch.raw_materials?.code || 'N/A',
         batch.raw_materials?.unit || 'N/A',
-        qty.toFixed(3),
-        parseFloat(batch.quantity_remaining || 0).toFixed(3),
+        qty.toFixed(2),
+        parseFloat(batch.quantity_remaining || 0).toFixed(2),
         `₹${unitCost.toFixed(2)}`,
         `${gstPercent.toFixed(2)}%`,
         `₹${totalCost.toFixed(2)}`
@@ -2304,10 +2304,10 @@ const StockIn = () => {
                                 {batch.raw_materials?.code || 'N/A'}
                               </td>
                               <td className="px-4 py-3 text-foreground">
-                                {parseFloat(batch.quantity_purchased).toFixed(3)} {batch.raw_materials?.unit || ''}
+                                {parseFloat(batch.quantity_purchased).toFixed(2)} {batch.raw_materials?.unit || ''}
                               </td>
                               <td className="px-4 py-3 text-foreground">
-                                {parseFloat(batch.quantity_remaining).toFixed(3)} {batch.raw_materials?.unit || ''}
+                                {parseFloat(batch.quantity_remaining).toFixed(2)} {batch.raw_materials?.unit || ''}
                               </td>
                               <td className="px-4 py-3 text-foreground">
                                 ₹{parseFloat(batch.unit_cost || 0).toFixed(2)}

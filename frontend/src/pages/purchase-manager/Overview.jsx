@@ -706,10 +706,10 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                             {batch.raw_materials?.code || '—'}
                           </td>
                           <td className="px-4 py-3 text-sm text-foreground">
-                            {parseFloat(batch.quantity_purchased || 0).toFixed(3)} {batch.raw_materials?.unit || ''}
+                            {parseFloat(batch.quantity_purchased || 0).toFixed(2)} {batch.raw_materials?.unit || ''}
                           </td>
                           <td className="px-4 py-3 text-sm text-foreground">
-                            {parseFloat(batch.quantity_remaining || 0).toFixed(3)} {batch.raw_materials?.unit || ''}
+                            {parseFloat(batch.quantity_remaining || 0).toFixed(2)} {batch.raw_materials?.unit || ''}
                           </td>
                           <td className="px-4 py-3 text-sm text-foreground">
                             ₹{parseFloat(batch.unit_cost || 0).toFixed(2)}
@@ -818,7 +818,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                             {item.raw_materials?.code || '—'}
                           </td>
                           <td className="px-4 py-3 text-sm text-foreground">
-                            {parseFloat(item.quantity || 0).toFixed(3)} {item.raw_materials?.unit || ''}
+                            {parseFloat(item.quantity || 0).toFixed(2)} {item.raw_materials?.unit || ''}
                           </td>
                         </tr>
                       ))}

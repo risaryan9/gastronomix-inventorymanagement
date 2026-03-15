@@ -754,8 +754,8 @@ const Materials = ({ isAdminMode = false }) => {
                       <td className="px-4 py-3 text-muted-foreground">{material.brand || '—'}</td>
                       <td className="px-4 py-3 text-foreground">
                         {material.low_stock_threshold !== null && material.low_stock_threshold !== undefined
-                          ? parseFloat(material.low_stock_threshold).toFixed(3)
-                          : '0.000'}
+                          ? parseFloat(material.low_stock_threshold).toFixed(2)
+                          : '0.00'}
                       </td>
                       <td className="px-4 py-3">
                         {material.is_active === false ? (
@@ -1088,7 +1088,7 @@ const Materials = ({ isAdminMode = false }) => {
                       value={formData.low_stock_threshold}
                       onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
                       className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      placeholder="0.000"
+                      placeholder="0.00"
                       disabled={saving}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
@@ -1227,7 +1227,7 @@ const Materials = ({ isAdminMode = false }) => {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Low Stock Threshold:</span>
                       <span className="text-foreground font-semibold">
-                        {formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold).toFixed(3) : '0.000'} {formData.unit}
+                        {formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold).toFixed(2) : '0.00'} {formData.unit}
                       </span>
                     </div>
                     {formData.description && (

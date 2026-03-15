@@ -680,7 +680,7 @@ const OutletDetails = () => {
                           {!request.is_packed && (
                             <>
                               <p className="text-base lg:text-lg font-bold text-foreground">
-                                {requestedQty.toFixed(3)}
+                                {requestedQty.toFixed(2)}
                               </p>
                               <p className="text-xs text-muted-foreground">{item.raw_materials.unit}</p>
                             </>
@@ -693,7 +693,7 @@ const OutletDetails = () => {
                                     Requested
                                   </p>
                                   <p className="text-sm lg:text-base font-semibold text-foreground">
-                                    {requestedQty.toFixed(3)} {item.raw_materials.unit}
+                                    {requestedQty.toFixed(2)} {item.raw_materials.unit}
                                   </p>
                                 </div>
                                 <div className="text-right">
@@ -701,7 +701,7 @@ const OutletDetails = () => {
                                     Packed
                                   </p>
                                   <p className="text-sm lg:text-base font-semibold text-foreground">
-                                    {packedQty.toFixed(3)} {item.raw_materials.unit}
+                                    {packedQty.toFixed(2)} {item.raw_materials.unit}
                                   </p>
                                 </div>
                               </div>
@@ -998,7 +998,7 @@ const OutletDetails = () => {
                       </div>
                       <div className="text-right ml-3">
                         <p className="text-base font-bold text-foreground">
-                          {parseFloat(item.requested_quantity).toFixed(3)} {item.unit}
+                          {parseFloat(item.requested_quantity).toFixed(2)} {item.unit}
                         </p>
                       </div>
                     </div>

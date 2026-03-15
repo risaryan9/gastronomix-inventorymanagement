@@ -110,7 +110,7 @@ const RawMaterials = () => {
         material.category || 'N/A',
         material.unit || 'N/A',
         material.description || 'N/A',
-        parseFloat(material.low_stock_threshold || 0).toFixed(3),
+        parseFloat(material.low_stock_threshold || 0).toFixed(2),
         material.is_active ? 'Active' : 'Inactive'
       ]
     })
@@ -169,7 +169,7 @@ const RawMaterials = () => {
           material.category || 'N/A',
           material.unit || 'N/A',
           material.description || 'N/A',
-          parseFloat(material.low_stock_threshold || 0).toFixed(3),
+          parseFloat(material.low_stock_threshold || 0).toFixed(2),
           material.is_active ? 'Active' : 'Inactive'
         ]
       })
@@ -247,7 +247,7 @@ const RawMaterials = () => {
           material.category || 'N/A',
           material.unit || 'N/A',
           (material.description || 'N/A').substring(0, 30),
-          parseFloat(material.low_stock_threshold || 0).toFixed(3),
+          parseFloat(material.low_stock_threshold || 0).toFixed(2),
           material.is_active ? 'Active' : 'Inactive'
         ]
       })
@@ -434,7 +434,7 @@ const RawMaterials = () => {
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Low Stock Threshold</p>
                         <p className="text-base font-semibold text-foreground">
-                          {parseFloat(material.low_stock_threshold || 0).toFixed(3)} {material.unit}
+                          {parseFloat(material.low_stock_threshold || 0).toFixed(2)} {material.unit}
                         </p>
                       </div>
                     </div>
@@ -485,7 +485,7 @@ const RawMaterials = () => {
                           {material.description || 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {parseFloat(material.low_stock_threshold || 0).toFixed(3)} {material.unit}
+                          {parseFloat(material.low_stock_threshold || 0).toFixed(2)} {material.unit}
                         </td>
                         <td className="px-4 py-3">
                           {material.is_active ? (
