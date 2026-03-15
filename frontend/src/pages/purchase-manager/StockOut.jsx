@@ -54,6 +54,8 @@ const StockOut = () => {
   const [allMaterials, setAllMaterials] = useState([])
   const [isSelfStockOut, setIsSelfStockOut] = useState(false)
   const [selectedStockOutRows, setSelectedStockOutRows] = useState(new Set())
+  const [wastageImageFile, setWastageImageFile] = useState(null)
+  const [wastageImageError, setWastageImageError] = useState('')
   // Prevent double-submit on allocation (ref blocks immediately)
   const allocatingRef = useRef(false)
   // Material search popup (same design as Stock In / OutletDetails)
@@ -100,6 +102,14 @@ const StockOut = () => {
   useEffect(() => {
     if (selfStockOutReason !== 'inter-cloud-kitchen') {
       setTransferToCloudKitchenId('')
+    }
+  }, [selfStockOutReason])
+
+  // Clear wastage image when reason changes away from wastage
+  useEffect(() => {
+    if (selfStockOutReason !== 'wastage') {
+      setWastageImageFile(null)
+      setWastageImageError('')
     }
   }, [selfStockOutReason])
 
@@ -196,6 +206,50 @@ const StockOut = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const sanitizeForFilename = (value) => {
+    if (!value) return ''
+    return value
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_\-]/g, '')
+  }
+
+  const handleWastageFileChange = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setWastageImageFile(null)
+      setWastageImageError('')
+      return
+    }
+    const allowedTypes = ['image/jpeg', 'image/png']
+    const maxSizeBytes = 5 * 1024 * 1024 // 5 MB
+    if (!allowedTypes.includes(file.type)) {
+      setWastageImageFile(null)
+      setWastageImageError('Only JPEG or PNG images are allowed.')
+      return
+    }
+    if (file.size > maxSizeBytes) {
+      setWastageImageFile(null)
+      setWastageImageError('Maximum file size is 5 MB.')
+      return
+    }
+    setWastageImageFile(file)
+    setWastageImageError('')
+  }
+
+  const uploadWastageImage = async (file, session, stockOutId) => {
+    if (!file || !stockOutId) return null
+    const cloudKitchenId = sanitizeForFilename(session?.cloud_kitchen_id || 'cloud_kitchen')
+    const ext = file.type === 'image/png' ? 'png' : 'jpg'
+    const path = `wastage/${cloudKitchenId}/${stockOutId}.${ext}`
+    const { error } = await supabase.storage.from('invoices').upload(path, file, { upsert: true })
+    if (error) throw error
+    const { data } = supabase.storage.from('invoices').getPublicUrl(path)
+    return data?.publicUrl || null
   }
 
   const downloadStockOutCSV = (record) => {
@@ -473,6 +527,8 @@ const StockOut = () => {
       setSelfStockOutItems([makeRow(), makeRow(), makeRow()])
       setSelectedStockOutRows(new Set())
       setSelfStockOutReason('')
+      setWastageImageFile(null)
+      setWastageImageError('')
       setOpenMaterialDropdownRow(-1)
       setMaterialDropdownSearchTerm('')
       setShowSelfStockOutModal(true)
@@ -836,6 +892,21 @@ const StockOut = () => {
         }
       }
 
+      if (selfStockOutReason === 'wastage') {
+        if (!wastageImageFile) {
+          setAlert({ type: 'error', message: 'Please upload a photo of the wasted items (required for wastage).' })
+          allocatingRef.current = false
+          setAllocating(false)
+          return
+        }
+        if (wastageImageError) {
+          setAlert({ type: 'error', message: wastageImageError })
+          allocatingRef.current = false
+          setAllocating(false)
+          return
+        }
+      }
+
       if (itemsToProcess.length === 0) {
         setAlert({ type: 'error', message: 'Please add at least one material with quantity' })
         allocatingRef.current = false
@@ -919,6 +990,26 @@ const StockOut = () => {
         .single()
 
       if (stockOutError) throw stockOutError
+
+      // If wastage, upload image and update stock_out with wastage_image_url
+      if (isSelfStockOut && selfStockOutReason === 'wastage' && wastageImageFile) {
+        try {
+          const wastageImageUrl = await uploadWastageImage(wastageImageFile, session, stockOutData.id)
+          if (wastageImageUrl) {
+            const { error: updateError } = await supabase
+              .from('stock_out')
+              .update({ wastage_image_url: wastageImageUrl })
+              .eq('id', stockOutData.id)
+            if (updateError) throw updateError
+          }
+        } catch (uploadErr) {
+          console.error('Error uploading wastage image:', uploadErr)
+          setAlert({ type: 'error', message: `Failed to upload wastage photo: ${uploadErr.message}` })
+          allocatingRef.current = false
+          setAllocating(false)
+          return
+        }
+      }
 
       // For inter-cloud transfer, collect FIFO cost per item to create destination stock_in
       const interCloudFifoResults = []
@@ -1981,6 +2072,34 @@ const StockOut = () => {
                 </select>
               </div>
 
+              {/* Wastage photo (required when reason is wastage) */}
+              {selfStockOutReason === 'wastage' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-foreground mb-2">
+                    Photo of wasted items <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={handleWastageFileChange}
+                    disabled={allocating}
+                    className="block w-full text-sm text-foreground file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-background hover:file:bg-accent/90"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upload a clear photo of the wasted items (JPEG or PNG, max 5 MB).
+                  </p>
+                  {wastageImageFile && !wastageImageError && (
+                    <p className="mt-1 text-xs text-foreground">
+                      Selected: <span className="font-mono">{wastageImageFile.name}</span>{' '}
+                      ({(wastageImageFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+                  {wastageImageError && (
+                    <p className="mt-1 text-xs text-destructive">{wastageImageError}</p>
+                  )}
+                </div>
+              )}
+
               {/* Destination kitchen (only when reason is inter-cloud-kitchen) */}
               {selfStockOutReason === 'inter-cloud-kitchen' && (
                 <div className="mb-4">
@@ -2193,6 +2312,7 @@ const StockOut = () => {
                   disabled={
                     allocating || 
                     !selfStockOutReason ||
+                    (selfStockOutReason === 'wastage' && !wastageImageFile) ||
                     (selfStockOutReason === 'inter-cloud-kitchen' && !transferToCloudKitchenId) ||
                     selfStockOutItems.filter(item => item.raw_material_id && parseFloat(item.allocated_quantity) > 0).length === 0
                   }
@@ -2291,6 +2411,27 @@ const StockOut = () => {
                         {stockOutDetails.destination_kitchen.code ? ` (${stockOutDetails.destination_kitchen.code})` : ''}
                       </p>
                     )}
+                  </div>
+                )}
+                {stockOutDetails.self_stock_out && stockOutDetails.reason === 'wastage' && stockOutDetails.wastage_image_url && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Photo of wasted items</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="max-h-64 max-w-full overflow-hidden rounded-lg border border-border bg-background">
+                        <img
+                          src={stockOutDetails.wastage_image_url}
+                          alt="Wasted items"
+                          className="max-h-64 w-full object-contain bg-background"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => window.open(stockOutDetails.wastage_image_url, '_blank', 'noopener,noreferrer')}
+                        className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg bg-accent text-background hover:bg-accent/90 transition-colors"
+                      >
+                        Open full image
+                      </button>
+                    </div>
                   </div>
                 )}
                 {stockOutDetails.self_stock_out && stockOutDetails.notes && (
