@@ -88,12 +88,12 @@ const SupervisorDashboard = () => {
                 : 'text-muted-foreground border-transparent hover:text-foreground'
             }`}
           >
-            Check Out
+            Closing form
           </button>
         </div>
       </nav>
 
-      {/* Main content shows only the nested page (Outlets / Outlet details / Checkout) */}
+      {/* Main content shows only the nested page (Outlets / Outlet details / Closing form) */}
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

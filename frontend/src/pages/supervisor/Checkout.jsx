@@ -107,7 +107,7 @@ const Checkout = () => {
       setCheckoutForms(checkouts || [])
     } catch (error) {
       console.error('Error fetching data:', error)
-      setAlert({ type: 'error', message: 'Failed to load dispatch plans and checkouts' })
+      setAlert({ type: 'error', message: 'Failed to load dispatch plans and closing forms' })
     } finally {
       setLoading(false)
     }
@@ -365,13 +365,13 @@ const Checkout = () => {
 
       if (confirmError) throw confirmError
 
-      setAlert({ type: 'success', message: 'Checkout confirmed successfully! Inventory has been updated.' })
+      setAlert({ type: 'success', message: 'Closing form confirmed successfully! Inventory has been updated.' })
       setIsConfirmModalOpen(false)
       closeCheckoutModal()
       fetchDispatchPlansAndCheckouts()
     } catch (error) {
       console.error('Error confirming checkout:', error)
-      setAlert({ type: 'error', message: error.message || 'Failed to confirm checkout' })
+        setAlert({ type: 'error', message: error.message || 'Failed to confirm closing' })
     } finally {
       setSubmitting(false)
     }
@@ -920,9 +920,9 @@ const Checkout = () => {
         )}
 
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-foreground mb-2">Check Out</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">Closing form</h2>
           <p className="text-muted-foreground">
-            Create checkout forms for locked dispatch plans and view previous checkouts.
+            Create closing forms for locked dispatch plans and view previous closings.
           </p>
         </div>
 
@@ -937,7 +937,7 @@ const Checkout = () => {
               )
               return availablePlans.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No locked dispatch plans available for checkout. Plans that are already checked out are not shown here.
+                  No locked dispatch plans available for closing. Plans that are already closed are not shown here.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -962,7 +962,7 @@ const Checkout = () => {
                           onClick={() => openCheckoutModal(plan)}
                           className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors text-sm font-semibold"
                         >
-                          Create Checkout
+                          Create Closing Form
                         </button>
                       </div>
                     </div>
@@ -973,9 +973,9 @@ const Checkout = () => {
           </div>
 
           <div className="bg-card border border-border rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Previous Checkouts</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Previous closing forms</h3>
             {checkoutForms.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No previous checkouts found.</p>
+              <p className="text-muted-foreground text-sm">No previous closing forms found.</p>
             ) : (
               <div className="space-y-3">
                 {checkoutForms.map(checkout => (
@@ -1164,7 +1164,7 @@ const Checkout = () => {
               <div className="sticky top-0 bg-card border-b border-border p-4 flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-foreground">
-                    Add New Check Out Form ({currentStep}/3)
+                    Add New Closing Form ({currentStep}/3)
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     {selectedDispatchPlan?.brand?.replace('_', ' ').toUpperCase()} - {' '}
@@ -1195,7 +1195,7 @@ const Checkout = () => {
                   onClick={handleNext}
                   className="px-6 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors font-semibold"
                 >
-                  {currentStep === 3 ? 'Review Checkout' : 'Next'}
+                  {currentStep === 3 ? 'Review Closing Form' : 'Next'}
                 </button>
               </div>
             </div>
@@ -1206,7 +1206,7 @@ const Checkout = () => {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-card rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-card border-b border-border p-4 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-foreground">Review Checkout</h2>
+                <h2 className="text-xl font-bold text-foreground">Review Closing Form</h2>
                 <button
                   onClick={() => setIsReviewModalOpen(false)}
                   className="text-2xl font-bold text-muted-foreground hover:text-foreground"
@@ -1537,7 +1537,7 @@ const Checkout = () => {
         {isConfirmModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-card rounded-lg max-w-md w-full p-6">
-              <h2 className="text-xl font-bold text-foreground mb-4">Confirm Checkout</h2>
+              <h2 className="text-xl font-bold text-foreground mb-4">Confirm Closing</h2>
               <p className="text-muted-foreground mb-6">
                 This will alter the cloud kitchen inventory by adding the returned items back to stock. 
                 Please recheck all details before confirming.
