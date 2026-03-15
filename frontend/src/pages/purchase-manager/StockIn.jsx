@@ -857,6 +857,23 @@ const StockIn = () => {
         setFinalizing(false)
         return
       }
+      // GST is required only for purchase stock-in; kitchen auto-fills 0%
+      if (stockInType === 'purchase') {
+        const gstVal = item.gst_percent
+        if (gstVal === '' || gstVal === null || gstVal === undefined) {
+          alert(`Please enter GST (%) for ${item.material.name}. Use 0 if no GST.`)
+          finalizingRef.current = false
+          setFinalizing(false)
+          return
+        }
+        const gstNum = parseFloat(gstVal)
+        if (Number.isNaN(gstNum) || gstNum < 0) {
+          alert(`Please enter a valid GST (%) for ${item.material.name}. Use 0 if no GST.`)
+          finalizingRef.current = false
+          setFinalizing(false)
+          return
+        }
+      }
     }
 
     try {
@@ -926,9 +943,10 @@ const StockIn = () => {
       }
 
       // Create stock_in_batches (FIFO tracking)
+      // Kitchen stock-in: GST auto-filled to 0%; Purchase: use entered GST (required)
       const stockInBatches = validPurchaseItems.map(item => {
         const quantity = parseFloat(item.quantity)
-        const gstPercent = parseFloat(item.gst_percent) || 0
+        const gstPercent = stockInType === 'kitchen' ? 0 : (parseFloat(item.gst_percent) || 0)
         return {
           stock_in_id: stockInData.id,
           raw_material_id: item.raw_material_id,
@@ -1847,7 +1865,9 @@ const StockIn = () => {
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Prev. Cost (₹)</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Unit Cost (₹)</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-24">GST (%)</th>
+                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-24">
+                          GST (%) {stockInType === 'purchase' ? <span className="text-destructive">*</span> : null}
+                        </th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Total (₹)</th>
                         <th className="px-3 py-2 w-12"></th>
                       </tr>
@@ -1961,10 +1981,12 @@ const StockIn = () => {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={item.gst_percent ?? ''}
+                              value={stockInType === 'kitchen' ? 0 : (item.gst_percent ?? '')}
                               onChange={(e) => handleUpdateItem(index, 'gst_percent', e.target.value)}
                               placeholder="0"
-                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              title={stockInType === 'purchase' ? 'Required for purchase. Use 0 if no GST for this material.' : 'Kitchen stock-in: auto 0%.'}
+                              readOnly={stockInType === 'kitchen'}
+                              className={`w-full px-3 py-2 bg-input border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent ${stockInType === 'purchase' && item.material && (item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined) ? 'border-destructive' : 'border-border'} ${stockInType === 'kitchen' ? 'cursor-default' : ''}`}
                               disabled={!item.material}
                             />
                           </td>
@@ -2020,6 +2042,15 @@ const StockIn = () => {
                     if (validPurchaseItems.length === 0) {
                       alert('Please add at least one item with a material selected')
                       return
+                    }
+                    if (stockInType === 'purchase') {
+                      const missingGst = validPurchaseItems.find(
+                        item => item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined || Number.isNaN(parseFloat(item.gst_percent)) || parseFloat(item.gst_percent) < 0
+                      )
+                      if (missingGst) {
+                        alert(`Please enter GST (%) for ${missingGst.material.name}. Use 0 if no GST.`)
+                        return
+                      }
                     }
                     if (stockInType === 'purchase' && !purchaseSlip.invoice_number?.trim()) {
                       alert('Please enter an invoice number')
