@@ -666,16 +666,16 @@ const StockIn = () => {
 
     if (!file) {
       setInvoiceFile(null)
-      setInvoiceFileError('Please select an image file.')
+      setInvoiceFileError('Please select an image or PDF file.')
       return
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png']
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf']
     const maxSizeBytes = 5 * 1024 * 1024 // 5 MB
 
     if (!allowedTypes.includes(file.type)) {
       setInvoiceFile(null)
-      setInvoiceFileError('Only JPEG and PNG images are allowed.')
+      setInvoiceFileError('Only JPEG, PNG images and PDF are allowed.')
       return
     }
 
@@ -689,7 +689,7 @@ const StockIn = () => {
     setInvoiceFileError('')
   }
 
-  const uploadInvoiceImage = async (file, session, invoiceNumber) => {
+  const uploadInvoiceFile = async (file, session, invoiceNumber) => {
     if (!file) return null
 
     const cloudKitchenIdentifier = sanitizeForFilename(
@@ -698,10 +698,15 @@ const StockIn = () => {
     const invoiceIdentifier = sanitizeForFilename(invoiceNumber)
 
     if (!invoiceIdentifier) {
-      throw new Error('Invalid invoice number for invoice image naming.')
+      throw new Error('Invalid invoice number for invoice file naming.')
     }
 
-    const extension = file.type === 'image/png' ? 'png' : 'jpg'
+    const extension =
+      file.type === 'application/pdf'
+        ? 'pdf'
+        : file.type === 'image/png'
+          ? 'png'
+          : 'jpg'
     const folder = cloudKitchenIdentifier || 'cloud_kitchen'
     const baseName = `${cloudKitchenIdentifier || 'cloud_kitchen'}-${invoiceIdentifier}`
 
@@ -733,7 +738,7 @@ const StockIn = () => {
       // If conflict, try next suffix
     }
 
-    throw new Error('Could not store invoice image because too many files share the same name.')
+    throw new Error('Could not store invoice file because too many files share the same name.')
   }
 
   // Open add modal for purchase stock-in
@@ -857,15 +862,15 @@ const StockIn = () => {
     try {
       let invoiceImageUrl = null
       if (stockInType === 'purchase') {
-        try {
-          invoiceImageUrl = await uploadInvoiceImage(
-            invoiceFile,
-            session,
-            purchaseSlip.invoice_number
-          )
-        } catch (uploadError) {
-          console.error('Error uploading invoice image:', uploadError)
-          alert(`Failed to upload invoice image: ${uploadError.message}`)
+      try {
+        invoiceImageUrl = await uploadInvoiceFile(
+          invoiceFile,
+          session,
+          purchaseSlip.invoice_number
+        )
+      } catch (uploadError) {
+        console.error('Error uploading invoice file:', uploadError)
+        alert(`Failed to upload invoice file: ${uploadError.message}`)
           finalizingRef.current = false
           setFinalizing(false)
           return
@@ -1756,16 +1761,16 @@ const StockIn = () => {
                 {stockInType === 'purchase' && (
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold text-foreground mb-2">
-                      Invoice Image <span className="text-destructive">*</span>
+                      Invoice (Image or PDF) <span className="text-destructive">*</span>
                     </label>
                     <input
                       type="file"
-                      accept="image/jpeg,image/png"
+                      accept="image/jpeg,image/png,application/pdf"
                       onChange={handleInvoiceFileChange}
                       className="block w-full text-sm text-foreground file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-background hover:file:bg-accent/90"
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Upload a clear photo or scan of the invoice (JPEG or PNG, max 5 MB).
+                      Upload a clear photo, scan, or PDF of the invoice (JPEG, PNG, or PDF, max 5 MB).
                     </p>
                     {invoiceFile && !invoiceFileError && (
                       <p className="mt-1 text-xs text-foreground">
@@ -2189,24 +2194,41 @@ const StockIn = () => {
                 </div>
                 {selectedRecord.invoice_image_url && selectedRecord.stock_in_type === 'purchase' && (
                   <div className="mt-3">
-                    <p className="text-sm text-muted-foreground mb-1">Invoice Image</p>
+                    <p className="text-sm text-muted-foreground mb-1">Invoice</p>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="max-h-64 max-w-full overflow-hidden rounded-lg border border-border bg-background">
-                        <img
-                          src={selectedRecord.invoice_image_url}
-                          alt="Invoice"
-                          className="max-h-64 w-full object-contain bg-background"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          window.open(selectedRecord.invoice_image_url, '_blank', 'noopener,noreferrer')
-                        }
-                        className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg bg-accent text-background hover:bg-accent/90 transition-colors"
-                      >
-                        Open Full Image
-                      </button>
+                      {selectedRecord.invoice_image_url.toLowerCase().endsWith('.pdf') ? (
+                        <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-background">
+                          <span className="text-muted-foreground">PDF document</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(selectedRecord.invoice_image_url, '_blank', 'noopener,noreferrer')
+                            }
+                            className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg bg-accent text-background hover:bg-accent/90 transition-colors"
+                          >
+                            Open PDF
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="max-h-64 max-w-full overflow-hidden rounded-lg border border-border bg-background">
+                            <img
+                              src={selectedRecord.invoice_image_url}
+                              alt="Invoice"
+                              className="max-h-64 w-full object-contain bg-background"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(selectedRecord.invoice_image_url, '_blank', 'noopener,noreferrer')
+                            }
+                            className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg bg-accent text-background hover:bg-accent/90 transition-colors"
+                          >
+                            Open Full Image
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
