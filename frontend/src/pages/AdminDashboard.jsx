@@ -4,6 +4,7 @@ import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import Materials from './purchase-manager/Materials'
 import AdminUsers from './admin/AdminUsers'
+import AdminOperators from './admin/AdminOperators'
 
 const NAV_STRUCTURE = [
   {
@@ -29,6 +30,7 @@ const NAV_STRUCTURE = [
     children: [
       { id: 'materials', label: 'Materials' },
       { id: 'users', label: 'Users' },
+      { id: 'operators', label: 'Operators' },
       { id: 'preferences', label: 'Preferences' },
     ],
   },
@@ -75,6 +77,8 @@ const AdminDashboard = () => {
     activeParentId === 'settings' && activeChildId === 'materials'
   const isUsersSection =
     activeParentId === 'settings' && activeChildId === 'users'
+  const isOperatorsSection =
+    activeParentId === 'settings' && activeChildId === 'operators'
 
   return (
     <div className="min-h-screen bg-background">
@@ -206,6 +210,10 @@ const AdminDashboard = () => {
             ) : isUsersSection ? (
               <div className="-mt-2">
                 <AdminUsers />
+              </div>
+            ) : isOperatorsSection ? (
+              <div className="-mt-2">
+                <AdminOperators />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">

@@ -35,6 +35,8 @@ const Checkout = () => {
   const [formMaterials, setFormMaterials] = useState([])
   const [formData, setFormData] = useState({})
   const [supervisorName, setSupervisorName] = useState('')
+  const [operatorId, setOperatorId] = useState('')
+  const [outletOperators, setOutletOperators] = useState([])
   const [cash, setCash] = useState('')
   const [paymentOnside, setPaymentOnside] = useState('')
   
@@ -176,17 +178,26 @@ const Checkout = () => {
   const openOutletForm = async (outlet) => {
     try {
       setSelectedOutlet(outlet)
-      
-      const { data: items, error: itemsError } = await supabase
-        .from('dispatch_plan_items')
-        .select('*, raw_materials(*)')
-        .eq('dispatch_plan_id', todayPlan.id)
-        .eq('outlet_id', outlet.id)
-        .gt('quantity', 0)
 
+      const [itemsRes, operatorsRes] = await Promise.all([
+        supabase
+          .from('dispatch_plan_items')
+          .select('*, raw_materials(*)')
+          .eq('dispatch_plan_id', todayPlan.id)
+          .eq('outlet_id', outlet.id)
+          .gt('quantity', 0),
+        supabase
+          .from('operators')
+          .select('id, name, phone')
+          .eq('outlet_id', outlet.id)
+          .order('name')
+      ])
+
+      const itemsError = itemsRes.error
       if (itemsError) throw itemsError
-
-      setFormMaterials(items || [])
+      setFormMaterials(itemsRes.data || [])
+      setOutletOperators(operatorsRes.data || [])
+      if (operatorsRes.error) console.warn('Operators fetch:', operatorsRes.error)
 
       const existingForm = checkoutFormsMap[outlet.id]
       if (existingForm) {
@@ -210,7 +221,7 @@ const Checkout = () => {
         if (wastageData.error) throw wastageData.error
 
         const initialData = {}
-        items.forEach(item => {
+        itemsRes.data.forEach(item => {
           const returnItem = returnData.data.find(r => r.raw_material_id === item.raw_material_id)
           const wastageItem = wastageData.data.find(w => w.raw_material_id === item.raw_material_id)
           initialData[item.raw_material_id] = {
@@ -221,15 +232,17 @@ const Checkout = () => {
 
         setFormData(initialData)
         setSupervisorName(existingForm.supervisor_name || '')
+        setOperatorId(existingForm.operator_id || '')
         setCash(additionalData.data?.cash || '')
         setPaymentOnside(additionalData.data?.payment_onside || '')
       } else {
         const initialData = {}
-        items.forEach(item => {
+        itemsRes.data.forEach(item => {
           initialData[item.raw_material_id] = { returned: '', wasted: '' }
         })
         setFormData(initialData)
         setSupervisorName('')
+        setOperatorId('')
         setCash('')
         setPaymentOnside('')
       }
@@ -247,6 +260,8 @@ const Checkout = () => {
     setFormMaterials([])
     setFormData({})
     setSupervisorName('')
+    setOperatorId('')
+    setOutletOperators([])
     setCash('')
     setPaymentOnside('')
     setValidationError(null)
@@ -307,6 +322,7 @@ const Checkout = () => {
           .from('checkout_form')
           .update({
             supervisor_name: supervisorName,
+            operator_id: operatorId || null,
             status: 'draft'
           })
           .eq('id', existingForm.id)
@@ -337,6 +353,7 @@ const Checkout = () => {
             outlet_id: selectedOutlet.id,
             status: 'draft',
             supervisor_name: supervisorName,
+            operator_id: operatorId || null,
             created_by: userId
           })
           .select()
@@ -868,33 +885,58 @@ const Checkout = () => {
                       placeholder="Enter supervisor name"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Operator
+                    </label>
+                    <select
+                      value={operatorId}
+                      onChange={(e) => setOperatorId(e.target.value)}
+                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      <option value="">Select operator (optional)</option>
+                      {outletOperators.map((op) => (
+                        <option key={op.id} value={op.id}>
+                          {op.name}
+                          {op.phone ? ` — ${op.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {outletOperators.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        No operators added for this outlet. Add them in Admin → Settings → Operators.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="sticky bottom-0 bg-card border-t border-border p-4 flex justify-between">
-                <button
-                  onClick={closeOutletForm}
-                  className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
-                >
-                  Cancel
-                </button>
-                <div className="flex gap-3">
+              {checkoutFormsMap[selectedOutlet.id]?.status !== 'confirmed' && (
+                <div className="sticky bottom-0 bg-card border-t border-border p-4 flex justify-between">
                   <button
-                    onClick={handleSaveDraft}
-                    disabled={isDraftSaving || checkoutFormsMap[selectedOutlet.id]?.status === 'confirmed'}
-                    className="px-6 py-2 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={closeOutletForm}
+                    className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
                   >
-                    {isDraftSaving ? 'Saving...' : 'Save as Draft'}
+                    Cancel
                   </button>
-                  <button
-                    onClick={handleConfirmClick}
-                    disabled={isConfirming || checkoutFormsMap[selectedOutlet.id]?.status === 'confirmed'}
-                    className="px-6 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Confirm
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleSaveDraft}
+                      disabled={isDraftSaving}
+                      className="px-6 py-2 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isDraftSaving ? 'Saving...' : 'Save as Draft'}
+                    </button>
+                    <button
+                      onClick={handleConfirmClick}
+                      disabled={isConfirming}
+                      className="px-6 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Confirm
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
