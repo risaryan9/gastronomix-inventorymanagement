@@ -23,7 +23,10 @@ const RAW_MATERIAL_CATEGORIES = [
   { label: 'Food Grains & Grain Products', short: 'FDGP' },
   { label: 'Fruits & Vegetables', short: 'FRVG' },
   { label: 'Herbs & Spices', short: 'HBSP' },
+  { label: 'Indian Breads & Breads', short: 'IBRD' },
   { label: 'Meat & Poultry & Cold Cuts', short: 'MTPC' },
+  { label: 'Packaged Deserts & Sweets', short: 'PDST' },
+  { label: 'Packaged Water & Bevereges', short: 'PWBV' },
   { label: 'Pulses & Lentils', short: 'PLSL' },
   { label: 'Sauces & Seasoning', short: 'SCSN' },
   { label: 'Inedible & Packaging', short: 'INPK' }

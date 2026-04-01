@@ -20,6 +20,19 @@ const makeEmptyAllocationRow = () => ({
   quantity: ''
 })
 
+const normalizeBrandCodes = (brandCodes) => {
+  if (Array.isArray(brandCodes)) return brandCodes.map(code => String(code).toLowerCase().trim()).filter(Boolean)
+  if (typeof brandCodes === 'string' && brandCodes.trim()) {
+    return brandCodes
+      .toLowerCase()
+      .replace(/[\[\]"']/g, ' ')
+      .split(/[\s,]+/)
+      .map(code => code.trim())
+      .filter(code => ['bp', 'ec', 'nk'].includes(code))
+  }
+  return []
+}
+
 const OutletsPageBase = ({ role }) => {
   const isSupervisor = role === 'supervisor'
   const [selectedBrand, setSelectedBrand] = useState(null)
@@ -250,8 +263,16 @@ const OutletsPageBase = ({ role }) => {
   const getFilteredMaterialsForRow = (rowIndex) => {
     const search = openDropdownRow === rowIndex ? dropdownSearchTerm : ''
     const usedIds = allocationRows.filter((r, i) => i !== rowIndex && r.raw_material_id).map(r => r.raw_material_id)
+    const selectedBrandCode = selectedBrand ? selectedBrand.toLowerCase() : null
+
     return rawMaterials.filter(m => {
       if (usedIds.includes(m.id)) return false
+      if (m.material_type !== 'non_food') return false
+      if (!selectedBrandCode) return false
+
+      const materialBrandCodes = normalizeBrandCodes(m.brand_codes)
+      if (!materialBrandCodes.includes(selectedBrandCode)) return false
+
       if (!search.trim()) return true
       const q = search.toLowerCase()
       return m.name.toLowerCase().includes(q) || (m.code || '').toLowerCase().includes(q)

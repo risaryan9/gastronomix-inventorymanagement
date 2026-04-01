@@ -37,7 +37,7 @@ Amul Butter	kg	Premium quality butter	Dairy & Dairy Product	45.000	TRUE	Amul	Hyp
 
 Required columns: `name`, `unit`, `category`, `material_type`
 
-Valid categories for raw materials: `Baking Essentials`, `Condiments & Toppings`, `Dairy & Dairy Product`, `Dry Fruits & Nuts`, `Edible Oils & Fats`, `Food Grains & Grain Products`, `Fruits & Vegetables`, `Herbs & Spices`, `Meat & Poultry & Cold Cuts`, `Pulses & Lentils`, `Sauces & Seasoning`, `Inedible & Packaging`
+Valid categories for raw materials: `Baking Essentials`, `Condiments & Toppings`, `Dairy & Dairy Product`, `Dry Fruits & Nuts`, `Edible Oils & Fats`, `Food Grains & Grain Products`, `Fruits & Vegetables`, `Herbs & Spices`, `Indian Breads & Breads`, `Meat & Poultry & Cold Cuts`, `Packaged Deserts & Sweets`, `Packaged Water & Bevereges`, `Pulses & Lentils`, `Sauces & Seasoning`, `Inedible & Packaging`
 
 For semi_finished/finished/non_food: category is auto-assigned (`SemiFinished`, `Finished`, or `Inedible & Packaging`)
 

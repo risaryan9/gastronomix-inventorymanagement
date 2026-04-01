@@ -44,7 +44,10 @@ Must be one of these (case-sensitive):
 - `Food Grains & Grain Products`
 - `Fruits & Vegetables`
 - `Herbs & Spices`
+- `Indian Breads & Breads`
 - `Meat & Poultry & Cold Cuts`
+- `Packaged Deserts & Sweets`
+- `Packaged Water & Bevereges`
 - `Pulses & Lentils`
 - `Sauces & Seasoning`
 - `Inedible & Packaging`

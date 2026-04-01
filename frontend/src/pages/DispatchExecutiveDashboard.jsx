@@ -40,13 +40,35 @@ const BRANDS = [
 const MATERIAL_TYPE_ORDER = {
   finished: 0,
   semi_finished: 1,
-  raw_material: 2
+  raw_material: 2,
+  non_food: 3
 }
 
 const MATERIAL_TYPE_LABELS = {
   finished: 'Finished Materials',
   semi_finished: 'Semi-Finished Materials',
-  raw_material: 'Raw Materials'
+  raw_material: 'Raw Materials',
+  non_food: 'Non Food'
+}
+
+const getMaterialSectionKey = (material) => {
+  if (material?.category === 'non_food') return 'non_food'
+  return material?.material_type || 'other'
+}
+
+const normalizeBrandCodes = (brandCodes) => {
+  if (Array.isArray(brandCodes)) {
+    return brandCodes.map(code => String(code).toLowerCase().trim()).filter(Boolean)
+  }
+  if (typeof brandCodes === 'string' && brandCodes.trim()) {
+    return brandCodes
+      .toLowerCase()
+      .replace(/[\[\]"']/g, ' ')
+      .split(/[\s,]+/)
+      .map(code => code.trim())
+      .filter(code => ['bp', 'ec', 'nk'].includes(code))
+  }
+  return []
 }
 
 const DispatchExecutiveDashboard = () => {
@@ -227,11 +249,9 @@ const DispatchExecutiveDashboard = () => {
 
       const brandCode = brandMeta.materialBrandCode
       const filteredMaterials = (materialsData || []).filter(material => {
-        const codes = material.brand_codes
-        if (!codes || codes.length === 0) {
-          return true
-        }
-        return Array.isArray(codes) && codes.includes(brandCode)
+        const codes = normalizeBrandCodes(material.brand_codes)
+        if (codes.length === 0) return false
+        return codes.includes(brandCode)
       })
 
       setOutlets(outletsData || [])
@@ -289,9 +309,9 @@ const DispatchExecutiveDashboard = () => {
 
       const brandCode = brandMeta.materialBrandCode
       const filteredMaterials = (materialsData || []).filter(material => {
-        const codes = material.brand_codes
-        if (!codes || codes.length === 0) return true
-        return Array.isArray(codes) && codes.includes(brandCode)
+        const codes = normalizeBrandCodes(material.brand_codes)
+        if (codes.length === 0) return false
+        return codes.includes(brandCode)
       })
 
       const qtyMap = {}
@@ -466,8 +486,10 @@ const DispatchExecutiveDashboard = () => {
 
   // Order materials for UI: Finished → Semi-Finished → Raw, then by name
   const orderedMaterials = [...materials].sort((a, b) => {
-    const orderA = MATERIAL_TYPE_ORDER[a.material_type] ?? 99
-    const orderB = MATERIAL_TYPE_ORDER[b.material_type] ?? 99
+    const sectionA = getMaterialSectionKey(a)
+    const sectionB = getMaterialSectionKey(b)
+    const orderA = MATERIAL_TYPE_ORDER[sectionA] ?? 99
+    const orderB = MATERIAL_TYPE_ORDER[sectionB] ?? 99
     if (orderA !== orderB) return orderA - orderB
     const nameA = (a.name || '').toLowerCase()
     const nameB = (b.name || '').toLowerCase()
@@ -839,17 +861,18 @@ const DispatchExecutiveDashboard = () => {
                         </thead>
                         <tbody>
                           {orderedMaterials.map((material, index) => {
-                            const prevType =
-                              index > 0 ? orderedMaterials[index - 1].material_type : null
-                            const sectionChanged = material.material_type !== prevType
+                            const sectionKey = getMaterialSectionKey(material)
+                            const prevSectionKey =
+                              index > 0 ? getMaterialSectionKey(orderedMaterials[index - 1]) : null
+                            const sectionChanged = sectionKey !== prevSectionKey
                             const sectionLabel =
-                              sectionChanged && MATERIAL_TYPE_LABELS[material.material_type]
-                                ? MATERIAL_TYPE_LABELS[material.material_type]
+                              sectionChanged && MATERIAL_TYPE_LABELS[sectionKey]
+                                ? MATERIAL_TYPE_LABELS[sectionKey]
                                 : null
 
                             return [
                               sectionLabel ? (
-                                <tr key={`section-${material.material_type}-${index}`}>
+                                <tr key={`section-${sectionKey}-${index}`}>
                                   <td
                                     colSpan={1 + outlets.length}
                                     className="bg-background/80 border-t border-border px-3 lg:px-4 py-1.5 text-[11px] lg:text-xs font-semibold text-muted-foreground uppercase tracking-wide"

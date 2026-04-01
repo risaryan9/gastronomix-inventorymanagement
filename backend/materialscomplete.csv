@@ -1,0 +1,241 @@
+name,unit,description,category,low_stock_threshold,is_active,brand,vendor,material_type,brand_codes
+Dry Yeast,kg,Dehydrated baking ingredient,Baking Essentials,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Honey,kg,Natural sweet liquid made by bees,Baking Essentials,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Jalapenoes,kg,Medium heat chili peppers that can be green or red when ripe,Condiments & Toppings,8,TRUE,NULL,Hyperpure,raw_material,NULL
+Olives Black,kg,Ripe olives with a mild slightly salty and rich flavor,Condiments & Toppings,8,TRUE,NULL,Hyperpure,raw_material,NULL
+Fresh Cream,kg,Thick layer of cream from milk,Dairy & Dairy Product,48,TRUE,NULL,Hyperpure,raw_material,"[""ec""]"
+Ghee,kg,Clarified butter used in cooking,Dairy & Dairy Product,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Paneer,kg,Fresh Indian cottage cheese,Dairy & Dairy Product,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Processed Cheese,kg,Blended cheese product with long shelf life,Dairy & Dairy Product,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Fiodilatte Pizza Cheese,kg,Fresh cow milk mozzarella cheese used on pizza for its soft texture and mild taste,Dairy & Dairy Product,50,TRUE,NULL,Hyperpure,raw_material,NULL
+Parmesan Cheese,kg,Hard aged Italian cheese with strong umami flavor,Dairy & Dairy Product,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Baby Burrata,nos,Soft mozzarella shell filled with creamy center,Dairy & Dairy Product,20,TRUE,NULL,Hyperpure,raw_material,NULL
+Salted Butter,kg,Made from cream with added salt for enhanced flavor and longer shelf life.,Dairy & Dairy Product,10,TRUE,NULL,Hyperpure,raw_material,"[""ec""]"
+Toned Curd,kg,fermented yogurt,Dairy & Dairy Product,15,TRUE,NULL,Hyperpure,raw_material,NULL
+Toned Milk,kg,Milk with reduced fat content,Dairy & Dairy Product,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Unsalted Butter,kg,Pure butter made from cream without any added salt used for baking,Dairy & Dairy Product,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Broken Kaju,kg,Small broken pieces of cashew nuts used in cooking,Dry Fruits & Nuts,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Peanuts,kg,Edible seed that grows underground commonly eaten roasted or used in cooking,Dry Fruits & Nuts,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Mustard Oil,kg,Strong flavored oil from mustard seeds,Edible Oils & Fats,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Olive Oil,kg,Plant based oil extracted from olives used for cooking and salad dressings and adding flavor to food.,Edible Oils & Fats,20,TRUE,NULL,Hyperpure,raw_material,NULL
+Sunflower Oil,liter,Cooking oil came from sunflower seeds,Edible Oils & Fats,50,TRUE,NULL,Hyperpure,raw_material,NULL
+Truffle Oil,liter,Flavored with truffle used to add strong aroma and taste to food,Edible Oils & Fats,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Maida,kg,Refined wheat flour used in baking,Food Grains & Grain Products,50,TRUE,NULL,Hyperpure,raw_material,NULL
+Corn Flour,kg, Fine corn starch,Food Grains & Grain Products,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Rice for Staff,kg,Regular cooked rice served as a meal for staff,Food Grains & Grain Products,100,TRUE,NULL,Hyperpure,raw_material,NULL
+Papad,kg,Crispy snack made from lentils or flour,Food Grains & Grain Products,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Soya Chunks,kg,Dried textured soy protein pieces,Food Grains & Grain Products,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Sugar,kg,Sweet crystalline food ingredient made from sugarcane,Food Grains & Grain Products,10,TRUE,NULL,Hyperpure,raw_material,NULL
+PIzza Flour,kg,High-gluten flour for pizza dough elasticity,Food Grains & Grain Products,300,TRUE,NULL,Hyperpure,raw_material,NULL
+Bajji Chilli,kg,Type of vegetables mild green chilli ,Fruits & Vegetables,500,TRUE,NULL,Hyperpure,raw_material,NULL
+Basil,kg,Fragrant green herb used in cooking for its sweet aroma and flavor,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Beans,kg,Long green edible pods type of vegetables,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Bitter Gourd,kg,Type of green vegetable with a bitter taste,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Bottle Gourd,kg,Type of soft and light green vegetable with high water content,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Brinjal,kg,"Type of soft and textured vegetable that comes in purple, green, or white varieties",Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Broccoli,kg,"Type of green, nutrient-rich vegetable with edible flower",Fruits & Vegetables,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Button Mushroom,kg,Type of fungi vegetables ,Fruits & Vegetables,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Cabbage,kg,Type of leafy round vegetable used in cooking,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Carrots,kg,Type of sweet orange colour root vegetable,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Cauliflower,kg,Type of white vegetable made of edible flower heads,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Celery,kg,Type of  Crunchy aromatic stem vegetable,Fruits & Vegetables,0.2,TRUE,NULL,Hyperpure,raw_material,NULL
+Cherry Tomatoes,kg,Type of tomato size small ,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Green Chilli,kg,Type of spicy green papper ,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Chow Chow,kg,Type of mild green squash vegetable,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Capsicum Green,kg,Type of sweet bell peppers of green colour,Fruits & Vegetables,4,TRUE,NULL,Hyperpure,raw_material,NULL
+Capsicum Yellow,kg,Type of sweet bell peppers of yellow colour,Fruits & Vegetables,4,TRUE,NULL,Hyperpure,raw_material,NULL
+Capsicum Red,kg,Type of sweet bell peppers of red colour,Fruits & Vegetables,4,TRUE,NULL,Hyperpure,raw_material,NULL
+Coriander Leaves,kg,Type of fresh herb used for garnish and Indian cooking,Fruits & Vegetables,4,TRUE,NULL,Hyperpure,raw_material,"[""ec""]"
+Cucumber,kg,Type of green watery vegetable,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Curry Leaves,kg,Type of aromatic Indian cooking leaves,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Drumstick,kg,Type of long pod vegetable from moringa plant,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Frozen Corn,kg,Preserved sweet corn kernels,Fruits & Vegetables,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Garlic,kg,Strong smelling bulb vegetable used in cooking for flavor and taste,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Ginger,kg,Spicy aromatic root used in cooking for flavour,Fruits & Vegetables,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Knol Khol,kg,Round stem vegetable similar to cabbage,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Lady Finger,kg,Type of Green edible pod vegetable known for its soft,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Lemon,kg,Sour citrus fruit for flavoring,Fruits & Vegetables,3,TRUE,NULL,Hyperpure,raw_material,"[""nk""]"
+Lettuce,kg,Type of leafy green vegetable,Fruits & Vegetables,1,TRUE,NULL,Hyperpure,raw_material,"[""nk""]"
+Mint Leaves,kg,Type of cooling aromatic herb,Fruits & Vegetables,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Onion,kg,Basic cooking bulb vegetable,Fruits & Vegetables,50,TRUE,NULL,Hyperpure,raw_material,"[""ec""],[""nk""]"
+Parsley,kg, Mild flavored type of herb,Fruits & Vegetables,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Parwal,kg,Type of small green vegetable with a pointed shape,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Potato,kg,Starchy type of root vegetable,Fruits & Vegetables,50,TRUE,NULL,Hyperpure,raw_material,NULL
+Pumpkin,kg,Pumpkin – Large orange squash vegetable,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Radish,kg,Large orange vegetable with a sweet taste,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Raw Banana,kg,Unripe banana used for cooking,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Ridge Gourd,kg,Long green vegetable with ridges on its skin,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Shiitake Mushroom/Fungus,kg,Type of mushroom known for its strong earthy flavor,Fruits & Vegetables,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Spinach,kg, Type of leafy green vegetable ,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Sundried Tomato,nos, Dehydrated concentrated tomato,Fruits & Vegetables,50,TRUE,NULL,Hyperpure,raw_material,NULL
+Tomato,kg,Juicy red fruit used as vegetable,Fruits & Vegetables,30,TRUE,NULL,Hyperpure,raw_material,NULL
+White Radish,kg,Type of long white root vegetable with a mild spicy taste,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Yam,kg,Type of starchy underground tuber vegetable,Fruits & Vegetables,0,TRUE,NULL,Hyperpure,raw_material,NULL
+Amchoor Powder,kg,Sour dried mango powder,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Aromat Powder (MSG),kg,Savory seasoning blend used to enhance the taste of food,Herbs & Spices,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Black Salt,kg,Mineral salt with sulfur flavor,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Chat Masala,kg,"Tangy, spicy seasoning blend",Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Chicken Masala,kg,Spice blend for use in chicken dishes,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Chilli Flakes,kg,Crushed dried red chillies,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Chilli Flakes Sachet,nos,Single serve packet of chilli flakes,Herbs & Spices,2000,TRUE,NULL,Hyperpure,raw_material,NULL
+Chilli Powder Satff,kg,Standard red chilli powder for kitchen use,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Chilli Powder (Tikah Lal),kg,Hot red chilli powder variety,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Dry Guntur chilli,kg,Very hot dried chilli from Guntur region,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Dry Byadgi chilli,kg,Dfyrd mild red chilli used for color,Herbs & Spices,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Cinnamon Sticks,kg,Dried bark pieces of cinnamon tree,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Cloves,kg,Strong aromatic dried flower buds,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Coriander Powder,kg, Ground coriander seeds spice,Herbs & Spices,3,TRUE,NULL,Hyperpure,raw_material,NULL
+Cumin Powder,kg,Ground cumin seeds spice,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Cumin Seeds,kg,Small oval shaped aromatic seeds,Herbs & Spices,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Elaichi,kg,Cardamom used for flavor and aroma,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Garam Masala Staff,kg,Mixed spice blend for daily cooking,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Haldi Powder Satff,kg,Yellow spice made from dried turmeric root,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Haldi Powder,kg,Yellow spice made from dried turmeric root,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Jaiphal,kg,Fragrant warm spice obtained from the seed of the nutmeg fruit,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Kaali Mirch,kg,pungent spice made from dried peppercorns,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Kasoori Methi,kg,Dried fenugreek leaves,Herbs & Spices,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Methi Dana,kg,Fenugreek seeds,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Oregano,kg,Fragrant herb used in cooking to add flavor and aroma,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Oregano Sachet,nos,Single serve packet of oregano herb,Herbs & Spices,20000,TRUE,NULL,Hyperpure,raw_material,NULL
+Pepper Powder White,kg,Ground spice made from white peppercorns,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Rai,kg,Small round seeds of the mustard plant,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Red Paprika,kg,Mild red spice made from dried peppers,Herbs & Spices,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Salt,kg,Basic seasoning ingredient for kitchen,Herbs & Spices,30,TRUE,NULL,Hyperpure,raw_material,NULL
+Star Anise,kg,Star shaped aromatic spice with a strong sweet,Herbs & Spices,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Tej Patta,kg,Type of dried aromatic leaf,Herbs & Spices,0.5,TRUE,NULL,Hyperpure,raw_material,NULL
+Thyme,kg,Fragrant herb with tiny leaves slightly minty flavor,Herbs & Spices,0.2,TRUE,NULL,Hyperpure,raw_material,NULL
+Till,kg,Tiny edible seeds obtained from the sesame plant,Herbs & Spices,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Chicken Breast Boneless,kg,Skinless cut of chicken breast meat part without bones,Meat & Poultry & Cold Cuts,20,TRUE,NULL,Hyperpure,raw_material,NULL
+Chicken Thigh Boneless,kg,Skinless cut of chicken thigh meat part without bones,Meat & Poultry & Cold Cuts,20,TRUE,NULL,Hyperpure,raw_material,NULL
+Eggs,nos,Common food produced by birds,Meat & Poultry & Cold Cuts,90,TRUE,NULL,Hyperpure,raw_material,NULL
+Pepperoni,kg,Processed chicken meat product made with ground chicken and spices,Meat & Poultry & Cold Cuts,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Salami,kg,Processed chicken meat product made with ground chicken and spices,Meat & Poultry & Cold Cuts,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Sausages,kg,Processed chicken meat product made with ground chicken and spices,Meat & Poultry & Cold Cuts,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Whole Chicken With Skin,kg,Full chicken including bones and skin,Meat & Poultry & Cold Cuts,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Whole Chicken Without Skin,kg,Full chicken including bones and without skin,Meat & Poultry & Cold Cuts,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Chana Dal,kg,Split and polished Bengal gram,Pulses & Lentils,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Fried Gram,kg,Roasted chickpeas,Pulses & Lentils,2,TRUE,NULL,Hyperpure,raw_material,NULL
+Kabuli Chana,kg,White chickpeas,Pulses & Lentils,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Kala Chana,kg,Black chickpeas,Pulses & Lentils,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Masoor Dal,kg,Red lentils,Pulses & Lentils,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Moong Dal,kg,Green gram lentils,Pulses & Lentils,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Toor Dal,kg,Pigeon pea lentils,Pulses & Lentils,10,TRUE,NULL,Hyperpure,raw_material,NULL
+Mayonnaise,kg,Creamy egg based or without egg based sauce,Sauces & Seasoning,24,TRUE,NULL,Hyperpure,raw_material,NULL
+Pickles,kg,Preserved vegetables or fruits in spices,Sauces & Seasoning,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Soy Sauce,kg,Fermented soy seasoning liquid,Sauces & Seasoning,1,TRUE,NULL,Hyperpure,raw_material,NULL
+Tomato Ketchup,kg,Sweet tomato based sauce,Sauces & Seasoning,5,TRUE,NULL,Hyperpure,raw_material,"[""nk""]"
+Vinegar,kg,Sour liquid made by fermentation,Sauces & Seasoning,5,TRUE,NULL,Hyperpure,raw_material,NULL
+Soya Chaap,kg,Plant based protein food made from soy flour and wheat gluten,Food Grains & Grain Products,200,TRUE,NULL,Hyperpure,raw_material,NULL
+100 MLRound Container with Lid,nos,Standard round plastic container with a secure lid for medium-sized side portions.,Inedible & Packaging,1000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+350 ml paper Container with Lid,nos,Eco-friendly insulated paper bowl with lid suitable for hot soups or desserts.,Inedible & Packaging,5000,TRUE,NULL,Hyperpure,non_food,"[""ec""]"
+50 Ml Round Container with Lid,nos,Small-format plastic container designed for precise portions of sauces and dips.,Inedible & Packaging,5000,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Aluminium Foil,nos,Heavy-duty foil roll used for wrapping hot food items to retain temperature.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+"Areca Plates 4""",nos,"Small, biodegradable plates made from areca palm leaves for appetizers.",Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+"Areca Plates 9""",nos,"Durable, eco-friendly large plates suitable for serving main course items.",Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+Branded Butter Papper (BP),nos,Grease-resistant paper sheets featuring brand logos for lining pizza boxes.,Inedible & Packaging,5000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Brown Papaer Bag Big (With Handal),nos,Large capacity paper carry bag with reinforced handles for bulk delivery orders.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Brown Paper Bag Midium,nos,Mid-sized eco-friendly paper bag ideal for standard takeaway orders.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Brown Paper Bag Small,nos,Compact paper bag designed for small snacks or individual side items.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+Burrat Sticker,nos,Specialty adhesive labels used to identify Burrata-based menu items.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Butter Paper (NK & EC),nos,Plain greaseproof paper used for food wrapping and oil absorption.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+Cello Tape,nos,High-tack adhesive tape used for securing delivery boxes and packaging.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Charcoal ,kg,High-grade coal fuel used for traditional grilling and tandoor ovens.,Inedible & Packaging,500,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+Dip Holder,nos,Cardboard or plastic insert designed to keep dip containers upright in transit.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Dip Sticker Basil,nos,Specific color-coded labels for identifying Basil Pesto containers.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Dip Sticker Cilantro,nos,Adhesive labels used to clearly mark Cilantro-based sauces for customers.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Dip Sticker Mushroom Pate,nos,Identification stickers for labeling fresh Mushroom Pate containers.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Dish Wash Liquied,liter,Concentrated cleaning detergent for heavy-duty kitchenware and utensil washing.,Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+"Disposable Plates 11 "" (Buggas)",nos,Large bagasse-based compostable plates for premium takeaway service.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+"Disposable Plates 9 "" (Buggas)",nos,Medium-sized biodegradable plates for standard serving and dining.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Disposable Water Glass,nos,Single-use transparent cups for water and cold beverage service.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Duster,nos,Reusable cloth rags for cleaning surfaces and maintaining station hygiene.,Inedible & Packaging,500,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+El Chaapo Sticker,nos,Brand-specific labels for identifying El Chaapo themed menu products.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""ec""]"
+Floor Cleaning Liquid,liter,Industrial-strength chemical solution for maintaining sanitary floor conditions.,Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Garbage Bag Big,nos,"Large, heavy-duty liners for main kitchen waste management.",Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Garbage Bag Small,nos,Compact bin liners for individual prep stations and restrooms.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Gelato Cup,nos,Insulated small cups designed specifically for serving frozen gelato.,Inedible & Packaging,1000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Gelato Spoon,nos,Small plastic or wooden spoons optimized for eating frozen desserts.,Inedible & Packaging,1000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Glass Cleaning Liquid,liter,"Streak-free cleaning solution for windows, mirrors, and glass displays.",Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Green Scubber,nos,Abrasive scouring pads for removing tough food residue from cookware.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Hand Gloves Blue,nos,Powder-free nitrile gloves for safe and hygienic food handling.,Inedible & Packaging,500,TRUE,NULL,Hyperpure,non_food,"[""ec""],[""nk""]"
+Hand Gloves Black,nos,Professional-grade black gloves for front-of-house or grilling staff.,Inedible & Packaging,500,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Hand Wash Liquid,liter,Antibacterial soap for maintaining staff hand hygiene in the kitchen.,Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Kot Roll,nos,Thermal paper rolls for printing Kitchen Order Tickets and receipts.,Inedible & Packaging,100,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Labling Sticker,nos,Universal adhesive labels used for dating and identifying prep items.,Inedible & Packaging,500,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+M Fold Tissue Paper,packets,Interfolded paper towels for dispensers in kitchens and washrooms.,Inedible & Packaging,1000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Non Veg Sticker,nos,Red-coded stickers used to clearly identify non-vegetarian food items.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Pizza Box Big,nos,Large corrugated cardboard boxes designed for 12-inch pizza deliveries.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Pizza Box Small,nos,Compact corrugated boxes designed for 7-inch or personal pizzas.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Spring Cap,packets,Disposable elasticated hair nets to ensure food safety and hair containment.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Tissue Packet (BP),nos,Branded paper napkins for inclusion in takeaway and dine-in orders.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Tissue Packet (EC),nos,Standard paper napkin packets for general use at EC outlets.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""ec""]"
+Tissue Packet (NK),nos,Standard paper napkin packets for general use at NK outlets.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""nk""]"
+Toilet Paper Roll,nos,Standard soft paper rolls for staff and guest restroom maintenance.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Toothpick ,nos,Individually wrapped wooden picks for guest convenience after meals.,Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,"[""nk""]"
+Veg Sticker,nos,Green-coded stickers used to clearly identify vegetarian food items.,Inedible & Packaging,200,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Wooden Spoek,nos,Eco-friendly wooden cutlery combining a spoon and fork for versatile eating.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""],[""ec""],[""nk""]"
+Fire Wood,kg,Sourced wood logs used as fuel for authentic wood-fired pizza ovens.,Inedible & Packaging,2000,TRUE,NULL,Hyperpure,non_food,"[""bp""]"
+Bamboo Skewer,kg,Sharp bamboo sticks used for assembling kebabs and appetizers.,Inedible & Packaging,50,TRUE,NULL,Hyperpure,non_food,NULL
+Basic Marinated Paneer,nos,Fresh cottage cheese cubes seasoned with a foundational spice blend for versatile use.,SemiFinished,20,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Basil Pesto,nos,"A vibrant, aromatic herb sauce made from fresh basil, nuts, and oil.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Bechamel Sauce,nos,A smooth and creamy white sauce used as a base for pasta and gratins.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Black Olives (Process),nos,Pitted and sliced black olives prepared for consistent pizza topping distribution.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Broccoli (Process),nos,Fresh broccoli florets blanched and prepped for quick cooking or garnishing.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Byadagi Chilli (Process),nos,"Processed dried chilies known for their deep red color and mild, smoky heat.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Cashew 1/2 (Process),nos,Split cashew nuts cleaned and sorted for garnishing or creamy sauce bases.,SemiFinished,50,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Cheddar Cheese (Process),nos,Grated or processed cheddar cheese optimized for smooth melting and sharp flavor.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chicken Basic Marination,nos,Prepared chicken pieces tenderized with a standard savory spice rub.,SemiFinished,20,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chicken Pepperoni (Process),nos,Cured and sliced chicken pepperoni rounds ready for baking.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chicken Salami (Process),nos,Delicately spiced chicken salami slices prepared for cold or hot applications.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chicken Sausage (Process),nos,Pre-cooked and sliced chicken sausages used for topping or filling.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chilli Oil Dip,nos,"A spicy, infused oil blend perfect for dipping crusts or drizzling over dishes.",SemiFinished,500,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Chilli Paprika Slice (Process),nos,"Uniformly sliced paprika peppers to add a mild, sweet heat to recipes.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Cilantro Pesto,nos,"A fresh, zesty pesto alternative made with coriander leaves and lime.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Fresh Cream (Process),nos,High-fat dairy cream stabilized for cooking and thickening sauces.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Frozen Sweet Corn (Process),nos,Thawed and drained sweet corn kernels ready for immediate culinary use.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Garlic Butter,nos,Softened butter infused with minced garlic and herbs for bread and basting.,SemiFinished,20,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Ghee Roast Masala,nos,A concentrated spice paste designed for traditional Mangalorean-style roasting.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Gongura Aioli,nos,A fusion mayonnaise-based dip featuring the tangy flavor of sorrel leaves.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Green Olives (Process),nos,"Brined green olive slices that provide a salty, tangy punch to dishes.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Honey (Process),nos,Filtered and liquid honey ready for use as a sweetener or glaze.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Jalapeno Slice (Process),nos,Pickled jalapeno rounds prepared for a spicy and acidic kick.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Large Dough Ball,nos,Pre-portioned 12-inch pizza dough fermented for optimal crust texture.,SemiFinished,250,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Makhani Sauce,nos,"A rich, buttery tomato gravy spiced for North Indian fusion dishes.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Marinara Sauce,nos,A classic herb-infused tomato sauce used as a primary base for pizzas.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Mushroom Pate,nos,A finely blended savory mushroom spread with earthy undertones.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Olive Oil (Process),nos,Refined olive oil portioned for kitchen prep and finishing.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Parmesan Cheese (Process),nos,Grated hard cheese with a nutty profile for seasoning and finishing.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Pizza Flour Mix,kg,A custom blend of flours designed for high-elasticity pizza dough.,SemiFinished,20,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Small Dough Ball,nos,Pre-portioned 7-inch pizza dough ready for stretching and baking.,SemiFinished,150,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Tandoori Chicken Marinated,nos,Chicken chunks coated in a traditional yogurt and red spice tandoor mix.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Thyme Papper Dip,nos,A savory dipping sauce featuring dried thyme and cracked black pepper.,SemiFinished,300,TRUE,NULL,Hyperpure,semi_finished,"[""bp""]"
+Soya Chaap (Process),kg,Processed soy protein pieces prepared for marination and grilling.,SemiFinished,100,TRUE,NULL,Hyperpure,semi_finished,"[""ec""]"
+Thecha,kg,"A spicy, coarse Maharashtrian condiment made from green chilies and garlic.",SemiFinished,2,TRUE,NULL,Hyperpure,semi_finished,"[""ec""]"
+Lemon Marinade,kg,"A bright, citrusy liquid base used for tenderizing and flavoring meats.",SemiFinished,2,TRUE,NULL,Hyperpure,semi_finished,"[""nk""]"
+Achari Marinade,kg,"A tangy, pickled-flavored marinade featuring mustard oil and spices.",SemiFinished,5,TRUE,NULL,Hyperpure,semi_finished,"[""ec""]"
+Losoni Marinade,kg,"A potent, garlic-heavy marinade designed for roasted appetizers.",SemiFinished,5,TRUE,NULL,Hyperpure,semi_finished,"[""ec""]"
+Afghani Marinade,kg,"A mild, creamy marinade enriched with cashews and melon seeds.",SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""ec""]"
+Malai Marinade,kg,A velvety smooth marinade based on heavy cream and mild spices.,SemiFinished,2,TRUE,NULL,Hyperpure,semi_finished,"[""nk"",""ec""]"
+Andhara Marinade,kg,"A fiery, spice-forward marinade inspired by Andhra cuisine.",SemiFinished,3,TRUE,NULL,Hyperpure,semi_finished,"[""nk""]"
+Peri Peri Marinade,kg,A hot and zesty marinade made with African bird's eye chilies.,SemiFinished,10,TRUE,NULL,Hyperpure,semi_finished,"[""nk"",""ec""]"
+Chutney,kg,"A fresh, ground herb condiment typically served as a side dip.",SemiFinished,0,TRUE,NULL,Hyperpure,semi_finished,"[""nk"",""ec""]"
+Garlic Mayo,kg,A creamy emulsion of mayonnaise and roasted garlic paste.,SemiFinished,0,TRUE,NULL,Hyperpure,semi_finished,"[""nk"",""ec""]"
+Andhara Chicken Kabab,nos,Spicy South Indian-style marinated chicken skewers with bold Andhra spices and tangy flavors.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""nk""]"
+Malai Kabab,nos,"Creamy, mildly spiced kababs marinated in rich malai (cream) with delicate aromatic spices.",Finished ,0,TRUE,NULL,Hyperpure,finished,"[""nk""]"
+Peri Peri Chicken Kabab,nos,Fiery grilled chicken kababs coated in tangy Portuguese-inspired peri peri spice blend.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""nk""]"
+Lemon Chicken Kabab,nos,Zesty marinated chicken skewers infused with fresh lemon juice and aromatic herbs.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""nk""]"
+Peri Peri Soya Chaap,nos,Spicy vegetarian soya chaap marinated in bold peri peri sauce for a fiery kick.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""]"
+Achari Soyachaap,nos,Tangy pickle-spiced soya chaap infused with traditional Indian achari masala flavors.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""]"
+Lahsuni Soya Chaap,nos,Garlicky vegetarian soya chaap marinated with robust lahsun (garlic) and aromatic spices.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""]"
+Afghani Soya Chaap,nos,"Creamy, mildly spiced soya chaap marinated in yogurt with subtle Afghan-style seasonings.",Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""]"
+Thecha Paneer Tikka,nos,Spicy paneer tikka featuring Maharashtra's fiery thecha (green chili-garlic chutney) marinade.,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""]"
+Pistachio Kunafa Cake,nos,Fusion dessert made with crispy Kunafa layered with cream or cheese flavored with pistachios,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Water Bottle (500 Ml),nos,Water bottle is a portable container used to store and carry drinking water,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Water Bottle (NK&EC),nos,Water bottle is a portable container used to store and carry drinking water,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""],[""nk""]"
+Fanta,nos,Flavored carbonated soft drink,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Coke,nos,Flavored carbonated soft drink,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Coke Zero,nos,Flavored carbonated soft drink,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Sprite,nos,Flavored carbonated soft drink,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Tiramisu,nos,Tiramisu is a classic Italian dessert,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Bluebarry Cheese Cake,nos,Creamy dessert made with a soft cheese filling on a biscuit crust topped with sweet and tangy blueberry,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""bp""]"
+Rumali Roti,nos,Soft and thin Roti's paired along with Chaap's and Barbeques,Finished ,0,TRUE,NULL,Hyperpure,finished,"[""ec""],[""nk""]"

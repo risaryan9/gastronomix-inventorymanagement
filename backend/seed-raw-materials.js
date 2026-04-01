@@ -6,7 +6,7 @@
  *   2. Run: node backend/seed-raw-materials.js
  * 
  * CSV format:
- * - For raw_material: category must be one of the 12 raw categories (Baking Essentials, Herbs & Spices, etc.)
+ * - For raw_material: category must be one of the allowed raw categories (Baking Essentials, Herbs & Spices, etc.)
  * - For semi_finished/finished/non_food: category is auto-assigned (SemiFinished/Finished/Inedible & Packaging)
  * - brand_codes: use "all" for all brands (bp,nk,ec), or comma-separated e.g. "nk,ec", or array style ["bp"]
  * The trigger will automatically create inventory entries for all active cloud kitchens
@@ -59,7 +59,10 @@ const CATEGORY_CODES = {
   'Food Grains & Grain Products': 'FDGP',
   'Fruits & Vegetables': 'FRVG',
   'Herbs & Spices': 'HBSP',
+  'Indian Breads & Breads': 'IBRD',
   'Meat & Poultry & Cold Cuts': 'MTPC',
+  'Packaged Deserts & Sweets': 'PDST',
+  'Packaged Water & Bevereges': 'PWBV',
   'Pulses & Lentils': 'PLSL',
   'Sauces & Seasoning': 'SCSN',
   'Inedible & Packaging': 'INPK',
@@ -82,20 +85,16 @@ function parseBrandCodes(value) {
   const raw = String(value).trim()
   const lower = raw.toLowerCase()
   if (lower === 'all') return [...ALLOWED_BRAND_CODES]
-  // Array-style: ["ec"] or ["nk","ec"] or [""ec""]
-  if (raw.startsWith('[')) {
-    const inner = raw.replace(/^\[|\]$/g, '').replace(/""/g, '"')
-    const codes = inner
-      .split(',')
-      .map(s => s.replace(/^["']|["']$/g, '').trim().toLowerCase())
-      .filter(Boolean)
-    const valid = codes.filter(c => ALLOWED_BRAND_CODES.includes(c))
-    return valid.length === 0 ? null : valid
-  }
-  // Comma-separated
-  const codes = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-  const valid = codes.filter(c => ALLOWED_BRAND_CODES.includes(c))
-  return valid.length === 0 ? null : valid
+  if (lower === 'null' || lower === 'none' || lower === 'n/a' || lower === '-') return null
+
+  // Accept multiple CSV styles:
+  // - "nk,ec"
+  // - ["ec"] / [""ec""]
+  // - ["ec"],["nk"] (multiple bracket groups)
+  const normalized = lower.replace(/""/g, '"').replace(/[\[\]"']/g, ' ')
+  const matches = normalized.match(/\b(bp|nk|ec)\b/g) || []
+  const uniqueValid = [...new Set(matches.filter(c => ALLOWED_BRAND_CODES.includes(c)))]
+  return uniqueValid.length === 0 ? null : uniqueValid
 }
 
 const RAW_CATEGORIES = new Set([
@@ -107,7 +106,10 @@ const RAW_CATEGORIES = new Set([
   'Food Grains & Grain Products',
   'Fruits & Vegetables',
   'Herbs & Spices',
+  'Indian Breads & Breads',
   'Meat & Poultry & Cold Cuts',
+  'Packaged Deserts & Sweets',
+  'Packaged Water & Bevereges',
   'Pulses & Lentils',
   'Sauces & Seasoning',
   'Inedible & Packaging'
@@ -138,6 +140,7 @@ function resolveCsvPath() {
     return argPath.startsWith('/') ? argPath : join(__dirname, argPath)
   }
   const candidates = [
+    join(__dirname, 'materialscomplete.csv'),
     join(__dirname, 'materials.csv - Row materials for bulk upload.csv'),
     join(__dirname, 'materials_new.csv'),
     join(__dirname, 'materials.csv')

@@ -61,7 +61,7 @@ The `materials.csv` file should have these columns (tab or comma separated):
 - `brand_codes` - Brand mapping: "all" or comma-separated like "bp,nk,ec"
 
 **Raw Material Categories:**
-Baking Essentials, Condiments & Toppings, Dairy & Dairy Product, Dry Fruits & Nuts, Edible Oils & Fats, Food Grains & Grain Products, Fruits & Vegetables, Herbs & Spices, Meat & Poultry & Cold Cuts, Pulses & Lentils, Sauces & Seasoning, Inedible & Packaging
+Baking Essentials, Condiments & Toppings, Dairy & Dairy Product, Dry Fruits & Nuts, Edible Oils & Fats, Food Grains & Grain Products, Fruits & Vegetables, Herbs & Spices, Indian Breads & Breads, Meat & Poultry & Cold Cuts, Packaged Deserts & Sweets, Packaged Water & Bevereges, Pulses & Lentils, Sauces & Seasoning, Inedible & Packaging
 
 **Example CSV:**
 ```

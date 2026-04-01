@@ -155,18 +155,19 @@ const StockIn = () => {
 
       try {
         // Fetch materials based on stock-in type
-        // Purchase: raw_material only
+        // Purchase: all active materials
         // Kitchen: semi_finished and finished only
-        const materialTypes = stockInType === 'purchase' 
-          ? ['raw_material'] 
-          : ['semi_finished', 'finished']
-
-        const { data: materialsData, error } = await supabase
+        const baseQuery = supabase
           .from('raw_materials')
           .select('id, name, code, unit, category, material_type')
           .eq('is_active', true)
           .is('deleted_at', null)
-          .in('material_type', materialTypes)
+
+        const materialQuery = stockInType === 'purchase'
+          ? baseQuery
+          : baseQuery.in('material_type', ['semi_finished', 'finished'])
+
+        const { data: materialsData, error } = await materialQuery
           .order('name', { ascending: true })
 
         if (error) {

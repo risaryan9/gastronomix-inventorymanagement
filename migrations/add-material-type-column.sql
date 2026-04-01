@@ -28,7 +28,7 @@ COMMENT ON COLUMN public.raw_materials.vendor_id IS 'Required for raw_material t
 COMMENT ON COLUMN public.raw_materials.brand IS 'Optional for all material types';
 
 -- Step 5: Update the category column comment to reflect new usage
-COMMENT ON COLUMN public.raw_materials.category IS 'For raw_material: Baking Essentials, Condiments & Toppings, Dairy & Dairy Product, Dry Fruits & Nuts, Edible Oils & Fats, Food Grains & Grain Products, Fruits & Vegetables, Herbs & Spices, Meat & Poultry & Cold Cuts, Pulses & Lentils, Sauces & Seasoning, Inedible & Packaging. For semi_finished: SemiFinished (fixed). For finished: Finished (fixed). For non_food: Inedible & Packaging (fixed)';
+COMMENT ON COLUMN public.raw_materials.category IS 'For raw_material: Baking Essentials, Condiments & Toppings, Dairy & Dairy Product, Dry Fruits & Nuts, Edible Oils & Fats, Food Grains & Grain Products, Fruits & Vegetables, Herbs & Spices, Indian Breads & Breads, Meat & Poultry & Cold Cuts, Packaged Deserts & Sweets, Packaged Water & Bevereges, Pulses & Lentils, Sauces & Seasoning, Inedible & Packaging. For semi_finished: SemiFinished (fixed). For finished: Finished (fixed). For non_food: Inedible & Packaging (fixed)';
 
 -- Step 6: Update the code column comment to reflect new patterns
 COMMENT ON COLUMN public.raw_materials.code IS 'Format: RM-{CATEGORY_SHORT}-{NUMBER} for raw materials (e.g., RM-HBSP-001), SF-{NUMBER} for semi-finished (e.g., SF-001), FF-{NUMBER} for finished (e.g., FF-001), NF-{NUMBER} for non-food (e.g., NF-001)';
