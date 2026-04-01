@@ -3,7 +3,6 @@ import { supabase } from '../../lib/supabase'
 
 const AdminOperators = () => {
   const [operators, setOperators] = useState([])
-  const [allOutlets, setAllOutlets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [listSearch, setListSearch] = useState('')
@@ -13,37 +12,17 @@ const AdminOperators = () => {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [formData, setFormData] = useState({
-    outlet_id: '',
     name: '',
     phone: '',
   })
-  const [outletSearch, setOutletSearch] = useState('')
 
   const resetForm = () => {
     setEditingOperator(null)
     setFormData({
-      outlet_id: '',
       name: '',
       phone: '',
     })
-    setOutletSearch('')
     setFormError('')
-  }
-
-  const fetchAllOutlets = async () => {
-    try {
-      const { data, err } = await supabase
-        .from('outlets')
-        .select('id, name, code, cloud_kitchen_id, cloud_kitchens ( id, name, code )')
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('name')
-      if (err) throw err
-      setAllOutlets(data || [])
-    } catch (err) {
-      console.error('Error fetching outlets:', err)
-      setAllOutlets([])
-    }
   }
 
   const fetchOperators = async () => {
@@ -52,17 +31,8 @@ const AdminOperators = () => {
       setError('')
       const { data, err } = await supabase
         .from('operators')
-        .select(`
-          *,
-          outlets (
-            id,
-            name,
-            code,
-            cloud_kitchen_id,
-            cloud_kitchens ( id, name, code )
-          )
-        `)
-        .order('created_at', { ascending: false })
+        .select('*')
+        .order('name')
       if (err) throw err
       setOperators(data || [])
     } catch (err) {
@@ -75,7 +45,6 @@ const AdminOperators = () => {
 
   useEffect(() => {
     fetchOperators()
-    fetchAllOutlets()
   }, [])
 
   const filteredOperators = useMemo(() => {
@@ -84,32 +53,12 @@ const AdminOperators = () => {
       const q = listSearch.toLowerCase()
       const name = (op.name || '').toLowerCase()
       const phone = (op.phone || '').toLowerCase()
-      const outletName = (op.outlets?.name || '').toLowerCase()
-      const outletCode = (op.outlets?.code || '').toLowerCase()
-      const brandName = (op.outlets?.cloud_kitchens?.name || '').toLowerCase()
-      const brandCode = (op.outlets?.cloud_kitchens?.code || '').toLowerCase()
       return (
         name.includes(q) ||
-        phone.includes(q) ||
-        outletName.includes(q) ||
-        outletCode.includes(q) ||
-        brandName.includes(q) ||
-        brandCode.includes(q)
+        phone.includes(q)
       )
     })
   }, [operators, listSearch])
-
-  const filteredOutletsForDropdown = useMemo(() => {
-    if (!outletSearch.trim()) return allOutlets
-    const q = outletSearch.toLowerCase()
-    return allOutlets.filter(
-      (o) =>
-        (o.name || '').toLowerCase().includes(q) ||
-        (o.code || '').toLowerCase().includes(q) ||
-        (o.cloud_kitchens?.name || '').toLowerCase().includes(q) ||
-        (o.cloud_kitchens?.code || '').toLowerCase().includes(q)
-    )
-  }, [allOutlets, outletSearch])
 
   const openCreateModal = () => {
     resetForm()
@@ -119,11 +68,9 @@ const AdminOperators = () => {
   const openEditModal = (op) => {
     setEditingOperator(op)
     setFormData({
-      outlet_id: op.outlet_id || '',
       name: op.name || '',
       phone: op.phone || '',
     })
-    setOutletSearch('')
     setFormError('')
     setIsModalOpen(true)
   }
@@ -135,14 +82,9 @@ const AdminOperators = () => {
       setFormError('Operator name is required.')
       return
     }
-    if (!formData.outlet_id) {
-      setFormError('Please select an outlet.')
-      return
-    }
     try {
       setSaving(true)
       const payload = {
-        outlet_id: formData.outlet_id,
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
       }
@@ -184,15 +126,6 @@ const AdminOperators = () => {
     }
   }
 
-  const brandName = (op) =>
-    op.outlets?.cloud_kitchens?.name
-      ? `${op.outlets.cloud_kitchens.name}${op.outlets.cloud_kitchens.code ? ` (${op.outlets.cloud_kitchens.code})` : ''}`
-      : '—'
-  const outletLabel = (op) =>
-    op.outlets
-      ? `${op.outlets.name}${op.outlets.code ? ` (${op.outlets.code})` : ''}`
-      : '—'
-
   return (
     <div className="p-2 sm:p-4 lg:p-6">
       <div className="max-w-7xl mx-auto">
@@ -200,7 +133,7 @@ const AdminOperators = () => {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Operators</h1>
             <p className="text-sm text-muted-foreground">
-              Manage operators per outlet. Select an outlet to add or edit operators.
+              Manage universal operators used across all outlets.
             </p>
           </div>
           <button
@@ -216,7 +149,7 @@ const AdminOperators = () => {
             type="text"
             value={listSearch}
             onChange={(e) => setListSearch(e.target.value)}
-            placeholder="Search by operator name, phone, outlet, or brand..."
+            placeholder="Search by operator name or phone..."
             className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
           />
         </div>
@@ -246,10 +179,7 @@ const AdminOperators = () => {
                       Phone
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      Outlet
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      Brand
+                      Created
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Actions
@@ -268,11 +198,8 @@ const AdminOperators = () => {
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {op.phone || '—'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-foreground">
-                        {outletLabel(op)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-foreground">
-                        {brandName(op)}
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {op.created_at ? new Date(op.created_at).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
@@ -319,40 +246,6 @@ const AdminOperators = () => {
                 </div>
 
                 <form onSubmit={validateAndSave} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1">
-                      Outlet <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={outletSearch}
-                      onChange={(e) => setOutletSearch(e.target.value)}
-                      placeholder="Search outlets by name, code, or brand..."
-                      className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all mb-2"
-                      disabled={saving}
-                    />
-                    <select
-                      value={formData.outlet_id}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, outlet_id: e.target.value }))
-                      }
-                      className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-                      disabled={saving}
-                    >
-                      <option value="">Select outlet</option>
-                      {filteredOutletsForDropdown.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                          {o.code ? ` (${o.code})` : ''}
-                          {o.cloud_kitchens?.name ? ` — ${o.cloud_kitchens.name}` : ''}
-                        </option>
-                      ))}
-                      {filteredOutletsForDropdown.length === 0 && outletSearch.trim() && (
-                        <option value="" disabled>No outlets match your search</option>
-                      )}
-                    </select>
-                  </div>
-
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-1">
                       Operator Name <span className="text-destructive">*</span>

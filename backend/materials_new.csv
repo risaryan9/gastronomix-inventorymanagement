@@ -1,87 +1,87 @@
 name,unit,description,category,low_stock_threshold,is_active,brand,vendor,material_type,brand_codes
-Amul Butter,kg,Premium quality butter,Dairy,15,TRUE,Amul,Hyperpure,raw_material,all
-Amul Fresh Cream,kg,Fresh dairy cream,Dairy,24,TRUE,Amul,Hyperpure,raw_material,all
-Amul Processed Cheese,kg,Processed cheese block,Dairy,10,TRUE,Amul,Hyperpure,raw_material,all
-Black Pepper,kg,Black pepper spice,Spices,5,TRUE,East Made,Hyperpure,raw_material,all
-Black Salt,kg,Rock salt for seasoning,Spices,10,TRUE,Sparsh,Hyperpure,raw_material,all
-Chaat Masala,kg,Tangy spice blend,Spices,5,TRUE,East Made,Hyperpure,raw_material,all
-Chicken Breast Boneless,kg,Fresh boneless chicken breast,Meat,20,TRUE,Local,Aujiasya Trading & Hospitality PVT,raw_material,all
-Chicken Thigh Boneless,kg,Fresh boneless chicken thigh,Meat,20,TRUE,Local,Aujiasya Trading & Hospitality PVT,raw_material,all
-Chilli Powder (Eastern),kg,Red chilli powder,Spices,5,TRUE,Eastern,Hyperpure,raw_material,all
-Cinnamon Sticks,kg,Aromatic cinnamon bark,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-Cloves,kg,Dried flower buds spice,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-Coriander Powder,kg,Ground coriander seeds powder,Spices,4,TRUE,East Made,Hyperpure,raw_material,all
-Corn Flour,kg,Fine cornstarch powder,Misc,10,TRUE,ATC,Hyperpure,raw_material,all
-Deggi Mirch,kg,Kashmiri red chilli powder,Spices,2,TRUE,MDH,Hyperpure,raw_material,all
-Amchur powder,kg,Dried mango powder,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-Garlic Powder,kg,Dehydrated garlic powder,Spices,2,TRUE,Bakers,Hyperpure,raw_material,all
-Green Cardamom,kg,Premium green cardamom pods,Spices,1,TRUE,East Made,Hyperpure,raw_material,all
-Guntur Chilli Whole,kg,Whole dried red chillies,Spices,5,TRUE,East Made,Hyperpure,raw_material,all
-Jeera powder,kg,Powdered cumin seeds,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-Kaju Broken,kg,Cashew nuts(broken),Misc,5,TRUE,Bolas,Hyperpure,raw_material,all
-Kaju 1/2,kg,Cashew nuts(split),Misc,2,TRUE,Bolas,Hyperpure,raw_material,all
-Kasoori Methi,kg,Dried fenugreek leaves,Spices,2,TRUE,MDH,Hyperpure,raw_material,all
-Mayonnaise,kg,Creamy mayonnaise,Misc,24,TRUE,Foodrite,Hyperpure,raw_material,all
-Methi Seed,kg,Fenugreek seeds,Spices,0.5,TRUE,East Made,Hyperpure,raw_material,all
-Mixed Veg Pickle,kg,Mixed vegetable pickle,Misc,10,TRUE,Swastiks,Hyperpure,raw_material,all
-MSG,kg,Monosodium glutamate(flavour enhancer),Misc,5,TRUE,Springburst,Hyperpure,raw_material,all
-Mustard Oil,liter,Cooking mustard oil,Oils,5,TRUE,Fortune,Hyperpure,raw_material,all
-Mustard Seed,kg,Yellow mustard seeds,Spices,1,TRUE,East Made,Hyperpure,raw_material,all
-Nutmeg,kg,Whole nutmeg spice,Spices,0.5,TRUE,East Made,Hyperpure,raw_material,all
-Red Chilli Powder (Tikhalal),kg,Spicy red chilli powder,Spices,5,TRUE,Everest,Hyperpure,raw_material,all
-Roasted Chana,kg,Roasted chickpeas,Grains,5,TRUE,ZKP,Hyperpure,raw_material,all
-Soxin Wine,btl,Cooking wine,Misc,30,TRUE,Noriko,Hyperpure,raw_material,all
-Soya Chaap,kg,Soya chaap,Misc,400,TRUE,NULL,Rivaan Enterprise,raw_material,"[""ec""]"
-Star Anise,kg,Star anise spice,Spices,1,TRUE,Minar,Hyperpure,raw_material,all
-Sugar,kg,White granulated sugar,Misc,10,TRUE,ZKP,Hyperpure,raw_material,all
-Sunpure Refined Oil,kg,Refined cooking oil,Oils,50,TRUE,Sunpure,Hyperpure,raw_material,all
-Tata Salt,kg,Iodized table salt,Misc,30,TRUE,Tata,Hyperpure,raw_material,all
-Tomato Ketchup,kg,Tomato sauce,Misc,16,TRUE,Kissan,Hyperpure,raw_material,all
-Turmeric Powder (MDH),kg,Ground turmeric powder,Spices,5,TRUE,MDH,Hyperpure,raw_material,all
-Vinegar Synthetic,btl,Synthetic vinegar,Misc,10,TRUE,Golden Corn,Hyperpure,raw_material,all
-VKL Peri Peri Marinade,kg,Peri peri marinade,Misc,20,TRUE,VKL,Hyperpure,raw_material,all
-White Pepper Powder,kg,White pepper spice,Spices,1,TRUE,East Made,Hyperpure,raw_material,all
-Whole Coriander Seed,kg,Whole coriander seeds,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-Whole Jeera,kg,Whole cumin seeds,Spices,2,TRUE,East Made,Hyperpure,raw_material,all
-MDH Chaat Masala,kg,Chaat masala blend,Spices,2,TRUE,MDH,Hyperpure,raw_material,all
-Ghee,kg,Clarified butter,Dairy,2,TRUE,Nandini,Hyperpure,raw_material,all
-Shahi Jeera,kg,Premium cumin seeds,Spices,1,TRUE,East Made,Hyperpure,raw_material,all
-Burger Patty,kg,Frozen burger patties,Meat,15,TRUE,Rai Poultry,Rai Poultry,raw_material,"[""nk""]"
-Rumali Roti,nos,Thin flatbread,Breads,600,TRUE,Local,Local,raw_material,"[""nk"",""ec""]"
-Gongura Pickle,kg,Gongura pickle,Misc,5,TRUE,Priya,Priya Foods,raw_material,all
-Amul Cheese Slice,nos,Cheese slices,Dairy,50,TRUE,Amul,Hyperpure,raw_material,all
-Burger Bun,kg,Burger buns,Breads,50,TRUE,English Oven,English Oven,raw_material,all
-Bamboo Skewer,kg,Wooden skewers,Misc,100,TRUE,Local,Local,raw_material,"[""nk""]"
-Poolish,gm,Pre-fermented dough used for pizza and bread fermentation,NULL,8,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Pizza Dough Std,nos,Standard pizza dough prepared for daily service,NULL,200,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Marinara Sauce,gm,Classic tomato-based marinara sauce,NULL,50,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Basil Pesto,gm,Fresh basil pesto sauce with herbs and oil,NULL,5,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Bechamel Sauce,gm,White sauce made from milk butter and flour,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Tandoori Chicken,gm,Chicken marinated with tandoori spices and cooked,NULL,4,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Chicken Basic Marination,gm,Basic spiced chicken marinade for multiple dishes,NULL,3,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Cilantro Pesto,gm,Fresh coriander based pesto sauce,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Ghee Roast Masala,gm,Spice blend used for ghee roast preparations,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Mushroom Pate,gm,Creamy mushroom pate spread,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Ginger Garlic Paste,gm,Fresh paste of ginger and garlic,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Tandoori Marinated,gm,Raw chicken marinated with tandoori spices,NULL,5,TRUE,NULL,NULL,semi_finished,all
-Makhani Gravy,gm,Rich buttery tomato based gravy,NULL,5,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Smoked Chilli Oil,nos,Oil infused with smoked chillies,NULL,6,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Gongura Aioli,gm,Creamy aioli flavoured with gongura,NULL,2,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Thyme and Pepper Dip,nos,Herb infused pepper dip,NULL,6,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Garlic Butter,gm,Butter blended with garlic and herbs,NULL,5,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Basic Marinated Paneer,gm,Paneer marinated with mild spices,NULL,5,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Sun Dried Tomato,btl,Sun dried tomatoes processed for sauces,NULL,50,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Pizza Flour Mix,kg,Flour blend optimized for pizza dough,NULL,30,TRUE,NULL,NULL,semi_finished,"[""bp""]"
-Peri Peri Soya Chaap,nos,Soya chaap marinated with peri peri spices and grilled,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Achari Soya Chaap,nos,Soya chaap marinated with traditional achari spices,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Lahsuni Soya Chaap,nos,Soya chaap flavoured with garlic based marinade,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Afghani Soya Chaap,nos,Creamy Afghani style marinated soya chaap,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Tandoori Grilled Veggies,nos,Mixed vegetables marinated and grilled in tandoori spices,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Thecha Paneer Tikka,nos,Paneer tikka tossed in spicy green chilli thecha,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Tandoori Mushrooms,nos,Mushrooms marinated in tandoori spices and grilled,NULL,20,TRUE,NULL,NULL,finished,"[""ec""]"
-Andhra Kabab,nos,Spicy Andhra style kabab preparation,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
-Malai Kabab,nos,Creamy mild flavoured kabab,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
-Peri Peri Kabab,nos,Kabab marinated with peri peri seasoning,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
-Hariyali Kabab,nos,Green herb and mint flavoured kabab,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
-Lemon Kabab,nos,Light lemon flavoured kabab,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
-Gongura Kabab,nos,Kabab flavoured with tangy gongura leaves,NULL,20,TRUE,NULL,NULL,finished,"[""nk""]"
+Amul Butter,kg,Premium quality butter,Dairy & Dairy Product,15,TRUE,Amul,Hyperpure,raw_material,all
+Amul Fresh Cream,kg,Fresh dairy cream,Dairy & Dairy Product,24,TRUE,Amul,Hyperpure,raw_material,all
+Amul Processed Cheese,kg,Processed cheese block,Dairy & Dairy Product,10,TRUE,Amul,Hyperpure,raw_material,all
+Black Pepper,kg,Black pepper spice,Herbs & Spices,5,TRUE,East Made,Hyperpure,raw_material,all
+Black Salt,kg,Rock salt for seasoning,Herbs & Spices,10,TRUE,Sparsh,Hyperpure,raw_material,all
+Chaat Masala,kg,Tangy spice blend,Herbs & Spices,5,TRUE,East Made,Hyperpure,raw_material,all
+Chicken Breast Boneless,kg,Fresh boneless chicken breast,Meat & Poultry & Cold Cuts,20,TRUE,Local,Aujiasya Trading & Hospitality PVT,raw_material,all
+Chicken Thigh Boneless,kg,Fresh boneless chicken thigh,Meat & Poultry & Cold Cuts,20,TRUE,Local,Aujiasya Trading & Hospitality PVT,raw_material,all
+Chilli Powder (Eastern),kg,Red chilli powder,Herbs & Spices,5,TRUE,Eastern,Hyperpure,raw_material,all
+Cinnamon Sticks,kg,Aromatic cinnamon bark,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+Cloves,kg,Dried flower buds spice,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+Coriander Powder,kg,Ground coriander seeds powder,Herbs & Spices,4,TRUE,East Made,Hyperpure,raw_material,all
+Corn Flour,kg,Fine cornstarch powder,Baking Essentials,10,TRUE,ATC,Hyperpure,raw_material,all
+Deggi Mirch,kg,Kashmiri red chilli powder,Herbs & Spices,2,TRUE,MDH,Hyperpure,raw_material,all
+Amchur powder,kg,Dried mango powder,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+Garlic Powder,kg,Dehydrated garlic powder,Herbs & Spices,2,TRUE,Bakers,Hyperpure,raw_material,all
+Green Cardamom,kg,Premium green cardamom pods,Herbs & Spices,1,TRUE,East Made,Hyperpure,raw_material,all
+Guntur Chilli Whole,kg,Whole dried red chillies,Herbs & Spices,5,TRUE,East Made,Hyperpure,raw_material,all
+Jeera powder,kg,Powdered cumin seeds,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+Kaju Broken,kg,Cashew nuts(broken),Dry Fruits & Nuts,5,TRUE,Bolas,Hyperpure,raw_material,all
+Kaju 1/2,kg,Cashew nuts(split),Dry Fruits & Nuts,2,TRUE,Bolas,Hyperpure,raw_material,all
+Kasoori Methi,kg,Dried fenugreek leaves,Herbs & Spices,2,TRUE,MDH,Hyperpure,raw_material,all
+Mayonnaise,kg,Creamy mayonnaise,Condiments & Toppings,24,TRUE,Foodrite,Hyperpure,raw_material,all
+Methi Seed,kg,Fenugreek seeds,Herbs & Spices,0.5,TRUE,East Made,Hyperpure,raw_material,all
+Mixed Veg Pickle,kg,Mixed vegetable pickle,Condiments & Toppings,10,TRUE,Swastiks,Hyperpure,raw_material,all
+MSG,kg,Monosodium glutamate(flavour enhancer),Sauces & Seasoning,5,TRUE,Springburst,Hyperpure,raw_material,all
+Mustard Oil,liter,Cooking mustard oil,Edible Oils & Fats,5,TRUE,Fortune,Hyperpure,raw_material,all
+Mustard Seed,kg,Yellow mustard seeds,Herbs & Spices,1,TRUE,East Made,Hyperpure,raw_material,all
+Nutmeg,kg,Whole nutmeg spice,Herbs & Spices,0.5,TRUE,East Made,Hyperpure,raw_material,all
+Red Chilli Powder (Tikhalal),kg,Spicy red chilli powder,Herbs & Spices,5,TRUE,Everest,Hyperpure,raw_material,all
+Roasted Chana,kg,Roasted chickpeas,Food Grains & Grain Products,5,TRUE,ZKP,Hyperpure,raw_material,all
+Soxin Wine,btl,Cooking wine,Condiments & Toppings,30,TRUE,Noriko,Hyperpure,raw_material,all
+Soya Chaap,kg,Soya chaap,Fruits & Vegetables,400,TRUE,NULL,Rivaan Enterprise,raw_material,"[""ec""]"
+Star Anise,kg,Star anise spice,Herbs & Spices,1,TRUE,Minar,Hyperpure,raw_material,all
+Sugar,kg,White granulated sugar,Baking Essentials,10,TRUE,ZKP,Hyperpure,raw_material,all
+Sunpure Refined Oil,kg,Refined cooking oil,Edible Oils & Fats,50,TRUE,Sunpure,Hyperpure,raw_material,all
+Tata Salt,kg,Iodized table salt,Sauces & Seasoning,30,TRUE,Tata,Hyperpure,raw_material,all
+Tomato Ketchup,kg,Tomato sauce,Condiments & Toppings,16,TRUE,Kissan,Hyperpure,raw_material,all
+Turmeric Powder (MDH),kg,Ground turmeric powder,Herbs & Spices,5,TRUE,MDH,Hyperpure,raw_material,all
+Vinegar Synthetic,btl,Synthetic vinegar,Condiments & Toppings,10,TRUE,Golden Corn,Hyperpure,raw_material,all
+VKL Peri Peri Marinade,kg,Peri peri marinade,Sauces & Seasoning,20,TRUE,VKL,Hyperpure,raw_material,all
+White Pepper Powder,kg,White pepper spice,Herbs & Spices,1,TRUE,East Made,Hyperpure,raw_material,all
+Whole Coriander Seed,kg,Whole coriander seeds,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+Whole Jeera,kg,Whole cumin seeds,Herbs & Spices,2,TRUE,East Made,Hyperpure,raw_material,all
+MDH Chaat Masala,kg,Chaat masala blend,Herbs & Spices,2,TRUE,MDH,Hyperpure,raw_material,all
+Ghee,kg,Clarified butter,Dairy & Dairy Product,2,TRUE,Nandini,Hyperpure,raw_material,all
+Shahi Jeera,kg,Premium cumin seeds,Herbs & Spices,1,TRUE,East Made,Hyperpure,raw_material,all
+Burger Patty,kg,Frozen burger patties,Meat & Poultry & Cold Cuts,15,TRUE,Rai Poultry,Rai Poultry,raw_material,"[""nk""]"
+Rumali Roti,nos,Thin flatbread,Baking Essentials,600,TRUE,Local,Local,raw_material,"[""nk"",""ec""]"
+Gongura Pickle,kg,Gongura pickle,Condiments & Toppings,5,TRUE,Priya,Priya Foods,raw_material,all
+Amul Cheese Slice,nos,Cheese slices,Dairy & Dairy Product,50,TRUE,Amul,Hyperpure,raw_material,all
+Burger Bun,kg,Burger buns,Baking Essentials,50,TRUE,English Oven,English Oven,raw_material,all
+Bamboo Skewer,kg,Wooden skewers,Inedible & Packaging,100,TRUE,Local,Local,raw_material,"[""nk""]"
+Poolish,gm,Pre-fermented dough used for pizza and bread fermentation,SemiFinished,8,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Pizza Dough Std,nos,Standard pizza dough prepared for daily service,SemiFinished,200,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Marinara Sauce,gm,Classic tomato-based marinara sauce,SemiFinished,50,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Basil Pesto,gm,Fresh basil pesto sauce with herbs and oil,SemiFinished,5,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Bechamel Sauce,gm,White sauce made from milk butter and flour,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Tandoori Chicken,gm,Chicken marinated with tandoori spices and cooked,SemiFinished,4,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Chicken Basic Marination,gm,Basic spiced chicken marinade for multiple dishes,SemiFinished,3,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Cilantro Pesto,gm,Fresh coriander based pesto sauce,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Ghee Roast Masala,gm,Spice blend used for ghee roast preparations,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Mushroom Pate,gm,Creamy mushroom pate spread,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Ginger Garlic Paste,gm,Fresh paste of ginger and garlic,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Tandoori Marinated,gm,Raw chicken marinated with tandoori spices,SemiFinished,5,TRUE,Boom Pizza,NULL,semi_finished,all
+Makhani Gravy,gm,Rich buttery tomato based gravy,SemiFinished,5,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Smoked Chilli Oil,nos,Oil infused with smoked chillies,SemiFinished,6,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Gongura Aioli,gm,Creamy aioli flavoured with gongura,SemiFinished,2,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Thyme and Pepper Dip,nos,Herb infused pepper dip,SemiFinished,6,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Garlic Butter,gm,Butter blended with garlic and herbs,SemiFinished,5,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Basic Marinated Paneer,gm,Paneer marinated with mild spices,SemiFinished,5,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Sun Dried Tomato,btl,Sun dried tomatoes processed for sauces,SemiFinished,50,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Pizza Flour Mix,kg,Flour blend optimized for pizza dough,SemiFinished,30,TRUE,Boom Pizza,NULL,semi_finished,"[""bp""]"
+Peri Peri Soya Chaap,nos,Soya chaap marinated with peri peri spices and grilled,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Achari Soya Chaap,nos,Soya chaap marinated with traditional achari spices,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Lahsuni Soya Chaap,nos,Soya chaap flavoured with garlic based marinade,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Afghani Soya Chaap,nos,Creamy Afghani style marinated soya chaap,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Tandoori Grilled Veggies,nos,Mixed vegetables marinated and grilled in tandoori spices,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Thecha Paneer Tikka,nos,Paneer tikka tossed in spicy green chilli thecha,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Tandoori Mushrooms,nos,Mushrooms marinated in tandoori spices and grilled,Finished,20,TRUE,El Chaapo,NULL,finished,"[""ec""]"
+Andhra Kabab,nos,Spicy Andhra style kabab preparation,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"
+Malai Kabab,nos,Creamy mild flavoured kabab,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"
+Peri Peri Kabab,nos,Kabab marinated with peri peri seasoning,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"
+Hariyali Kabab,nos,Green herb and mint flavoured kabab,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"
+Lemon Kabab,nos,Light lemon flavoured kabab,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"
+Gongura Kabab,nos,Kabab flavoured with tangy gongura leaves,Finished,20,TRUE,Nippu Kodi,NULL,finished,"[""nk""]"

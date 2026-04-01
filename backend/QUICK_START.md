@@ -22,7 +22,7 @@ Done! ✅
 ## What You Get
 
 - ✅ Materials inserted into database
-- ✅ Material codes auto-generated (RM-DARY-001, RM-MEAT-042, etc.)
+- ✅ Material codes auto-generated (RM-HBSP-001, RM-MTPC-042, SF-001, FF-001, NF-001, etc.)
 - ✅ Inventory entries created for all cloud kitchens (automatic via trigger)
 - ✅ Progress shown for each material
 
@@ -31,13 +31,15 @@ Done! ✅
 ## Your CSV Format
 
 ```
-name	unit	description	category	low_stock_threshold	is_active	brand	vendor
-Amul Butter	kg	Premium quality butter	Dairy	45.000	TRUE	Amul	Hyperpure
+name	unit	description	category	low_stock_threshold	is_active	brand	vendor	material_type	brand_codes
+Amul Butter	kg	Premium quality butter	Dairy & Dairy Product	45.000	TRUE	Amul	Hyperpure	raw_material	all
 ```
 
-Required columns: `name`, `unit`, `category`
+Required columns: `name`, `unit`, `category`, `material_type`
 
-Valid categories: `Meat`, `Grains`, `Vegetables`, `Oils`, `Spices`, `Dairy`, `Packaging`, `Sanitary`, `Misc`
+Valid categories for raw materials: `Baking Essentials`, `Condiments & Toppings`, `Dairy & Dairy Product`, `Dry Fruits & Nuts`, `Edible Oils & Fats`, `Food Grains & Grain Products`, `Fruits & Vegetables`, `Herbs & Spices`, `Meat & Poultry & Cold Cuts`, `Pulses & Lentils`, `Sauces & Seasoning`, `Inedible & Packaging`
+
+For semi_finished/finished/non_food: category is auto-assigned (`SemiFinished`, `Finished`, or `Inedible & Packaging`)
 
 Valid units: `nos`, `kg`, `gm`, `liter`, `packets`, `btl`
 

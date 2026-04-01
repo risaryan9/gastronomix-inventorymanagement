@@ -52,17 +52,23 @@ The `materials.csv` file should have these columns (tab or comma separated):
 - `name` - Material name (required)
 - `unit` - Unit of measurement: nos, kg, gm, liter, packets, btl (required)
 - `description` - Description of the material
-- `category` - One of: Meat, Grains, Vegetables, Oils, Spices, Dairy, Packaging, Sanitary, Misc (required)
+- `material_type` - One of: raw_material, semi_finished, finished, non_food (required, default: raw_material)
+- `category` - For raw materials: one of 12 categories (see below). For semi_finished/finished/non_food: auto-assigned (required)
 - `low_stock_threshold` - Low stock alert threshold (e.g., 45.000)
 - `is_active` - TRUE or FALSE
-- `brand` - Brand name
-- `vendor` - Vendor name
+- `brand` - Brand name (optional for all material types)
+- `vendor` - Vendor name (required for raw materials only)
+- `brand_codes` - Brand mapping: "all" or comma-separated like "bp,nk,ec"
+
+**Raw Material Categories:**
+Baking Essentials, Condiments & Toppings, Dairy & Dairy Product, Dry Fruits & Nuts, Edible Oils & Fats, Food Grains & Grain Products, Fruits & Vegetables, Herbs & Spices, Meat & Poultry & Cold Cuts, Pulses & Lentils, Sauces & Seasoning, Inedible & Packaging
 
 **Example CSV:**
 ```
-name	unit	description	category	low_stock_threshold	is_active	brand	vendor
-Amul Butter	kg	Premium quality butter	Dairy	45.000	TRUE	Amul	Hyperpure
-Chicken Breast	kg	Fresh boneless chicken	Meat	12.000	TRUE	Local	Fresko Choice
+name	unit	description	category	low_stock_threshold	is_active	brand	vendor	material_type	brand_codes
+Amul Butter	kg	Premium quality butter	Dairy & Dairy Product	45.000	TRUE	Amul	Hyperpure	raw_material	all
+Chicken Breast	kg	Fresh boneless chicken	Meat & Poultry & Cold Cuts	12.000	TRUE	Local	Fresko Choice	raw_material	all
+Poolish	gm	Pre-fermented pizza dough	SemiFinished	8	TRUE	Boom Pizza	NULL	semi_finished	bp
 ```
 
 **Usage:**
@@ -74,7 +80,11 @@ node backend/seed-raw-materials.js
 
 **What happens:**
 1. Reads materials from `backend/materials.csv`
-2. Auto-generates material codes (e.g., RM-DARY-001, RM-MEAT-042)
+2. Auto-generates material codes:
+   - Raw: RM-{CATEGORY_SHORT}-{NUMBER} (e.g., RM-HBSP-001)
+   - Semi-finished: SF-{NUMBER} (e.g., SF-001)
+   - Finished: FF-{NUMBER} (e.g., FF-001)
+   - Non-food: NF-{NUMBER} (e.g., NF-001)
 3. Inserts materials into `raw_materials` table
 4. Trigger automatically creates inventory entries for all active cloud kitchens
 5. Shows progress and summary

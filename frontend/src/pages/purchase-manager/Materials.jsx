@@ -9,28 +9,24 @@ const UNITS = ['nos', 'kg', 'gm', 'liter', 'packets', 'btl']
 const MATERIAL_TYPES = [
   { value: 'raw_material', label: 'Raw Material' },
   { value: 'semi_finished', label: 'Semi-Finished' },
-  { value: 'finished', label: 'Finished' }
+  { value: 'finished', label: 'Finished' },
+  { value: 'non_food', label: 'Non-Food' }
 ]
 
 // Category options for Raw Materials with their short forms for code generation
 const RAW_MATERIAL_CATEGORIES = [
-  { label: 'Meat', short: 'MEAT' },
-  { label: 'Grains', short: 'GRNS' },
-  { label: 'Vegetables', short: 'VEGT' },
-  { label: 'Oils', short: 'OIL' },
-  { label: 'Breads', short: 'BRD' },
-  { label: 'Spices', short: 'SPCE' },
-  { label: 'Dairy', short: 'DARY' },
-  { label: 'Packaging', short: 'PKG' },
-  { label: 'Sanitary', short: 'SAN' },
-  { label: 'Misc', short: 'MISC' }
-]
-
-// Category options for Semi-Finished and Finished Materials (Brand-based)
-const BRAND_CATEGORIES = [
-  { label: 'Boom Pizza', short: 'BM' },
-  { label: 'Nippu Kodi', short: 'NK' },
-  { label: 'El Chaapo', short: 'EC' }
+  { label: 'Baking Essentials', short: 'BKE' },
+  { label: 'Condiments & Toppings', short: 'CDTP' },
+  { label: 'Dairy & Dairy Product', short: 'DRYP' },
+  { label: 'Dry Fruits & Nuts', short: 'DRFN' },
+  { label: 'Edible Oils & Fats', short: 'EDOF' },
+  { label: 'Food Grains & Grain Products', short: 'FDGP' },
+  { label: 'Fruits & Vegetables', short: 'FRVG' },
+  { label: 'Herbs & Spices', short: 'HBSP' },
+  { label: 'Meat & Poultry & Cold Cuts', short: 'MTPC' },
+  { label: 'Pulses & Lentils', short: 'PLSL' },
+  { label: 'Sauces & Seasoning', short: 'SCSN' },
+  { label: 'Inedible & Packaging', short: 'INPK' }
 ]
 
 // Brand mapping options for raw material usage
@@ -204,48 +200,61 @@ const Materials = ({ isAdminMode = false }) => {
 
   // Function to generate material code based on material type and category
   const generateMaterialCode = async (materialType, category) => {
-    if (!materialType || !category) return ''
+    if (!materialType) return ''
 
     let prefix = ''
     let categoryShort = ''
 
     if (materialType === 'raw_material') {
       // For raw materials: RM-{CATEGORY}-{NUMBER}
+      if (!category) return ''
       prefix = 'RM'
       const categoryData = RAW_MATERIAL_CATEGORIES.find(cat => cat.label === category)
       if (!categoryData) return ''
       categoryShort = categoryData.short
     } else if (materialType === 'semi_finished') {
-      // For semi-finished: SF-{BRAND}-{NUMBER}
+      // For semi-finished: SF-{NUMBER}
       prefix = 'SF'
-      const brandData = BRAND_CATEGORIES.find(cat => cat.label === category)
-      if (!brandData) return ''
-      categoryShort = brandData.short
+      categoryShort = ''
     } else if (materialType === 'finished') {
-      // For finished: FF-{BRAND}-{NUMBER}
+      // For finished: FF-{NUMBER}
       prefix = 'FF'
-      const brandData = BRAND_CATEGORIES.find(cat => cat.label === category)
-      if (!brandData) return ''
-      categoryShort = brandData.short
+      categoryShort = ''
+    } else if (materialType === 'non_food') {
+      // For non-food: NF-{NUMBER}
+      prefix = 'NF'
+      categoryShort = ''
     } else {
       return ''
     }
 
     try {
-      // Get all materials with the same material_type and category to find the next number
-      const { data: categoryMaterials, error } = await supabase
+      const query = supabase
         .from('raw_materials')
         .select('code')
         .eq('material_type', materialType)
-        .eq('category', category)
         .eq('is_active', true)
         .is('deleted_at', null)
 
+      if (materialType === 'raw_material') {
+        query.eq('category', category)
+      }
+
+      const { data: categoryMaterials, error } = await query
+
       if (error) throw error
 
-      // Extract numbers from existing codes (format: {PREFIX}-{SHORT}-{NUMBER})
-      const codePattern = new RegExp(`^${prefix}-${categoryShort}-(\\d+)$`)
-      const existingNumbers = categoryMaterials
+      // Extract numbers from existing codes
+      let codePattern
+      if (materialType === 'raw_material') {
+        // Format: RM-{SHORT}-{NUMBER}
+        codePattern = new RegExp(`^${prefix}-${categoryShort}-(\\d+)$`)
+      } else {
+        // Format: SF-{NUMBER}, FF-{NUMBER}, or NF-{NUMBER}
+        codePattern = new RegExp(`^${prefix}-(\\d+)$`)
+      }
+
+      const existingNumbers = (categoryMaterials || [])
         .map(m => {
           const match = m.code.match(codePattern)
           return match ? parseInt(match[1], 10) : 0
@@ -260,28 +269,61 @@ const Materials = ({ isAdminMode = false }) => {
       // Format with leading zeros (001, 002, etc.)
       const formattedNumber = String(nextNumber).padStart(3, '0')
 
-      return `${prefix}-${categoryShort}-${formattedNumber}`
+      // Return formatted code
+      if (materialType === 'raw_material') {
+        return `${prefix}-${categoryShort}-${formattedNumber}`
+      } else {
+        return `${prefix}-${formattedNumber}`
+      }
     } catch (err) {
       console.error('Error generating material code:', err)
       // Fallback: return a code with number 001
-      return `${prefix}-${categoryShort}-001`
+      if (materialType === 'raw_material') {
+        return `${prefix}-${categoryShort}-001`
+      } else {
+        return `${prefix}-001`
+      }
     }
   }
 
   // Handle material type change - reset category and code
-  const handleMaterialTypeChange = (materialType) => {
+  const handleMaterialTypeChange = async (materialType) => {
+    let autoCategory = ''
+    let generatedCode = ''
+    
+    // Auto-assign fixed categories for semi-finished, finished, and non-food
+    if (materialType === 'semi_finished') {
+      autoCategory = 'SemiFinished'
+      // Auto-generate code for SF when type is selected
+      if (!editingMaterial) {
+        generatedCode = await generateMaterialCode(materialType, autoCategory)
+      }
+    } else if (materialType === 'finished') {
+      autoCategory = 'Finished'
+      // Auto-generate code for FF when type is selected
+      if (!editingMaterial) {
+        generatedCode = await generateMaterialCode(materialType, autoCategory)
+      }
+    } else if (materialType === 'non_food') {
+      autoCategory = 'Inedible & Packaging'
+      // Auto-generate code for NF when type is selected
+      if (!editingMaterial) {
+        generatedCode = await generateMaterialCode(materialType, autoCategory)
+      }
+    }
+    
     setFormData(prev => ({ 
       ...prev, 
       material_type: materialType,
-      category: '', // Reset category when type changes
-      code: '' // Reset code when type changes
+      category: autoCategory, // Auto-set for SF/FF/NF, empty for raw
+      code: generatedCode // Auto-generated for SF/FF/NF, empty for raw
     }))
   }
 
-  // Handle category change - auto-generate code for new materials
+  // Handle category change - auto-generate code for new materials (raw materials only)
   const handleCategoryChange = async (category) => {
     // Only auto-generate code for new materials (not when editing)
-    if (!editingMaterial && category && formData.material_type) {
+    if (!editingMaterial && category && formData.material_type === 'raw_material') {
       const generatedCode = await generateMaterialCode(formData.material_type, category)
       setFormData(prev => ({ ...prev, category, code: generatedCode }))
     } else {
@@ -741,10 +783,13 @@ const Materials = ({ isAdminMode = false }) => {
                             ? 'bg-blue-500/20 text-blue-400' 
                             : material.material_type === 'semi_finished'
                             ? 'bg-yellow-500/20 text-yellow-400'
-                            : 'bg-green-500/20 text-green-400'
+                            : material.material_type === 'finished'
+                            ? 'bg-green-500/20 text-green-400'
+                            : 'bg-purple-500/20 text-purple-400'
                         }`}>
                           {material.material_type === 'raw_material' ? 'Raw Material' : 
-                           material.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'}
+                           material.material_type === 'semi_finished' ? 'Semi-Finished' : 
+                           material.material_type === 'finished' ? 'Finished' : 'Non-Food'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-foreground">{material.name}</td>
@@ -929,51 +974,67 @@ const Materials = ({ isAdminMode = false }) => {
                     <label className="block text-sm font-semibold text-foreground mb-2">
                       Category <span className="text-destructive">*</span>
                     </label>
-                    <select
-                      required
-                      value={formData.category}
-                      onChange={(e) => handleCategoryChange(e.target.value)}
-                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      disabled={saving || editingMaterial || !formData.material_type} // Disable if no type selected
-                    >
-                      <option value="">
-                        {!formData.material_type ? 'Select material type first' : 'Select category'}
-                      </option>
-                      {formData.material_type === 'raw_material' && RAW_MATERIAL_CATEGORIES.map(cat => (
-                        <option key={cat.label} value={cat.label}>{cat.label}</option>
-                      ))}
-                      {(formData.material_type === 'semi_finished' || formData.material_type === 'finished') && BRAND_CATEGORIES.map(cat => (
-                        <option key={cat.label} value={cat.label}>{cat.label}</option>
-                      ))}
-                    </select>
-                    {!editingMaterial && formData.category && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Material code will be auto-generated when category is selected
-                      </p>
-                    )}
-                    {editingMaterial && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Category cannot be modified
-                      </p>
+                    {formData.material_type === 'raw_material' ? (
+                      <>
+                        <select
+                          required
+                          value={formData.category}
+                          onChange={(e) => handleCategoryChange(e.target.value)}
+                          className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                          disabled={saving || editingMaterial || !formData.material_type}
+                        >
+                          <option value="">
+                            {!formData.material_type ? 'Select material type first' : 'Select category'}
+                          </option>
+                          {RAW_MATERIAL_CATEGORIES.map(cat => (
+                            <option key={cat.label} value={cat.label}>{cat.label}</option>
+                          ))}
+                        </select>
+                        {!editingMaterial && formData.category && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Material code will be auto-generated when category is selected
+                          </p>
+                        )}
+                        {editingMaterial && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Category cannot be modified
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          required
+                          value={formData.category}
+                          disabled
+                          className="w-full bg-muted border-2 border-border rounded-lg px-4 py-2.5 text-muted-foreground cursor-not-allowed opacity-60"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Category is auto-assigned for {
+                            formData.material_type === 'semi_finished' ? 'semi-finished' : 
+                            formData.material_type === 'finished' ? 'finished' : 
+                            'non-food'
+                          } materials
+                        </p>
+                      </>
                     )}
                   </div>
 
-                  {/* Brand (name) - still only meaningful for raw materials for now */}
-                  {formData.material_type === 'raw_material' && (
-                    <div>
-                      <label className="block text-sm font-semibold text-foreground mb-2">
-                        Brand
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.brand}
-                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                        className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                        placeholder="Brand name (optional)"
-                        disabled={saving}
-                      />
-                    </div>
-                  )}
+                  {/* Brand (name) - optional for all material types */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Brand
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                      placeholder="Brand name (optional)"
+                      disabled={saving}
+                    />
+                  </div>
 
                   {/* Brand mapping for usage across brands - visible for all material types */}
                   <div>
@@ -1223,6 +1284,12 @@ const Materials = ({ isAdminMode = false }) => {
                           </span>
                         </div>
                       </>
+                    )}
+                    {(formData.material_type === 'semi_finished' || formData.material_type === 'finished' || formData.material_type === 'non_food') && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Brand:</span>
+                        <span className="text-foreground font-semibold">{formData.brand || '—'}</span>
+                      </div>
                     )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Low Stock Threshold:</span>

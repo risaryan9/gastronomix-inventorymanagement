@@ -7,16 +7,20 @@ import * as XLSX from 'xlsx'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
-  'Meat',
-  'Grains',
-  'Vegetables',
-  'Oils',
-  'Breads',
-  'Spices',
-  'Dairy',
-  'Packaging',
-  'Sanitary',
-  'Misc'
+  'Baking Essentials',
+  'Condiments & Toppings',
+  'Dairy & Dairy Product',
+  'Dry Fruits & Nuts',
+  'Edible Oils & Fats',
+  'Food Grains & Grain Products',
+  'Fruits & Vegetables',
+  'Herbs & Spices',
+  'Meat & Poultry & Cold Cuts',
+  'Pulses & Lentils',
+  'Sauces & Seasoning',
+  'Inedible & Packaging',
+  'SemiFinished',
+  'Finished'
 ]
 
 const Inventory = () => {

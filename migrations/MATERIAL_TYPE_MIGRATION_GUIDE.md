@@ -2,18 +2,19 @@
 
 ## Overview
 
-This migration introduces a new `material_type` column to the `raw_materials` table, enabling the system to support three types of materials:
+This migration introduces a new `material_type` column to the `raw_materials` table, enabling the system to support four types of materials:
 
 1. **Raw Material** - Materials purchased from external vendors
 2. **Semi-Finished** - Intermediate products prepared in-house
 3. **Finished** - Final products ready for sale/distribution
+4. **Non-Food** - Non-food items (packaging, sanitary, etc.)
 
 ## Database Changes
 
 ### New Column: `material_type`
 
 - **Type**: `TEXT`
-- **Constraint**: `CHECK (material_type IN ('raw_material', 'semi_finished', 'finished'))`
+- **Constraint**: `CHECK (material_type IN ('raw_material', 'semi_finished', 'finished', 'non_food'))`
 - **Default**: `'raw_material'`
 - **Required**: `NOT NULL`
 
@@ -30,37 +31,50 @@ This migration:
 ## Material Code Patterns
 
 ### Raw Materials
-- **Format**: `RM-{CATEGORY}-{NUMBER}`
-- **Example**: `RM-MEAT-001`, `RM-SPCE-012`
-- **Categories**: Meat, Grains, Vegetables, Oils, Spices, Dairy, Packaging, Sanitary, Misc
+- **Format**: `RM-{CATEGORY_SHORT}-{NUMBER}`
+- **Example**: `RM-HBSP-001`, `RM-MTPC-012`, `RM-DRYP-005`
+- **Categories**: 
+  - Baking Essentials (BKE)
+  - Condiments & Toppings (CDTP)
+  - Dairy & Dairy Product (DRYP)
+  - Dry Fruits & Nuts (DRFN)
+  - Edible Oils & Fats (EDOF)
+  - Food Grains & Grain Products (FDGP)
+  - Fruits & Vegetables (FRVG)
+  - Herbs & Spices (HBSP)
+  - Meat & Poultry & Cold Cuts (MTPC)
+  - Pulses & Lentils (PLSL)
+  - Sauces & Seasoning (SCSN)
+  - Inedible & Packaging (INPK)
 
 ### Semi-Finished Materials
-- **Format**: `SF-{BRAND}-{NUMBER}`
-- **Examples**: 
-  - `SF-BM-001` (Boom Pizza)
-  - `SF-NK-001` (Nippu Kodi)
-  - `SF-EC-001` (El Chaapo)
-- **Brands/Categories**: Boom Pizza (BM), Nippu Kodi (NK), El Chaapo (EC)
+- **Format**: `SF-{NUMBER}`
+- **Examples**: `SF-001`, `SF-002`, `SF-003`
+- **Category**: Fixed as `SemiFinished` (auto-assigned, non-editable)
 
 ### Finished Materials
-- **Format**: `FF-{BRAND}-{NUMBER}`
-- **Examples**: 
-  - `FF-BM-001` (Boom Pizza)
-  - `FF-NK-001` (Nippu Kodi)
-  - `FF-EC-001` (El Chaapo)
-- **Brands/Categories**: Boom Pizza (BM), Nippu Kodi (NK), El Chaapo (EC)
+- **Format**: `FF-{NUMBER}`
+- **Examples**: `FF-001`, `FF-002`, `FF-003`
+- **Category**: Fixed as `Finished` (auto-assigned, non-editable)
+
+### Non-Food Materials
+- **Format**: `NF-{NUMBER}`
+- **Examples**: `NF-001`, `NF-002`, `NF-003`
+- **Category**: Fixed as `Inedible & Packaging` (auto-assigned, non-editable)
 
 ## Frontend Changes
 
 ### Material Form Flow
 
 1. **Select Material Type** (Required, First Step)
-   - User must select one of: Raw Material, Semi-Finished, or Finished
+   - User must select one of: Raw Material, Semi-Finished, Finished, or Non-Food
    - This selection determines available categories and required fields
 
-2. **Select Category** (Enabled after Type selection)
-   - For Raw Materials: Traditional categories (Meat, Grains, etc.)
-   - For Semi-Finished/Finished: Brand categories (Boom Pizza, Nippu Kodi, El Chaapo)
+2. **Category Behavior** (Auto-assigned or selectable)
+   - For Raw Materials: User selects from 12 raw material categories
+   - For Semi-Finished: Category auto-assigned to `SemiFinished` (locked, non-editable)
+   - For Finished: Category auto-assigned to `Finished` (locked, non-editable)
+   - For Non-Food: Category auto-assigned to `Inedible & Packaging` (locked, non-editable)
 
 3. **Auto-Generated Code**
    - Code is automatically generated based on material type and category
@@ -68,8 +82,8 @@ This migration:
 
 4. **Conditional Fields**
    - **Vendor**: Required ONLY for Raw Materials
-   - **Brand**: Optional ONLY for Raw Materials
-   - Semi-Finished and Finished materials do NOT require vendor or brand
+   - **Brand**: Optional for all material types (stored as text field)
+   - Semi-Finished, Finished, and Non-Food materials do NOT require vendor
 
 ### UI Updates
 
@@ -80,6 +94,7 @@ This migration:
   - Blue: Raw Material
   - Yellow: Semi-Finished
   - Green: Finished
+  - Purple: Non-Food
 
 ## Running the Migration
 
@@ -147,19 +162,27 @@ npm run build
 
 ### Frontend Testing - Semi-Finished Materials
 - [ ] Can create new semi-finished material
-- [ ] Selecting "Semi-Finished" shows brand categories
+- [ ] Selecting "Semi-Finished" auto-assigns category to SemiFinished
 - [ ] Vendor field is NOT visible
-- [ ] Brand field is NOT visible
-- [ ] Code is auto-generated with SF- prefix
+- [ ] Brand field is visible and optional
+- [ ] Code is auto-generated with SF- prefix (e.g., SF-001)
 - [ ] Can save semi-finished material successfully
 
 ### Frontend Testing - Finished Materials
 - [ ] Can create new finished material
-- [ ] Selecting "Finished" shows brand categories
+- [ ] Selecting "Finished" auto-assigns category to Finished
 - [ ] Vendor field is NOT visible
-- [ ] Brand field is NOT visible
-- [ ] Code is auto-generated with FF- prefix
+- [ ] Brand field is visible and optional
+- [ ] Code is auto-generated with FF- prefix (e.g., FF-001)
 - [ ] Can save finished material successfully
+
+### Frontend Testing - Non-Food Materials
+- [ ] Can create new non-food material
+- [ ] Selecting "Non-Food" auto-assigns category to Inedible & Packaging
+- [ ] Vendor field is NOT visible
+- [ ] Brand field is visible and optional
+- [ ] Code is auto-generated with NF- prefix (e.g., NF-001)
+- [ ] Can save non-food material successfully
 
 ### Frontend Testing - General
 - [ ] Material type column appears in table

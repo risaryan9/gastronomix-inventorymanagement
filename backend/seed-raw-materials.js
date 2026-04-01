@@ -5,12 +5,15 @@
  *   1. Place your materials_new.csv in the backend/ folder
  *   2. Run: node backend/seed-raw-materials.js
  * 
- * CSV brand_codes: use "all" for all brands (bp,nk,ec), or comma-separated e.g. "nk,ec", or array style ["bp"]
+ * CSV format:
+ * - For raw_material: category must be one of the 12 raw categories (Baking Essentials, Herbs & Spices, etc.)
+ * - For semi_finished/finished/non_food: category is auto-assigned (SemiFinished/Finished/Inedible & Packaging)
+ * - brand_codes: use "all" for all brands (bp,nk,ec), or comma-separated e.g. "nk,ec", or array style ["bp"]
  * The trigger will automatically create inventory entries for all active cloud kitchens
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { parse } from 'csv-parse/sync'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
@@ -48,16 +51,20 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 // Category short codes for auto-generating material codes
 const CATEGORY_CODES = {
-  'Meat': 'MEAT',
-  'Grains': 'GRNS',
-  'Vegetables': 'VEGT',
-  'Oils': 'OIL',
-  'Spices': 'SPCE',
-  'Dairy': 'DARY',
-  'Packaging': 'PKG',
-  'Sanitary': 'SAN',
-  'Misc': 'MISC',
-  'Breads': 'BRED'
+  'Baking Essentials': 'BKE',
+  'Condiments & Toppings': 'CDTP',
+  'Dairy & Dairy Product': 'DRYP',
+  'Dry Fruits & Nuts': 'DRFN',
+  'Edible Oils & Fats': 'EDOF',
+  'Food Grains & Grain Products': 'FDGP',
+  'Fruits & Vegetables': 'FRVG',
+  'Herbs & Spices': 'HBSP',
+  'Meat & Poultry & Cold Cuts': 'MTPC',
+  'Pulses & Lentils': 'PLSL',
+  'Sauces & Seasoning': 'SCSN',
+  'Inedible & Packaging': 'INPK',
+  'SemiFinished': 'SF',
+  'Finished': 'FF'
 }
 
 /** Allowed brand_codes (must match DB check constraint) */
@@ -91,28 +98,111 @@ function parseBrandCodes(value) {
   return valid.length === 0 ? null : valid
 }
 
+const RAW_CATEGORIES = new Set([
+  'Baking Essentials',
+  'Condiments & Toppings',
+  'Dairy & Dairy Product',
+  'Dry Fruits & Nuts',
+  'Edible Oils & Fats',
+  'Food Grains & Grain Products',
+  'Fruits & Vegetables',
+  'Herbs & Spices',
+  'Meat & Poultry & Cold Cuts',
+  'Pulses & Lentils',
+  'Sauces & Seasoning',
+  'Inedible & Packaging'
+])
+
+const BRAND_NAME_TO_SHORT = { 'Boom Pizza': 'BM', 'Nippu Kodi': 'NK', 'El Chaapo': 'EC' }
+const BRAND_CODE_TO_NAME = { bp: 'Boom Pizza', nk: 'Nippu Kodi', ec: 'El Chaapo' }
+
+function parseMaterialType(value) {
+  const raw = (value || '').trim().toLowerCase()
+  if (!raw) return 'raw_material'
+  if (['raw_material', 'semi_finished', 'finished', 'non_food'].includes(raw)) return raw
+  if (raw === 'raw') return 'raw_material'
+  if (raw === 'semi-finished' || raw === 'semi finished') return 'semi_finished'
+  if (raw === 'non-food' || raw === 'non food' || raw === 'nonfood') return 'non_food'
+  return 'raw_material'
+}
+
+function parseBoolean(value, defaultValue = true) {
+  if (value == null || String(value).trim() === '') return defaultValue
+  const raw = String(value).trim().toLowerCase()
+  return ['true', '1', 'yes', 'y'].includes(raw)
+}
+
+function resolveCsvPath() {
+  const argPath = process.argv[2] ? process.argv[2].trim() : ''
+  if (argPath) {
+    return argPath.startsWith('/') ? argPath : join(__dirname, argPath)
+  }
+  const candidates = [
+    join(__dirname, 'materials.csv - Row materials for bulk upload.csv'),
+    join(__dirname, 'materials_new.csv'),
+    join(__dirname, 'materials.csv')
+  ]
+  return candidates.find(p => existsSync(p))
+}
+
 /**
- * Generate material code based on category
- * Format: RM-{CATEGORY_SHORT}-{NUMBER}
- * Example: RM-MEAT-001, RM-DARY-042
+ * Generate material code based on material type and category
+ * - Raw materials: RM-{CATEGORY_SHORT}-{NUMBER} (e.g., RM-HBSP-001)
+ * - Semi-finished: SF-{NUMBER} (e.g., SF-001)
+ * - Finished: FF-{NUMBER} (e.g., FF-001)
+ * - Non-food: NF-{NUMBER} (e.g., NF-001)
  */
-async function generateMaterialCode(category) {
-  const short = CATEGORY_CODES[category] || 'MISC'
+async function generateMaterialCode(materialType, category) {
+  let prefix = ''
+  let short = ''
+  
+  if (materialType === 'raw_material') {
+    prefix = 'RM'
+    short = CATEGORY_CODES[category] || 'MISC'
+  } else if (materialType === 'semi_finished') {
+    prefix = 'SF'
+    short = ''
+  } else if (materialType === 'finished') {
+    prefix = 'FF'
+    short = ''
+  } else if (materialType === 'non_food') {
+    prefix = 'NF'
+    short = ''
+  } else {
+    return 'UNKNOWN-001'
+  }
   
   try {
-    // Get existing materials with the same category to find the next number
-    const { data: categoryMaterials, error } = await supabase
+    // Get existing materials with the same material type
+    const query = supabase
       .from('raw_materials')
       .select('code')
-      .like('code', `RM-${short}-%`)
+      .eq('material_type', materialType)
+    
+    // For raw materials, filter by category
+    if (materialType === 'raw_material') {
+      query.eq('category', category)
+    }
+    
+    const { data: categoryMaterials, error } = await query
     
     if (error) {
-      console.warn(`Warning: Could not fetch existing codes for ${category}:`, error.message)
-      return `RM-${short}-001`
+      console.warn(`Warning: Could not fetch existing codes for ${materialType}/${category}:`, error.message)
+      if (materialType === 'raw_material') {
+        return `${prefix}-${short}-001`
+      } else {
+        return `${prefix}-001`
+      }
     }
     
     // Extract numbers from existing codes
-    const codePattern = new RegExp(`^RM-${short}-(\\d+)$`)
+    let codePattern
+    if (materialType === 'raw_material') {
+      codePattern = new RegExp(`^${prefix}-${short}-(\\d+)$`)
+    } else {
+      codePattern = new RegExp(`^${prefix}-(\\d+)$`)
+    }
+    
     const existingNumbers = (categoryMaterials || [])
       .map(m => {
         const match = m.code.match(codePattern)
@@ -128,10 +218,19 @@ async function generateMaterialCode(category) {
     // Format with leading zeros (3 digits)
     const formattedNumber = String(nextNumber).padStart(3, '0')
     
-    return `RM-${short}-${formattedNumber}`
+    // Return formatted code
+    if (materialType === 'raw_material') {
+      return `${prefix}-${short}-${formattedNumber}`
+    } else {
+      return `${prefix}-${formattedNumber}`
+    }
   } catch (err) {
-    console.warn(`Warning: Error generating code for ${category}:`, err.message)
-    return `RM-${short}-001`
+    console.warn(`Warning: Error generating code for ${materialType}/${category}:`, err.message)
+    if (materialType === 'raw_material') {
+      return `${prefix}-${short}-001`
+    } else {
+      return `${prefix}-001`
+    }
   }
 }
 
@@ -143,7 +242,10 @@ async function seedMaterials() {
     console.log('Starting raw materials seeding...\n')
     
     // Read and parse CSV
-    const csvPath = join(__dirname, 'materials_new.csv')
+    const csvPath = resolveCsvPath()
+    if (!csvPath) {
+      throw new Error('No CSV file found. Expected one of: materials.csv - Row materials for bulk upload.csv, materials_new.csv, or materials.csv')
+    }
     const csvContent = readFileSync(csvPath, 'utf-8')
     const records = parse(csvContent, {
       columns: true,
@@ -152,7 +254,8 @@ async function seedMaterials() {
       relax_column_count: true
     })
     
-    console.log(`Found ${records.length} materials to seed\n`)
+    console.log(`CSV: ${csvPath}`)
+    console.log(`Found ${records.length} materials to process\n`)
     
     // Fetch vendors to map vendor names to IDs
     const { data: vendorsData, error: vendorsError } = await supabase
@@ -169,6 +272,7 @@ async function seedMaterials() {
     console.log(`Loaded ${vendorMap.size} vendors for mapping\n`)
     
     let successCount = 0
+    let updateCount = 0
     let errorCount = 0
     
     // Process each material
@@ -176,13 +280,50 @@ async function seedMaterials() {
       const row = records[i]
       
       try {
-        // Generate material code
-        const categoryRaw = row.category != null ? String(row.category).trim() : ''
-        const category = (categoryRaw === '' || categoryRaw.toUpperCase() === 'NULL') ? 'Misc' : categoryRaw
-        const code = await generateMaterialCode(category)
+        const materialType = parseMaterialType(row.material_type)
+        const name = row.name ? row.name.trim() : ''
+        if (!name) throw new Error('Missing required field: name')
+        if (!row.unit || !String(row.unit).trim()) throw new Error('Missing required field: unit')
+
+        // Parse brand_codes
+        const brandCodes = parseBrandCodes(row.brand_codes)
+
+        // Determine category and brand based on material type
+        let category
+        let brand = row.brand ? row.brand.trim() : null
         
-        // Parse low_stock_threshold - keep the exact decimal value (e.g., 45.000)
-        // PostgreSQL numeric(10, 3) will preserve the 3 decimal places
+        if (materialType === 'raw_material') {
+          const categoryRaw = row.category != null ? String(row.category).trim() : ''
+          category = (categoryRaw === '' || categoryRaw.toUpperCase() === 'NULL') ? 'Inedible & Packaging' : categoryRaw
+          if (!RAW_CATEGORIES.has(category)) {
+            throw new Error(`Invalid raw category "${category}"`)
+          }
+        } else if (materialType === 'semi_finished') {
+          category = 'SemiFinished'
+          if (!brand && brandCodes && brandCodes.length > 0) brand = BRAND_CODE_TO_NAME[brandCodes[0]] || null
+        } else if (materialType === 'finished') {
+          category = 'Finished'
+          if (!brand && brandCodes && brandCodes.length > 0) brand = BRAND_CODE_TO_NAME[brandCodes[0]] || null
+        } else if (materialType === 'non_food') {
+          category = 'Inedible & Packaging'
+          if (!brand && brandCodes && brandCodes.length > 0) brand = BRAND_CODE_TO_NAME[brandCodes[0]] || null
+        }
+
+        // Idempotent behavior:
+        // 1) Try to find existing material by (name + material_type)
+        // 2) If found -> update in place (keep existing code)
+        // 3) Else -> generate next code and insert
+        const { data: existingMaterial, error: existingErr } = await supabase
+          .from('raw_materials')
+          .select('id, code')
+          .eq('name', name)
+          .eq('material_type', materialType)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle()
+        if (existingErr) throw existingErr
+        
+        // Parse low_stock_threshold
         const lowStockThreshold = row.low_stock_threshold 
           ? parseFloat(row.low_stock_threshold) 
           : 0
@@ -193,55 +334,50 @@ async function seedMaterials() {
         if (vendorName && !vendorId) {
           console.warn(`   ⚠ Vendor "${vendorName}" not found - material will have no vendor`)
         }
-
-        // Handle material_type column (raw_material / semi_finished / finished)
-        const rawMaterialType = (row.material_type || '').trim().toLowerCase()
-        let materialType
-        if (!rawMaterialType) {
-          // Default when column is missing or empty (matches existing behavior)
-          materialType = 'raw_material'
-        } else if (['raw_material', 'semi_finished', 'finished'].includes(rawMaterialType)) {
-          materialType = rawMaterialType
-        } else if (rawMaterialType === 'raw') {
-          materialType = 'raw_material'
-        } else if (rawMaterialType === 'semi-finished' || rawMaterialType === 'semi finished') {
-          materialType = 'semi_finished'
-        } else {
-          console.warn(
-            `   ⚠ Invalid material_type "${row.material_type}" for "${row.name}", defaulting to 'raw_material'`
-          )
-          materialType = 'raw_material'
-        }
-
-        // Parse brand_codes: optional CSV column, comma-separated e.g. "nk,ec" or "bp"
-        const brandCodes = parseBrandCodes(row.brand_codes)
         
-        // Prepare material data; trigger creates inventory for new material
+        const finalCode = existingMaterial?.code || await generateMaterialCode(materialType, category)
+
+        // Prepare material data; trigger creates inventory only for new insert
         const materialData = {
-          name: row.name.trim(),
-          code,
+          name,
+          code: finalCode,
           unit: row.unit.trim(),
           description: row.description ? row.description.trim() : null,
           category,
-          low_stock_threshold: lowStockThreshold, // Will be stored as 45.000 in numeric(10,3)
-          is_active: row.is_active === 'TRUE' || row.is_active === 'true' || row.is_active === '1',
-          brand: row.brand ? row.brand.trim() : null,
+          low_stock_threshold: lowStockThreshold,
+          is_active: parseBoolean(row.is_active, true),
+          brand: brand,
           vendor_id: vendorId,
           material_type: materialType,
           brand_codes: brandCodes
         }
         
-        // Insert material
-        const { error } = await supabase
-          .from('raw_materials')
-          .insert(materialData)
+        let error = null
+        if (existingMaterial?.id) {
+          const result = await supabase
+            .from('raw_materials')
+            .update({
+              ...materialData,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingMaterial.id)
+          error = result.error
+        } else {
+          const result = await supabase
+            .from('raw_materials')
+            .insert(materialData)
+          error = result.error
+        }
         
         if (error) {
-          console.error(`❌ [${i + 1}/${records.length}] Failed: ${row.name}`)
+          console.error(`❌ [${i + 1}/${records.length}] Failed: ${name}`)
           console.error(`   Error: ${error.message}`)
           errorCount++
+        } else if (existingMaterial?.id) {
+          console.log(`🔄 [${i + 1}/${records.length}] Updated: ${name} (${finalCode})`)
+          updateCount++
         } else {
-          console.log(`✅ [${i + 1}/${records.length}] ${row.name} (${code})`)
+          console.log(`✅ [${i + 1}/${records.length}] Inserted: ${name} (${finalCode})`)
           successCount++
         }
       } catch (err) {
@@ -252,8 +388,9 @@ async function seedMaterials() {
     }
     
     console.log('\n' + '='.repeat(60))
-    console.log('Seeding complete!')
-    console.log(`✅ Success: ${successCount}`)
+    console.log('Sync complete!')
+    console.log(`✅ Inserted: ${successCount}`)
+    console.log(`🔄 Updated: ${updateCount}`)
     console.log(`❌ Failed: ${errorCount}`)
     console.log(`📊 Total: ${records.length}`)
     console.log('='.repeat(60))
@@ -264,7 +401,7 @@ async function seedMaterials() {
     console.error('Fatal error:', error.message)
     
     if (error.code === 'ENOENT') {
-      console.error('\nMake sure materials_new.csv exists in the backend/ folder')
+      console.error('\nMake sure the CSV exists in backend/ or pass a file path argument')
     }
     
     process.exit(1)

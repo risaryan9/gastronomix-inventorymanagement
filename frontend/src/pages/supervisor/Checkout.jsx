@@ -189,7 +189,6 @@ const Checkout = () => {
         supabase
           .from('operators')
           .select('id, name, phone')
-          .eq('outlet_id', outlet.id)
           .order('name')
       ])
 
@@ -904,7 +903,7 @@ const Checkout = () => {
                     </select>
                     {outletOperators.length === 0 && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        No operators added for this outlet. Add them in Admin → Settings → Operators.
+                        No operators available. Add them in Admin → Settings → Operators.
                       </p>
                     )}
                   </div>
