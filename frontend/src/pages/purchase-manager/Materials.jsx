@@ -334,6 +334,7 @@ const Materials = ({ isAdminMode = false }) => {
 
   // Open modal for adding new material
   const handleAddNew = () => {
+    if (!isAdminMode) return
     setEditingMaterial(null)
     setFormData({
       name: '',
@@ -355,6 +356,7 @@ const Materials = ({ isAdminMode = false }) => {
 
   // Open modal for editing material
   const handleEdit = (material) => {
+    if (!isAdminMode) return
     setEditingMaterial(material)
 
     // Normalize existing brand_codes so the capsules reflect current mapping:
@@ -442,6 +444,10 @@ const Materials = ({ isAdminMode = false }) => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    if (!isAdminMode) {
+      setError('Only admins can modify materials.')
+      return
+    }
 
     // Validate form
     if (!formData.material_type) {
@@ -766,7 +772,9 @@ const Materials = ({ isAdminMode = false }) => {
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
+                    {isAdminMode && (
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -813,14 +821,16 @@ const Materials = ({ isAdminMode = false }) => {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleEdit(material)}
-                          className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-sm font-semibold"
-                        >
-                          Edit
-                        </button>
-                      </td>
+                      {isAdminMode && (
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleEdit(material)}
+                            className="px-3 py-1.5 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 text-sm font-semibold"
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
