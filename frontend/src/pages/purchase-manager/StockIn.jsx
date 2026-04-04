@@ -2,6 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import {
+  clearStockInDraft,
+  draftHasMeaningfulContent,
+  formatDraftAge,
+  loadStockInDraft,
+  saveStockInDraft
+} from '../../lib/stockInDraft'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -73,6 +80,10 @@ const StockIn = () => {
   // Prevent double-submit on Confirm & Create (catastrophic if multiple stock_in created)
   const finalizingRef = useRef(false)
   const [finalizing, setFinalizing] = useState(false)
+
+  // Local draft (24h): restore prompt + banner after restore
+  const [draftRestorePrompt, setDraftRestorePrompt] = useState(null)
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState(false)
 
   // Fetch stock in records
   useEffect(() => {
@@ -209,6 +220,18 @@ const StockIn = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openDropdownRow])
 
+  // Auto-save stock-in form draft (excludes invoice file) while modal is open
+  useEffect(() => {
+    if (!showAddModal) return
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    if (!ck) return
+    const t = setTimeout(() => {
+      if (!draftHasMeaningfulContent({ purchaseSlip, purchaseItems })) return
+      saveStockInDraft(ck, { stockInType, purchaseSlip, purchaseItems })
+    }, 500)
+    return () => clearTimeout(t)
+  }, [showAddModal, stockInType, purchaseSlip, purchaseItems])
 
   // Filter materials for dropdown search (by row)
   const getFilteredMaterialsForRow = (rowIndex) => {
@@ -356,7 +379,7 @@ const StockIn = () => {
     if (!record) return
     const session = getSession()
 
-    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud' || record.stock_in_type === 'manual_inventory'
     const headers = [
       'Material Name',
       'Code',
@@ -388,7 +411,7 @@ const StockIn = () => {
     })
 
     const meta = [
-      isKitchen ? 'Kitchen Stock-In Details' : 'Purchase Stock-In Details',
+      isKitchen ? (record.stock_in_type === 'inter_cloud' ? 'Inter-Cloud Transfer Details' : record.stock_in_type === 'manual_inventory' ? 'Manual Inventory Adjustment' : 'Kitchen Stock-In Details') : 'Purchase Stock-In Details',
       `Generated: ${new Date().toLocaleString()}`,
       `Cloud Kitchen: ${session?.cloud_kitchen_name || session?.cloud_kitchen_id || 'N/A'}`,
       `User: ${session?.full_name || 'N/A'}`,
@@ -426,7 +449,7 @@ const StockIn = () => {
     if (!record) return
     const session = getSession()
     const workbook = XLSX.utils.book_new()
-    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud' || record.stock_in_type === 'manual_inventory'
 
     const summaryData = [
       ['Gastronomix Inventory Management - Stock-In Record'],
@@ -503,7 +526,7 @@ const StockIn = () => {
   const downloadStockInPDF = (record) => {
     if (!record) return
     const session = getSession()
-    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+    const isKitchen = record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud' || record.stock_in_type === 'manual_inventory'
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -518,7 +541,7 @@ const StockIn = () => {
     doc.setFontSize(14)
     doc.setFont(undefined, 'normal')
     doc.text(
-      isKitchen ? 'Kitchen Stock-In Details' : 'Purchase Stock-In Details',
+      isKitchen ? (record.stock_in_type === 'inter_cloud' ? 'Inter-Cloud Transfer Details' : record.stock_in_type === 'manual_inventory' ? 'Manual Inventory Adjustment' : 'Kitchen Stock-In Details') : 'Purchase Stock-In Details',
       pageWidth / 2,
       yPos,
       { align: 'center' }
@@ -571,7 +594,7 @@ const StockIn = () => {
     doc.setFont(undefined, 'normal')
     doc.setFontSize(10)
     doc.text(
-      `Type: ${isKitchen ? (record.stock_in_type === 'inter_cloud' ? 'Inter-Cloud Stock-In' : 'Kitchen Stock-In') : 'Purchase Stock-In'}`,
+      `Type: ${isKitchen ? (record.stock_in_type === 'inter_cloud' ? 'Inter-Cloud Stock-In' : record.stock_in_type === 'manual_inventory' ? 'Manual Inventory Adjustment' : 'Kitchen Stock-In') : 'Purchase Stock-In'}`,
       25,
       yPos
     )
@@ -742,6 +765,68 @@ const StockIn = () => {
     throw new Error('Could not store invoice file because too many files share the same name.')
   }
 
+  const beginAddModalFlow = (requestedType = 'purchase') => {
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    if (!ck) {
+      openAddModal(requestedType)
+      return
+    }
+    const draft = loadStockInDraft(ck)
+    if (
+      draft &&
+      draftHasMeaningfulContent({
+        purchaseSlip: draft.purchaseSlip,
+        purchaseItems: draft.purchaseItems
+      })
+    ) {
+      setDraftRestorePrompt({ draft, requestedType })
+      return
+    }
+    openAddModal(requestedType)
+  }
+
+  const closeDraftRestorePrompt = () => setDraftRestorePrompt(null)
+
+  const restoreDraftAndOpen = () => {
+    if (!draftRestorePrompt?.draft) return
+    const { draft } = draftRestorePrompt
+    setDraftRestorePrompt(null)
+    setStockInType(draft.stockInType === 'kitchen' ? 'kitchen' : 'purchase')
+    setPurchaseSlip({
+      supplier_name: draft.purchaseSlip.supplier_name ?? '',
+      invoice_number: draft.purchaseSlip.invoice_number ?? '',
+      receipt_date:
+        draft.purchaseSlip.receipt_date || new Date().toISOString().split('T')[0],
+      notes: draft.purchaseSlip.notes ?? ''
+    })
+    setInvoiceFile(null)
+    setInvoiceFileError('')
+    setPurchaseItems(
+      (draft.purchaseItems || []).map((row) => ({
+        ...row,
+        id:
+          row.id ||
+          `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }))
+    )
+    setSelectedRows(new Set())
+    setOpenDropdownRow(-1)
+    setDropdownSearchTerm('')
+    setShowAddModal(true)
+    setDraftRestoredNotice(true)
+  }
+
+  const startFreshAfterDraftPrompt = () => {
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    const requestedType = draftRestorePrompt?.requestedType ?? 'purchase'
+    if (ck) clearStockInDraft(ck)
+    setDraftRestorePrompt(null)
+    openAddModal(requestedType)
+    setDraftRestoredNotice(false)
+  }
+
   // Open add modal for purchase stock-in
   const openAddModal = (type = 'purchase') => {
     setStockInType(type)
@@ -767,11 +852,23 @@ const StockIn = () => {
     })
     setPurchaseItems([makeRow(), makeRow(), makeRow()])
     setShowAddModal(true)
+    setDraftRestoredNotice(false)
   }
 
   // Close add modal
-  const closeAddModal = () => {
+  const closeAddModal = (options = {}) => {
+    const { skipDraftSave = false } = options
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    if (!skipDraftSave && ck) {
+      if (draftHasMeaningfulContent({ purchaseSlip, purchaseItems })) {
+        saveStockInDraft(ck, { stockInType, purchaseSlip, purchaseItems })
+      } else {
+        clearStockInDraft(ck)
+      }
+    }
     setShowAddModal(false)
+    setDraftRestoredNotice(false)
     setPurchaseSlip({
       supplier_name: '',
       invoice_number: '',
@@ -784,6 +881,12 @@ const StockIn = () => {
     setSelectedRows(new Set())
     setOpenDropdownRow(-1)
     setDropdownSearchTerm('')
+  }
+
+  const handleClearSavedDraftOnly = () => {
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    if (ck) clearStockInDraft(ck)
   }
 
   // Finalize purchase slip
@@ -970,7 +1073,8 @@ const StockIn = () => {
 
       // Close modals and refresh
       setShowConfirmModal(false)
-      closeAddModal()
+      closeAddModal({ skipDraftSave: true })
+      clearStockInDraft(session.cloud_kitchen_id)
 
       // Refresh stock in records
       const { data: updatedRecords } = await supabase
@@ -1088,7 +1192,7 @@ const StockIn = () => {
     record => !record.stock_in_type || record.stock_in_type === 'purchase'
   )
   const kitchenRecords = stockInRecords.filter(
-    record => record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud'
+    record => record.stock_in_type === 'kitchen' || record.stock_in_type === 'inter_cloud' || record.stock_in_type === 'manual_inventory'
   )
 
   // Apply filters per panel
@@ -1161,13 +1265,13 @@ const StockIn = () => {
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              onClick={() => openAddModal('purchase')}
+              onClick={() => beginAddModalFlow('purchase')}
               className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
             >
               + Create Stock-In Invoice
             </button>
             <button
-              onClick={() => openAddModal('kitchen')}
+              onClick={() => beginAddModalFlow('kitchen')}
               className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
             >
               + Create Kitchen Stock-In
@@ -1722,6 +1826,52 @@ const StockIn = () => {
           )}
         </div>
 
+        {/* Draft restore choice (before opening new slip) */}
+        {draftRestorePrompt && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <div
+              className="bg-card border-2 border-border rounded-xl p-6 max-w-md w-full shadow-xl"
+              role="dialog"
+              aria-labelledby="draft-restore-title"
+            >
+              <h2
+                id="draft-restore-title"
+                className="text-xl font-bold text-foreground mb-2"
+              >
+                Resume saved draft?
+              </h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                A stock-in draft from this kitchen was saved{' '}
+                {formatDraftAge(draftRestorePrompt.draft.savedAt)}. Invoice files
+                are not stored in drafts.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDraftRestorePrompt}
+                  className="px-4 py-2.5 rounded-lg border-2 border-border font-semibold text-foreground hover:bg-accent/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={startFreshAfterDraftPrompt}
+                  className="px-4 py-2.5 rounded-lg border-2 border-border font-semibold text-foreground hover:bg-accent/10 transition-all"
+                >
+                  Start fresh
+                </button>
+                <button
+                  type="button"
+                  onClick={restoreDraftAndOpen}
+                  className="px-4 py-2.5 rounded-xl bg-accent text-background font-bold border-3 border-accent shadow-button hover:shadow-button-hover transition-all"
+                >
+                  Restore draft
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Add Stock-In Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -1739,6 +1889,18 @@ const StockIn = () => {
                   </svg>
                 </button>
               </div>
+
+              {draftRestoredNotice && (
+                <div className="mb-4 p-3 rounded-lg bg-accent/15 border border-accent/40 text-sm text-foreground">
+                  Draft restored. Invoice images are not saved in drafts — upload
+                  again before you finalize.
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground mb-4">
+                Your slip is saved automatically on this device for 24 hours if you
+                leave this screen (invoice file is not included).
+              </p>
 
               {/* Stock-In Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -2031,7 +2193,8 @@ const StockIn = () => {
               )}
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-3">
                 <button
                   onClick={closeAddModal}
                   className="flex-1 bg-transparent text-foreground font-semibold px-4 py-2.5 rounded-lg border-2 border-border hover:bg-accent/10 transition-all"
@@ -2064,6 +2227,14 @@ const StockIn = () => {
                 >
                   Finalize Purchase Slip
                 </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSavedDraftOnly}
+                  className="text-xs text-muted-foreground hover:text-foreground underline self-center"
+                >
+                  Clear saved draft from this device
+                </button>
               </div>
             </div>
           </div>
@@ -2093,6 +2264,17 @@ const StockIn = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">Invoice Number</p>
                     <p className="font-semibold text-foreground">{purchaseSlip.invoice_number}</p>
+                  </div>
+                )}
+                {stockInType === 'purchase' && invoiceFile && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Invoice file</p>
+                    <p className="font-semibold text-foreground font-mono text-sm break-all">
+                      {invoiceFile.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(invoiceFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </p>
                   </div>
                 )}
               </div>
@@ -2152,9 +2334,11 @@ const StockIn = () => {
                 <h2 className="text-2xl font-bold text-foreground">
                   {selectedRecord.stock_in_type === 'inter_cloud'
                     ? 'Inter-Cloud Transfer Details'
-                    : selectedRecord.stock_in_type === 'kitchen'
-                      ? 'Kitchen Stock In Details'
-                      : 'Purchase Slip Details'}
+                    : selectedRecord.stock_in_type === 'manual_inventory'
+                      ? 'Manual Inventory Adjustment'
+                      : selectedRecord.stock_in_type === 'kitchen'
+                        ? 'Kitchen Stock In Details'
+                        : 'Purchase Slip Details'}
                 </h2>
                 <button
                   onClick={() => setShowDetailsModal(false)}

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import Materials from './purchase-manager/Materials'
 import AdminUsers from './admin/AdminUsers'
 import AdminOperators from './admin/AdminOperators'
+import AdminRecipes from './admin/AdminRecipes'
 
 const NAV_STRUCTURE = [
   {
@@ -29,6 +30,7 @@ const NAV_STRUCTURE = [
     label: 'Settings',
     children: [
       { id: 'materials', label: 'Materials' },
+      { id: 'recipes', label: 'Recipes' },
       { id: 'users', label: 'Users' },
       { id: 'operators', label: 'Operators' },
       { id: 'preferences', label: 'Preferences' },
@@ -75,6 +77,8 @@ const AdminDashboard = () => {
   const activeChild = activeParent?.children.find((c) => c.id === activeChildId)
   const isMaterialsSection =
     activeParentId === 'settings' && activeChildId === 'materials'
+  const isRecipesSection =
+    activeParentId === 'settings' && activeChildId === 'recipes'
   const isUsersSection =
     activeParentId === 'settings' && activeChildId === 'users'
   const isOperatorsSection =
@@ -206,6 +210,10 @@ const AdminDashboard = () => {
             {isMaterialsSection ? (
               <div className="-mt-2">
                 <Materials isAdminMode={true} />
+              </div>
+            ) : isRecipesSection ? (
+              <div className="-mt-2">
+                <AdminRecipes />
               </div>
             ) : isUsersSection ? (
               <div className="-mt-2">

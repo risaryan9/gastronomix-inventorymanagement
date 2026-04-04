@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { adjustManualInventory } from '../../lib/manualInventoryAdjust'
+import PaginationControls from '../../components/PaginationControls'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -59,25 +61,23 @@ const Inventory = () => {
   const [exporting, setExporting] = useState(false)
   const [alert, setAlert] = useState(null) // { type: 'error' | 'success' | 'warning', message: string }
 
-  // Fetch inventory with material details
-  useEffect(() => {
-    const fetchInventory = async () => {
-      const session = getSession()
-      
-      if (!session?.cloud_kitchen_id) {
-        setLoading(false)
-        return
-      }
+  // Fetch inventory with material details (reused after manual adjustment)
+  const fetchInventory = useCallback(async () => {
+    const session = getSession()
 
-      try {
-        setLoading(true)
-        
-        console.log('Fetching inventory for cloud_kitchen_id:', session.cloud_kitchen_id)
-        
-        // Fetch inventory with raw_materials join
-        const { data: inventoryData, error: inventoryError } = await supabase
-          .from('inventory')
-          .select(`
+    if (!session?.cloud_kitchen_id) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+
+      console.log('Fetching inventory for cloud_kitchen_id:', session.cloud_kitchen_id)
+
+      const { data: inventoryData, error: inventoryError } = await supabase
+        .from('inventory')
+        .select(`
             *,
             raw_materials (
               id,
@@ -89,113 +89,108 @@ const Inventory = () => {
               material_type
             )
           `)
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
 
-        console.log('Inventory query result:', { inventoryData, inventoryError })
+      console.log('Inventory query result:', { inventoryData, inventoryError })
 
-        if (inventoryError) {
-          console.error('Error fetching inventory:', inventoryError)
-          setAlert({ type: 'error', message: `Error fetching inventory: ${inventoryError.message}` })
-          setLoading(false)
-          return
-        }
-
-        if (!inventoryData || inventoryData.length === 0) {
-          console.log('No inventory data returned')
-          setInventory([])
-          setMaterials([])
-          setLoading(false)
-          return
-        }
-
-        // Fetch stock_in_batches to calculate FIFO-based valuation
-        const rawMaterialIds = inventoryData.map(item => item.raw_material_id)
-        const { data: batchesData, error: batchesError } = await supabase
-          .from('stock_in_batches')
-          .select('raw_material_id, quantity_remaining, unit_cost')
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .in('raw_material_id', rawMaterialIds)
-          .gt('quantity_remaining', 0)
-
-        // Calculate total value per material using FIFO (sum of quantity_remaining * unit_cost)
-        const materialValuationMap = new Map()
-        if (batchesData) {
-          batchesData.forEach(batch => {
-            const materialId = batch.raw_material_id
-            const batchValue = parseFloat(batch.quantity_remaining) * parseFloat(batch.unit_cost)
-            
-            if (!materialValuationMap.has(materialId)) {
-              materialValuationMap.set(materialId, {
-                totalValue: 0,
-                totalQuantity: 0,
-                averageCost: 0
-              })
-            }
-            
-            const current = materialValuationMap.get(materialId)
-            current.totalValue += batchValue
-            current.totalQuantity += parseFloat(batch.quantity_remaining)
-          })
-          
-          // Calculate average cost per unit for each material
-          materialValuationMap.forEach((value, materialId) => {
-            if (value.totalQuantity > 0) {
-              value.averageCost = value.totalValue / value.totalQuantity
-            }
-          })
-        }
-
-        // Join inventory with FIFO-based valuation
-        const inventoryWithMaterials = inventoryData.map(item => {
-          const valuation = materialValuationMap.get(item.raw_material_id) || {
-            totalValue: 0,
-            totalQuantity: 0,
-            averageCost: 0
-          }
-          
-          return {
-            ...item,
-            fifo_total_value: valuation.totalValue,
-            fifo_average_cost: valuation.averageCost
-          }
-        })
-
-        // Default sort: No stock first, then Low stock, then In stock; within each group by material name
-        const stockStatusOrder = (item) => {
-          const qty = parseFloat(item.quantity) || 0
-          const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
-          if (qty === 0) return 0          // No stock first
-          if (qty <= threshold) return 1  // Low stock
-          return 2                         // In stock
-        }
-        inventoryWithMaterials.sort((a, b) => {
-          const orderA = stockStatusOrder(a)
-          const orderB = stockStatusOrder(b)
-          if (orderA !== orderB) return orderA - orderB
-          const nameA = a.raw_materials?.name || ''
-          const nameB = b.raw_materials?.name || ''
-          return nameA.localeCompare(nameB)
-        })
-
-        setInventory(inventoryWithMaterials)
-
-        // Extract unique categories from materials
-        const uniqueCategories = [...new Set(
-          inventoryWithMaterials
-            .map(item => item.raw_materials?.category)
-            .filter(Boolean)
-        )]
-        setMaterials(uniqueCategories.length > 0 ? uniqueCategories : CATEGORIES)
-      } catch (err) {
-        console.error('Error fetching data:', err)
-        setAlert({ type: 'error', message: 'Failed to fetch inventory data' })
-      } finally {
+      if (inventoryError) {
+        console.error('Error fetching inventory:', inventoryError)
+        setAlert({ type: 'error', message: `Error fetching inventory: ${inventoryError.message}` })
         setLoading(false)
+        return
       }
-    }
 
+      if (!inventoryData || inventoryData.length === 0) {
+        console.log('No inventory data returned')
+        setInventory([])
+        setMaterials([])
+        setLoading(false)
+        return
+      }
+
+      const rawMaterialIds = inventoryData.map(item => item.raw_material_id)
+      const { data: batchesData } = await supabase
+        .from('stock_in_batches')
+        .select('raw_material_id, quantity_remaining, unit_cost')
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .in('raw_material_id', rawMaterialIds)
+        .gt('quantity_remaining', 0)
+
+      const materialValuationMap = new Map()
+      if (batchesData) {
+        batchesData.forEach(batch => {
+          const materialId = batch.raw_material_id
+          const batchValue = parseFloat(batch.quantity_remaining) * parseFloat(batch.unit_cost)
+
+          if (!materialValuationMap.has(materialId)) {
+            materialValuationMap.set(materialId, {
+              totalValue: 0,
+              totalQuantity: 0,
+              averageCost: 0
+            })
+          }
+
+          const current = materialValuationMap.get(materialId)
+          current.totalValue += batchValue
+          current.totalQuantity += parseFloat(batch.quantity_remaining)
+        })
+
+        materialValuationMap.forEach((value) => {
+          if (value.totalQuantity > 0) {
+            value.averageCost = value.totalValue / value.totalQuantity
+          }
+        })
+      }
+
+      const inventoryWithMaterials = inventoryData.map(item => {
+        const valuation = materialValuationMap.get(item.raw_material_id) || {
+          totalValue: 0,
+          totalQuantity: 0,
+          averageCost: 0
+        }
+
+        return {
+          ...item,
+          fifo_total_value: valuation.totalValue,
+          fifo_average_cost: valuation.averageCost
+        }
+      })
+
+      const stockStatusOrder = (item) => {
+        const qty = parseFloat(item.quantity) || 0
+        const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+        if (qty === 0) return 0
+        if (qty <= threshold) return 1
+        return 2
+      }
+      inventoryWithMaterials.sort((a, b) => {
+        const orderA = stockStatusOrder(a)
+        const orderB = stockStatusOrder(b)
+        if (orderA !== orderB) return orderA - orderB
+        const nameA = a.raw_materials?.name || ''
+        const nameB = b.raw_materials?.name || ''
+        return nameA.localeCompare(nameB)
+      })
+
+      setInventory(inventoryWithMaterials)
+
+      const uniqueCategories = [...new Set(
+        inventoryWithMaterials
+          .map(item => item.raw_materials?.category)
+          .filter(Boolean)
+      )]
+      setMaterials(uniqueCategories.length > 0 ? uniqueCategories : CATEGORIES)
+    } catch (err) {
+      console.error('Error fetching data:', err)
+      setAlert({ type: 'error', message: 'Failed to fetch inventory data' })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
     fetchInventory()
-  }, []) // Empty dependency array - only fetch once on mount
+  }, [fetchInventory])
 
   // Open edit modal
   const openEditModal = (item) => {
@@ -255,7 +250,7 @@ const Inventory = () => {
     setShowConfirmModal(true)
   }
 
-  // Confirm and update inventory via edge function
+  // Confirm and update inventory (direct Supabase, same pattern as Stock Out)
   const confirmUpdateInventory = async () => {
     if (!editingItem) return
     
@@ -281,45 +276,26 @@ const Inventory = () => {
 
     setUpdating(true)
     try {
-      // Get auth token
-      const { data: { session: authSession } } = await supabase.auth.getSession()
-      if (!authSession?.access_token) {
-        setAlert({ type: 'error', message: 'Authentication required. Please log in again.' })
+      const result = await adjustManualInventory(supabase, {
+        cloudKitchenId: session.cloud_kitchen_id,
+        rawMaterialId: editingItem.raw_material_id,
+        newQuantity,
+        reason: adjustmentForm.reason,
+        details: adjustmentForm.details || null,
+        userId: session.id
+      })
+
+      if (result.adjustment_type === 'none') {
+        setAlert({ type: 'warning', message: 'Quantity has not changed' })
         setUpdating(false)
         return
       }
 
-      // Call edge function to adjust inventory
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/adjust-inventory`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${authSession.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            cloud_kitchen_id: session.cloud_kitchen_id,
-            raw_material_id: editingItem.raw_material_id,
-            new_quantity: newQuantity,
-            reason: adjustmentForm.reason,
-            details: adjustmentForm.details || null
-          })
-        }
-      )
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to adjust inventory')
-      }
-
-      // Refresh inventory to get updated quantity from trigger
       await fetchInventory()
 
-      setAlert({ 
-        type: 'success', 
-        message: `Inventory ${result.adjustment_type}ed successfully! ${result.adjustment_type === 'increment' ? 'Added' : 'Removed'} ${Math.abs(result.adjustment_amount).toFixed(2)} units.` 
+      setAlert({
+        type: 'success',
+        message: `Inventory ${result.adjustment_type}ed successfully! ${result.adjustment_type === 'increment' ? 'Added' : 'Removed'} ${Math.abs(result.adjustment_amount).toFixed(2)} units.`
       })
       closeEditModal()
     } catch (err) {
@@ -948,41 +924,15 @@ const Inventory = () => {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="border-t border-border px-4 py-4 flex items-center justify-between">
+                <div className="border-t border-border px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-muted-foreground">
                     Showing {startIndex + 1} to {Math.min(endIndex, sortedInventory.length)} of {sortedInventory.length} items
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                    >
-                      Previous
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                        <button
-                          key={page}
-                          onClick={() => setCurrentPage(page)}
-                          className={`px-3 py-2 rounded-lg font-semibold transition-all ${
-                            currentPage === page
-                              ? 'bg-accent text-background'
-                              : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                    >
-                      Next
-                    </button>
-                  </div>
+                  <PaginationControls
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                  />
                 </div>
               )}
             </>

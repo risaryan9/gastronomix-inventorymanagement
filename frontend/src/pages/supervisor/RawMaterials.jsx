@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import PaginationControls from '../../components/PaginationControls'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -518,49 +519,12 @@ const RawMaterials = () => {
                     <div className="text-xs lg:text-sm text-muted-foreground text-center lg:text-left">
                       Showing {startIndex + 1} to {Math.min(endIndex, filteredMaterials.length)} of {filteredMaterials.length} items
                     </div>
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                        disabled={currentPage === 1}
-                        className="px-4 py-2.5 lg:px-3 lg:py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 active:bg-accent/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm touch-manipulation"
-                      >
-                        Previous
-                      </button>
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                          let page
-                          if (totalPages <= 5) {
-                            page = i + 1
-                          } else if (currentPage <= 3) {
-                            page = i + 1
-                          } else if (currentPage >= totalPages - 2) {
-                            page = totalPages - 4 + i
-                          } else {
-                            page = currentPage - 2 + i
-                          }
-                          return (
-                            <button
-                              key={page}
-                              onClick={() => setCurrentPage(page)}
-                              className={`px-3 py-2 rounded-lg font-semibold transition-all text-sm touch-manipulation ${
-                                currentPage === page
-                                  ? 'bg-accent text-background'
-                                  : 'bg-input border border-border text-foreground hover:bg-accent/10 active:bg-accent/20'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                        disabled={currentPage === totalPages}
-                        className="px-4 py-2.5 lg:px-3 lg:py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 active:bg-accent/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm touch-manipulation"
-                      >
-                        Next
-                      </button>
-                    </div>
+                    <PaginationControls
+                      variant="supervisor"
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
                   </div>
                 </div>
               )}

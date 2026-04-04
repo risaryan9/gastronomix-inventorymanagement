@@ -91,6 +91,8 @@ const DispatchExecutiveDashboard = () => {
   const [materials, setMaterials] = useState([])
   const [quantities, setQuantities] = useState({})
   const [savingPlan, setSavingPlan] = useState(false)
+  const [recipes, setRecipes] = useState([])
+  const [manualOverrides, setManualOverrides] = useState({})
 
   const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
   const [materialSearchTerm, setMaterialSearchTerm] = useState('')
@@ -225,9 +227,14 @@ const DispatchExecutiveDashboard = () => {
     setOutlets([])
     setMaterials([])
     setQuantities({})
+    setManualOverrides({})
 
     try {
-      const [{ data: outletsData, error: outletsError }, { data: materialsData, error: materialsError }] = await Promise.all([
+      const [
+        { data: outletsData, error: outletsError },
+        { data: materialsData, error: materialsError },
+        { data: recipesData, error: recipesError }
+      ] = await Promise.all([
         supabase
           .from('outlets')
           .select('id, name, code')
@@ -241,11 +248,25 @@ const DispatchExecutiveDashboard = () => {
           .select('id, name, code, unit, material_type, category, brand_codes')
           .eq('is_active', true)
           .is('deleted_at', null)
-          .order('name', { ascending: true })
+          .order('name', { ascending: true }),
+        supabase
+          .from('recipes')
+          .select(`
+            id,
+            finished_product_id,
+            recipe_name,
+            is_active,
+            recipe_ingredients (
+              ingredient_material_id,
+              quantity_per_unit
+            )
+          `)
+          .eq('is_active', true)
       ])
 
       if (outletsError) throw outletsError
       if (materialsError) throw materialsError
+      if (recipesError) throw recipesError
 
       const brandCode = brandMeta.materialBrandCode
       const filteredMaterials = (materialsData || []).filter(material => {
@@ -256,6 +277,7 @@ const DispatchExecutiveDashboard = () => {
 
       setOutlets(outletsData || [])
       setMaterials(filteredMaterials)
+      setRecipes(recipesData || [])
     } catch (error) {
       console.error('Error preparing dispatch plan modal:', error)
       setModalError('Failed to load outlets or materials. Please try again.')
@@ -276,12 +298,14 @@ const DispatchExecutiveDashboard = () => {
     setOutlets([])
     setMaterials([])
     setQuantities({})
+    setManualOverrides({})
 
     try {
       const [
         { data: outletsData, error: outletsError },
         { data: materialsData, error: materialsError },
-        { data: itemsData, error: itemsError }
+        { data: itemsData, error: itemsError },
+        { data: recipesData, error: recipesError }
       ] = await Promise.all([
         supabase
           .from('outlets')
@@ -300,12 +324,26 @@ const DispatchExecutiveDashboard = () => {
         supabase
           .from('dispatch_plan_items')
           .select('raw_material_id, outlet_id, quantity')
-          .eq('dispatch_plan_id', plan.id)
+          .eq('dispatch_plan_id', plan.id),
+        supabase
+          .from('recipes')
+          .select(`
+            id,
+            finished_product_id,
+            recipe_name,
+            is_active,
+            recipe_ingredients (
+              ingredient_material_id,
+              quantity_per_unit
+            )
+          `)
+          .eq('is_active', true)
       ])
 
       if (outletsError) throw outletsError
       if (materialsError) throw materialsError
       if (itemsError) throw itemsError
+      if (recipesError) throw recipesError
 
       const brandCode = brandMeta.materialBrandCode
       const filteredMaterials = (materialsData || []).filter(material => {
@@ -325,6 +363,7 @@ const DispatchExecutiveDashboard = () => {
       setOutlets(outletsData || [])
       setMaterials(filteredMaterials)
       setQuantities(qtyMap)
+      setRecipes(recipesData || [])
     } catch (error) {
       console.error('Error loading dispatch plan for edit:', error)
       setModalError('Failed to load dispatch plan. Please try again.')
@@ -333,16 +372,49 @@ const DispatchExecutiveDashboard = () => {
     }
   }
 
-  const handleQuantityChange = (rawMaterialId, outletId, value) => {
+  const handleQuantityChange = (rawMaterialId, outletId, value, isManualEdit = false) => {
+    const material = materials.find(m => m.id === rawMaterialId)
+    
+    if (isManualEdit) {
+      setManualOverrides(prev => ({
+        ...prev,
+        [`${rawMaterialId}_${outletId}`]: true
+      }))
+    }
+
     setQuantities(prev => {
       const materialRow = prev[rawMaterialId] || {}
-      return {
+      const updated = {
         ...prev,
         [rawMaterialId]: {
           ...materialRow,
           [outletId]: value
         }
       }
+
+      if (material?.material_type === 'finished' && value) {
+        const qty = parseFloat(value)
+        if (!isNaN(qty) && qty > 0) {
+          const recipe = recipes.find(r => r.finished_product_id === rawMaterialId && r.is_active)
+          
+          if (recipe && recipe.recipe_ingredients?.length > 0) {
+            recipe.recipe_ingredients.forEach(ingredient => {
+              const overrideKey = `${ingredient.ingredient_material_id}_${outletId}`
+              
+              if (!manualOverrides[overrideKey]) {
+                const finalQty = qty * ingredient.quantity_per_unit
+                
+                if (!updated[ingredient.ingredient_material_id]) {
+                  updated[ingredient.ingredient_material_id] = {}
+                }
+                updated[ingredient.ingredient_material_id][outletId] = finalQty.toFixed(3)
+              }
+            })
+          }
+        }
+      }
+
+      return updated
     })
   }
 
@@ -923,7 +995,8 @@ const DispatchExecutiveDashboard = () => {
                                           handleQuantityChange(
                                             material.id,
                                             outlet.id,
-                                            e.target.value
+                                            e.target.value,
+                                            true
                                           )
                                         }
                                         className="w-full bg-input border border-border rounded-md px-1.5 py-1 text-[11px] lg:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"

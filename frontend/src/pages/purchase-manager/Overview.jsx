@@ -461,8 +461,11 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                 {recentStockIn.map((record) => {
                   const isKitchen = record.stock_in_type === 'kitchen'
                   const isInterCloud = record.stock_in_type === 'inter_cloud'
+                  const isManualInventory = record.stock_in_type === 'manual_inventory'
                   const displayLabel = isInterCloud
                     ? (record.notes || 'Transfer from (unknown)')
+                    : isManualInventory
+                    ? 'Manual Inventory Adjustment'
                     : isKitchen
                       ? 'Kitchen Stock In'
                       : (record.supplier_name || '—')
@@ -588,9 +591,11 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
               <h2 className="text-2xl font-bold text-foreground">
                 {stockInDetails.stock_in_type === 'inter_cloud'
                   ? 'Inter-Cloud Transfer Details'
-                  : stockInDetails.stock_in_type === 'kitchen'
-                    ? 'Kitchen Stock In Details'
-                    : 'Purchase Slip Details'}
+                  : stockInDetails.stock_in_type === 'manual_inventory'
+                    ? 'Manual Inventory Adjustment'
+                    : stockInDetails.stock_in_type === 'kitchen'
+                      ? 'Kitchen Stock In Details'
+                      : 'Purchase Slip Details'}
               </h2>
               <button
                 onClick={() => setShowStockInDetailsModal(false)}
@@ -616,7 +621,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                     {new Date(stockInDetails.created_at).toLocaleString()}
                   </p>
                 </div>
-                {(stockInDetails.supplier_name || stockInDetails.stock_in_type === 'inter_cloud') && (
+                {(stockInDetails.supplier_name || stockInDetails.stock_in_type === 'inter_cloud') && stockInDetails.stock_in_type !== 'manual_inventory' && (
                   <div>
                     <p className="text-sm text-muted-foreground">
                       {stockInDetails.stock_in_type === 'inter_cloud' ? 'Transfer from' : 'Supplier'}

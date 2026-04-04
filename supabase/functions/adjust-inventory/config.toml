@@ -1,0 +1,4 @@
+# Browser preflight (OPTIONS) does not carry a user JWT. Supabase's gateway would reject it
+# when JWT verification is on, causing "CORS" errors in the client. Auth is enforced inside
+# the function (Supabase Auth user or anon key + acting_user_id verified via service role).
+verify_jwt = false

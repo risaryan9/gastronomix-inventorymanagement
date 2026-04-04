@@ -1,10 +1,53 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+
+/** Latest stock_out.created_at (or allocation_date) per material for kitchen self stock-out + reason */
+async function fetchLastKitchenStockOutDatesByMaterial(
+  cloudKitchenId,
+  reason,
+  materialIds
+) {
+  if (!cloudKitchenId || !reason || !materialIds.length) return {}
+  const { data, error } = await supabase
+    .from('stock_out_items')
+    .select(`
+      raw_material_id,
+      stock_out!inner (
+        created_at,
+        allocation_date,
+        cloud_kitchen_id,
+        self_stock_out,
+        reason
+      )
+    `)
+    .in('raw_material_id', materialIds)
+    .eq('stock_out.cloud_kitchen_id', cloudKitchenId)
+    .eq('stock_out.self_stock_out', true)
+    .eq('stock_out.reason', reason)
+
+  if (error) {
+    console.error('fetchLastKitchenStockOutDatesByMaterial', error)
+    return {}
+  }
+  const map = {}
+  for (const row of data || []) {
+    const so = row.stock_out
+    if (!so) continue
+    const ts = so.created_at || so.allocation_date
+    if (!ts) continue
+    const mid = row.raw_material_id
+    const prev = map[mid]
+    if (!prev || new Date(ts) > new Date(prev)) {
+      map[mid] = ts
+    }
+  }
+  return map
+}
 
 const StockOut = () => {
   const [allocationRequests, setAllocationRequests] = useState([])
@@ -65,6 +108,51 @@ const StockOut = () => {
   const [materialDropdownSearchTerm, setMaterialDropdownSearchTerm] = useState('')
   const [materialDropdownPosition, setMaterialDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const materialDropdownSearchRef = useRef(null)
+
+  const [selfStockOutLastDates, setSelfStockOutLastDates] = useState({})
+  const [lastStockOutDatesLoading, setLastStockOutDatesLoading] = useState(false)
+
+  const selfStockOutMaterialIdsKey = useMemo(() => {
+    const ids = selfStockOutItems.map((i) => i.raw_material_id).filter(Boolean)
+    return [...new Set(ids)].sort().join(',')
+  }, [selfStockOutItems])
+
+  // When kitchen stock-out modal is open: last self stock-out date per material for the selected reason
+  useEffect(() => {
+    if (!showSelfStockOutModal || !selfStockOutReason) {
+      setSelfStockOutLastDates({})
+      setLastStockOutDatesLoading(false)
+      return
+    }
+    const session = getSession()
+    const ck = session?.cloud_kitchen_id
+    if (!ck) {
+      setSelfStockOutLastDates({})
+      return
+    }
+    const materialIds = selfStockOutMaterialIdsKey
+      ? selfStockOutMaterialIdsKey.split(',').filter(Boolean)
+      : []
+    if (materialIds.length === 0) {
+      setSelfStockOutLastDates({})
+      setLastStockOutDatesLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setLastStockOutDatesLoading(true)
+    fetchLastKitchenStockOutDatesByMaterial(ck, selfStockOutReason, materialIds)
+      .then((map) => {
+        if (!cancelled) setSelfStockOutLastDates(map)
+      })
+      .finally(() => {
+        if (!cancelled) setLastStockOutDatesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [showSelfStockOutModal, selfStockOutReason, selfStockOutMaterialIdsKey])
 
   // Fetch allocation requests and kitchen stock-out records
   useEffect(() => {
@@ -2523,12 +2611,18 @@ const StockOut = () => {
                 </div>
                 
                 <div className="overflow-x-auto border-2 border-border rounded-xl">
-                  <table className="w-full min-w-[700px]">
+                  <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="bg-background border-b-2 border-border select-none">
                         <th className="px-3 py-2 w-10"></th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Current Stock</th>
+                        <th
+                          className="px-3 py-2 text-left text-sm font-bold text-foreground w-44"
+                          title="Most recent kitchen stock-out for this material with the reason selected above"
+                        >
+                          Last stock out
+                        </th>
                         <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
                         <th className="px-3 py-2 w-12"></th>
                       </tr>
@@ -2621,6 +2715,32 @@ const StockOut = () => {
                               }`}>
                                 {item.raw_material_id ? `${item.current_inventory.toFixed(2)} ${item.unit}` : '—'}
                               </span>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              {!selfStockOutReason ? (
+                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                  —
+                                </span>
+                              ) : !item.raw_material_id ? (
+                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                  —
+                                </span>
+                              ) : lastStockOutDatesLoading ? (
+                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                  …
+                                </span>
+                              ) : selfStockOutLastDates[item.raw_material_id] ? (
+                                <span className="block px-3 py-2 text-sm font-medium text-foreground border border-border rounded-lg bg-muted/50">
+                                  {new Date(selfStockOutLastDates[item.raw_material_id]).toLocaleString(
+                                    undefined,
+                                    { dateStyle: 'medium', timeStyle: 'short' }
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="block px-3 py-2 text-xs text-muted-foreground border border-dashed border-border rounded-lg bg-muted/20">
+                                  No prior stock out
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2">
                               <input

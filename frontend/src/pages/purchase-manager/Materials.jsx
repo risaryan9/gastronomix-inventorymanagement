@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
+import PaginationControls from '../../components/PaginationControls'
 
 // Unit options
 const UNITS = ['nos', 'kg', 'gm', 'liter', 'packets', 'btl']
@@ -843,41 +844,15 @@ const Materials = ({ isAdminMode = false }) => {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="border-t border-border px-4 py-4 flex items-center justify-between">
+            <div className="border-t border-border px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-muted-foreground">
                 Showing {startIndex + 1} to {Math.min(endIndex, sortedMaterials.length)} of {sortedMaterials.length} materials
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                >
-                  Previous
-                </button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-2 rounded-lg font-semibold transition-all ${
-                        currentPage === page
-                          ? 'bg-accent text-background'
-                          : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                >
-                  Next
-                </button>
-              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
             </div>
           )}
         </div>
