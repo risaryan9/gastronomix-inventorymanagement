@@ -2610,30 +2610,37 @@ const StockOut = () => {
                   </div>
                 </div>
                 
-                <div className="overflow-x-auto border-2 border-border rounded-xl">
-                  <table className="w-full min-w-[900px]">
-                    <thead>
-                      <tr className="bg-background border-b-2 border-border select-none">
-                        <th className="px-3 py-2 w-10"></th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Current Stock</th>
-                        <th
-                          className="px-3 py-2 text-left text-sm font-bold text-foreground w-44"
-                          title="Most recent kitchen stock-out for this material with the reason selected above"
-                        >
-                          Last stock out
-                        </th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
-                        <th className="px-3 py-2 w-12"></th>
-                      </tr>
-                    </thead>
-                      <tbody>
-                        {selfStockOutItems.map((item, index) => (
-                          <tr 
-                            key={item.id || index} 
-                            className={`border-b border-border hover:bg-accent/5 ${selectedStockOutRows.has(index) ? 'bg-accent/10' : ''}`}
+                <div className="rounded-xl border-2 border-border overflow-hidden bg-background">
+                  <div className="overflow-x-auto">
+                    <table className="w-full table-fixed border-collapse min-w-0">
+                      <thead>
+                        <tr className="bg-muted/40 border-b-2 border-border select-none">
+                          <th className="px-2 py-2.5 w-9 align-middle"></th>
+                          <th className="px-2 py-2.5 text-left text-sm font-bold text-foreground w-[38%] min-w-0 align-middle">
+                            Name
+                          </th>
+                          <th className="px-2 py-2.5 text-left text-sm font-bold text-foreground w-[17%] min-w-0 align-middle">
+                            Current Stock
+                          </th>
+                          <th
+                            className="px-2 py-2.5 text-left text-sm font-bold text-foreground w-[19%] min-w-0 align-middle"
+                            title="Most recent kitchen stock-out for this material with the reason selected above"
                           >
-                            <td className="px-3 py-2">
+                            Last stock out
+                          </th>
+                          <th className="px-2 py-2.5 text-left text-sm font-bold text-foreground w-16 min-w-[4rem] align-middle">
+                            Quantity
+                          </th>
+                          <th className="px-1 py-2.5 w-9 align-middle"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {selfStockOutItems.map((item, index) => (
+                          <tr
+                            key={item.id || index}
+                            className={`hover:bg-accent/5 ${selectedStockOutRows.has(index) ? 'bg-accent/10' : ''}`}
+                          >
+                            <td className="px-2 py-2">
                               <input
                                 type="checkbox"
                                 checked={selectedStockOutRows.has(index)}
@@ -2641,8 +2648,8 @@ const StockOut = () => {
                                 className="rounded border-border"
                               />
                             </td>
-                            <td className="px-3 py-2 relative material-dropdown-container">
-                              <div className="min-w-[180px]">
+                            <td className="px-2 py-2 relative material-dropdown-container min-w-0 max-w-full">
+                              <div className="min-w-0 w-full">
                                 <button
                                   type="button"
                                   data-self-stock-out-trigger={index}
@@ -2651,7 +2658,7 @@ const StockOut = () => {
                                     setMaterialDropdownSearchTerm('')
                                   }}
                                   disabled={allocating}
-                                  className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate"
+                                  className="w-full min-w-0 text-left px-2 py-1.5 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate"
                                 >
                                   {item.raw_material_id ? (
                                     <span>{item.name} <span className="text-muted-foreground text-xs">({item.unit})</span></span>
@@ -2705,8 +2712,8 @@ const StockOut = () => {
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 py-2">
-                              <span className={`block px-3 py-2 border border-border rounded-lg text-sm font-medium ${
+                            <td className="px-2 py-2 min-w-0">
+                              <span className={`block px-2 py-1.5 border border-border rounded-lg text-xs font-medium truncate ${
                                 item.raw_material_id ? (
                                   item.current_inventory === 0 ? 'bg-destructive/10 text-destructive' :
                                   item.current_inventory < 10 ? 'bg-yellow-500/10 text-yellow-600' :
@@ -2716,33 +2723,33 @@ const StockOut = () => {
                                 {item.raw_material_id ? `${item.current_inventory.toFixed(2)} ${item.unit}` : '—'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 align-top">
+                            <td className="px-2 py-2 align-top min-w-0">
                               {!selfStockOutReason ? (
-                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                <span className="block px-2 py-1.5 text-xs text-muted-foreground border border-border rounded-lg bg-muted/30 truncate">
                                   —
                                 </span>
                               ) : !item.raw_material_id ? (
-                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                <span className="block px-2 py-1.5 text-xs text-muted-foreground border border-border rounded-lg bg-muted/30 truncate">
                                   —
                                 </span>
                               ) : lastStockOutDatesLoading ? (
-                                <span className="block px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg bg-muted/30">
+                                <span className="block px-2 py-1.5 text-xs text-muted-foreground border border-border rounded-lg bg-muted/30">
                                   …
                                 </span>
                               ) : selfStockOutLastDates[item.raw_material_id] ? (
-                                <span className="block px-3 py-2 text-sm font-medium text-foreground border border-border rounded-lg bg-muted/50">
+                                <span className="block px-2 py-1.5 text-xs font-medium text-foreground border border-border rounded-lg bg-muted/50 leading-tight line-clamp-2 break-words">
                                   {new Date(selfStockOutLastDates[item.raw_material_id]).toLocaleString(
                                     undefined,
-                                    { dateStyle: 'medium', timeStyle: 'short' }
+                                    { dateStyle: 'short', timeStyle: 'short' }
                                   )}
                                 </span>
                               ) : (
-                                <span className="block px-3 py-2 text-xs text-muted-foreground border border-dashed border-border rounded-lg bg-muted/20">
+                                <span className="block px-2 py-1.5 text-[11px] text-muted-foreground border border-dashed border-border rounded-lg bg-muted/20 leading-tight">
                                   No prior stock out
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-2 w-16 min-w-[4rem]">
                               <input
                                 type="number"
                                 min="0"
@@ -2751,10 +2758,10 @@ const StockOut = () => {
                                 onChange={(e) => handleUpdateSelfStockOutQuantity(index, e.target.value)}
                                 disabled={!item.raw_material_id}
                                 placeholder="0"
-                                className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                className="w-full max-w-[4.25rem] min-w-0 px-2 py-1.5 bg-input border border-border rounded-lg text-foreground text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-1 py-2">
                               <button
                                 type="button"
                                 onClick={() => removeMaterialFromSelfStockOut(index)}
@@ -2771,6 +2778,7 @@ const StockOut = () => {
                       </tbody>
                     </table>
                   </div>
+                </div>
                 {selfStockOutItems.length === 0 && (
                   <p className="text-sm text-muted-foreground mt-3">
                     Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity.

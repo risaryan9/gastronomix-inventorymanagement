@@ -524,10 +524,10 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
             )}
           </div>
 
-          {/* Recent Allocations */}
+          {/* Recent Stock Out */}
           <div className="bg-card border-2 border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-foreground">Recent Allocations</h2>
+              <h2 className="text-lg font-bold text-foreground">Recent Stock Out</h2>
               <button
                 onClick={() => navigate('/invmanagement/dashboard/purchase_manager/outlets')}
                 className="text-sm text-accent hover:text-accent/80 font-semibold touch-manipulation"
@@ -540,7 +540,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                 <svg className="w-12 h-12 text-muted-foreground mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <p className="text-sm text-muted-foreground">No recent allocations</p>
+                <p className="text-sm text-muted-foreground">No recent stock outs</p>
               </div>
             ) : (
               <div className="space-y-3">

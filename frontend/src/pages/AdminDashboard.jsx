@@ -6,6 +6,7 @@ import Materials from './purchase-manager/Materials'
 import AdminUsers from './admin/AdminUsers'
 import AdminOperators from './admin/AdminOperators'
 import AdminRecipes from './admin/AdminRecipes'
+import AdminOutlets from './admin/AdminOutlets'
 
 const NAV_STRUCTURE = [
   {
@@ -51,9 +52,7 @@ const AdminDashboard = () => {
   const [session, setSession] = useState(null)
   const [activeParentId, setActiveParentId] = useState('overview')
   const [activeChildId, setActiveChildId] = useState('cloud-kitchen')
-  const [expandedParents, setExpandedParents] = useState(
-    () => NAV_STRUCTURE.map((parent) => parent.id) // all expanded by default
-  )
+  const [expandedParents, setExpandedParents] = useState([])
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -75,6 +74,8 @@ const AdminDashboard = () => {
 
   const activeParent = NAV_STRUCTURE.find((p) => p.id === activeParentId)
   const activeChild = activeParent?.children.find((c) => c.id === activeChildId)
+  const isOutletsSection =
+    activeParentId === 'overview' && activeChildId === 'outlets'
   const isMaterialsSection =
     activeParentId === 'settings' && activeChildId === 'materials'
   const isRecipesSection =
@@ -207,7 +208,11 @@ const AdminDashboard = () => {
 
           {/* Content Area */}
           <section className="flex-1">
-            {isMaterialsSection ? (
+            {isOutletsSection ? (
+              <div className="-mt-2">
+                <AdminOutlets />
+              </div>
+            ) : isMaterialsSection ? (
               <div className="-mt-2">
                 <Materials isAdminMode={true} />
               </div>
