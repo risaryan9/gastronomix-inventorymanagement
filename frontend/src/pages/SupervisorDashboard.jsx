@@ -78,7 +78,7 @@ const SupervisorDashboard = () => {
                 : 'text-muted-foreground border-transparent hover:text-foreground'
             }`}
           >
-            Outlets
+            Requisition
           </button>
           <button
             onClick={() => navigate('/invmanagement/dashboard/supervisor/checkout')}
@@ -93,7 +93,7 @@ const SupervisorDashboard = () => {
         </div>
       </nav>
 
-      {/* Main content shows only the nested page (Outlets / Outlet details / Closing form) */}
+      {/* Main content shows only the nested page (Requisition / Outlet details / Closing form) */}
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

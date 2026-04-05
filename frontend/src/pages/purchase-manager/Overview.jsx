@@ -112,7 +112,7 @@ const Overview = () => {
           .eq('request_date', todayStr)
           .eq('is_packed', false),
 
-        // Outlets for this cloud kitchen (for count)
+        // Active outlets for this cloud kitchen (Requisition overview card count)
         supabase
           .from('outlets')
           .select('id')
@@ -401,10 +401,10 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
             </button>
           </div>
 
-          {/* Outlets Count */}
+          {/* Requisition: active outlet count (allocation / requisition targets) */}
           <div className="bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground font-semibold">Outlets</p>
+              <p className="text-sm text-muted-foreground font-semibold">Requisition</p>
               <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 11h14M7 15h10M9 19h6" />
               </svg>
@@ -414,7 +414,7 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
               onClick={() => navigate('/invmanagement/dashboard/purchase_manager/outlets')}
               className="text-xs text-accent hover:text-accent/80 font-semibold mt-2 touch-manipulation"
             >
-              View outlets →
+              View requisition →
             </button>
           </div>
 

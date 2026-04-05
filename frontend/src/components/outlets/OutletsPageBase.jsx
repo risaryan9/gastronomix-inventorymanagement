@@ -509,7 +509,7 @@ const OutletsPageBase = ({ role }) => {
   return (
     <div className="p-3 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-xl lg:text-3xl font-bold text-foreground mb-4 lg:mb-6">Outlets</h1>
+        <h1 className="text-xl lg:text-3xl font-bold text-foreground mb-4 lg:mb-6">Requisition</h1>
         <div className="mb-4 lg:mb-6">
           <h2 className="text-sm lg:text-lg font-semibold text-foreground mb-2 lg:mb-4">Select Brand</h2>
           <div className="flex flex-row lg:grid lg:grid-cols-3 gap-2 lg:gap-4">

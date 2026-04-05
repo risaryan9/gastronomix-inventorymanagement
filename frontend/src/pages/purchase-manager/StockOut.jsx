@@ -63,12 +63,12 @@ const StockOut = () => {
   // Outlet stock-out panel state (allocation requests)
   const [searchTerm, setSearchTerm] = useState('')
   const [outletPreviousDaysPage, setOutletPreviousDaysPage] = useState(1)
-  const outletPreviousDaysPerPage = 50
+  const outletPreviousDaysPerPage = 15
   // View all allocation requests modal (non-today's requests, with search + pagination)
   const [showViewAllAllocationModal, setShowViewAllAllocationModal] = useState(false)
   const [viewAllSearchTerm, setViewAllSearchTerm] = useState('')
   const [viewAllPage, setViewAllPage] = useState(1)
-  const viewAllPerPage = 50
+  const viewAllPerPage = 15
 
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
@@ -79,7 +79,7 @@ const StockOut = () => {
   const [kitchenDateTo, setKitchenDateTo] = useState('')
 
   // Pagination per panel
-  const kitchenPerPage = 50
+  const kitchenPerPage = 15
   const [kitchenCurrentPage, setKitchenCurrentPage] = useState(1)
 
   // Layout mode for desktop panels: 'split' | 'outlet-full' | 'kitchen-full'
@@ -1529,7 +1529,7 @@ const StockOut = () => {
     outletPreviousDaysStart + outletPreviousDaysPerPage
   )
 
-  // View all modal: filter previous-days requests by modal search, then paginate (50 per page)
+  // View all modal: filter previous-days requests by modal search, then paginate (15 per page)
   const viewAllFilteredRequests = previousDaysRequests.filter((r) =>
     allocationRequestMatchesSearch(r, viewAllSearchTerm)
   )
@@ -1606,7 +1606,7 @@ const StockOut = () => {
     return true
   })
 
-  // Pagination for kitchen panel (50 per page, same design as Outlet Stock Out)
+  // Pagination for kitchen panel (15 per page, same design as Outlet Stock Out)
   const kitchenTotalPages = Math.ceil(kitchenFiltered.length / kitchenPerPage) || 1
   const kitchenStartIndex = (kitchenCurrentPage - 1) * kitchenPerPage
   const kitchenPaginated = kitchenFiltered.slice(
@@ -2278,7 +2278,7 @@ const StockOut = () => {
           </div>
         )}
 
-        {/* View all allocation requests modal (non-today's, search + pagination 50) */}
+        {/* View all allocation requests modal (non-today's, search + pagination 15) */}
         {showViewAllAllocationModal && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
             <div className="bg-card border-2 border-border rounded-xl overflow-hidden flex flex-col max-w-6xl w-full max-h-[90vh]">

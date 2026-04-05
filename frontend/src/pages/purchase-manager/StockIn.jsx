@@ -61,9 +61,6 @@ const StockIn = () => {
   // Items in the purchase slip (spreadsheet rows)
   const [purchaseItems, setPurchaseItems] = useState([])
 
-  // Selected rows for bulk remove
-  const [selectedRows, setSelectedRows] = useState(new Set())
-
   // Which row's material dropdown is open (-1 = none)
   const [openDropdownRow, setOpenDropdownRow] = useState(-1)
   const [dropdownSearchTerm, setDropdownSearchTerm] = useState('')
@@ -306,37 +303,6 @@ const StockIn = () => {
   // Remove single row
   const handleRemoveRow = (index) => {
     setPurchaseItems(prev => prev.filter((_, i) => i !== index))
-    setSelectedRows(prev => {
-      const next = new Set(prev)
-      next.delete(index)
-      return next
-    })
-  }
-
-  // Toggle row selection
-  const handleToggleRowSelect = (index) => {
-    setSelectedRows(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
-  }
-
-  // Select/deselect all rows
-  const handleToggleSelectAll = (checked) => {
-    if (checked) {
-      setSelectedRows(new Set(purchaseItems.map((_, i) => i)))
-    } else {
-      setSelectedRows(new Set())
-    }
-  }
-
-  // Remove selected rows
-  const handleRemoveSelectedRows = () => {
-    if (selectedRows.size === 0) return
-    setPurchaseItems(prev => prev.filter((_, i) => !selectedRows.has(i)))
-    setSelectedRows(new Set())
   }
 
   // Update item quantity
@@ -810,7 +776,6 @@ const StockIn = () => {
           `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
       }))
     )
-    setSelectedRows(new Set())
     setOpenDropdownRow(-1)
     setDropdownSearchTerm('')
     setShowAddModal(true)
@@ -878,7 +843,6 @@ const StockIn = () => {
     setInvoiceFile(null)
     setInvoiceFileError('')
     setPurchaseItems([])
-    setSelectedRows(new Set())
     setOpenDropdownRow(-1)
     setDropdownSearchTerm('')
   }
@@ -1268,7 +1232,7 @@ const StockIn = () => {
               onClick={() => beginAddModalFlow('purchase')}
               className="bg-accent text-background font-bold px-6 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200"
             >
-              + Create Stock-In Invoice
+              + Create Vendor Stock-In
             </button>
             <button
               onClick={() => beginAddModalFlow('kitchen')}
@@ -1281,12 +1245,12 @@ const StockIn = () => {
 
         {/* Purchase & Kitchen Stock-In Panels */}
         <div className={`grid grid-cols-1 ${layoutMode === 'split' ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-6 transition-all duration-300`}>
-          {/* Purchase Stock-In Panel */}
+          {/* Vendor Stock-In Panel */}
           {layoutMode !== 'kitchen-full' && (
           <div className={`bg-card border-2 border-border rounded-xl overflow-hidden transition-all duration-300 ${layoutMode === 'purchase-full' ? 'lg:col-span-1' : ''}`}>
             <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground">Purchase Stock-In</h2>
+                <h2 className="text-lg font-bold text-foreground">Vendor Stock-In</h2>
                 <span className="text-xs text-muted-foreground">
                   {purchaseRecords.length} record(s)
                 </span>
@@ -1875,7 +1839,7 @@ const StockIn = () => {
         {/* Add Stock-In Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold text-foreground">
                   {stockInType === 'kitchen' ? 'New Kitchen Stock-In' : 'New Purchase Slip'}
@@ -2002,14 +1966,6 @@ const StockIn = () => {
                 </p>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex gap-2">
-                    {selectedRows.size > 0 && (
-                      <button
-                        onClick={handleRemoveSelectedRows}
-                        className="px-3 py-1.5 text-sm font-semibold text-destructive bg-destructive/10 border border-destructive/30 rounded-lg hover:bg-destructive/20 transition-all"
-                      >
-                        Remove Selected ({selectedRows.size})
-                      </button>
-                    )}
                     <button
                       onClick={handleAddRow}
                       className="px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm"
@@ -2019,38 +1975,59 @@ const StockIn = () => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border-2 border-border rounded-xl">
-                  <table className="w-full min-w-[700px]">
+                <div className="border-2 border-border rounded-xl overflow-hidden">
+                  <table className="w-full table-fixed">
+                    <colgroup>
+                      <col style={{ width: '44%' }} />
+                      <col style={{ width: '9%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '7%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '7%' }} />
+                    </colgroup>
                     <thead>
                       <tr className="bg-background border-b-2 border-border select-none">
-                        <th className="px-3 py-2 w-10"></th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Quantity</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Prev. Cost (₹)</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Unit Cost (₹)</th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-24">
-                          GST (%) {stockInType === 'purchase' ? <span className="text-destructive">*</span> : null}
+                        <th className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground">
+                          Name
                         </th>
-                        <th className="px-3 py-2 text-left text-sm font-bold text-foreground w-28">Total (₹)</th>
-                        <th className="px-3 py-2 w-12"></th>
+                        <th className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground">
+                          Qty
+                        </th>
+                        <th
+                          className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground leading-tight"
+                          title="Previous cost (₹)"
+                        >
+                          Prev. ₹
+                        </th>
+                        <th
+                          className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground leading-tight"
+                          title="Unit cost (₹)"
+                        >
+                          Unit ₹
+                        </th>
+                        <th className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground leading-tight">
+                          GST % {stockInType === 'purchase' ? <span className="text-destructive">*</span> : null}
+                        </th>
+                        <th
+                          className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground leading-tight"
+                          title="Line total (₹)"
+                        >
+                          Total ₹
+                        </th>
+                        <th className="px-1 py-2 text-center text-xs sm:text-sm font-bold text-foreground">
+                          <span className="sr-only">Remove row</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {purchaseItems.map((item, index) => (
                         <tr
                           key={item.id || index}
-                          className={`border-b border-border hover:bg-accent/5 ${selectedRows.has(index) ? 'bg-accent/10' : ''}`}
+                          className="border-b border-border hover:bg-accent/5"
                         >
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedRows.has(index)}
-                              onChange={() => handleToggleRowSelect(index)}
-                              className="rounded border-border"
-                            />
-                          </td>
-                          <td className="px-3 py-2 relative material-dropdown-container">
-                            <div className="min-w-[180px]">
+                          <td className="px-2 py-2 relative material-dropdown-container align-top min-w-0">
+                            <div className="min-w-0">
                               <button
                                 type="button"
                                 data-dropdown-trigger={index}
@@ -2058,7 +2035,7 @@ const StockIn = () => {
                                   setOpenDropdownRow(openDropdownRow === index ? -1 : index)
                                   setDropdownSearchTerm('')
                                 }}
-                                className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-sm truncate"
+                                className="w-full min-w-0 text-left px-2 sm:px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent text-xs sm:text-sm whitespace-normal break-words"
                               >
                                 {item.material ? (
                                   <span>{item.material.name} <span className="text-muted-foreground text-xs">({item.material.unit})</span></span>
@@ -2073,7 +2050,7 @@ const StockIn = () => {
                                     top: dropdownPosition.top,
                                     left: dropdownPosition.left,
                                     width: dropdownPosition.width,
-                                    minWidth: 280
+                                    minWidth: 300
                                   }}
                                 >
                                   <input
@@ -2108,7 +2085,7 @@ const StockIn = () => {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-2 align-top min-w-0">
                             <input
                               type="number"
                               min="0.5"
@@ -2116,18 +2093,18 @@ const StockIn = () => {
                               value={item.quantity}
                               onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value)}
                               placeholder="0"
-                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              className="w-full min-w-0 max-w-full px-2 py-2 bg-input border border-border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               disabled={!item.material}
                             />
                           </td>
-                          <td className="px-3 py-2">
-                            <span className="block px-3 py-2 bg-muted/50 border border-border rounded-lg text-foreground text-sm">
+                          <td className="px-2 py-2 align-top min-w-0">
+                            <span className="block px-2 py-2 bg-muted/50 border border-border rounded-lg text-foreground text-xs sm:text-sm tabular-nums truncate" title={item.previous_cost != null && item.previous_cost > 0 ? `₹${parseFloat(item.previous_cost).toFixed(2)}` : ''}>
                               {item.previous_cost != null && item.previous_cost > 0
                                 ? `₹${parseFloat(item.previous_cost).toFixed(2)}`
                                 : '—'}
                             </span>
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-2 align-top min-w-0">
                             <input
                               type="number"
                               min="0"
@@ -2135,11 +2112,11 @@ const StockIn = () => {
                               value={item.unit_cost || ''}
                               onChange={(e) => handleUpdateItem(index, 'unit_cost', e.target.value)}
                               placeholder="0"
-                              className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              className="w-full min-w-0 max-w-full px-2 py-2 bg-input border border-border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               disabled={!item.material}
                             />
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-2 align-top min-w-0">
                             <input
                               type="number"
                               min="0"
@@ -2149,18 +2126,18 @@ const StockIn = () => {
                               placeholder="0"
                               title={stockInType === 'purchase' ? 'Required for purchase. Use 0 if no GST for this material.' : 'Kitchen stock-in: auto 0%.'}
                               readOnly={stockInType === 'kitchen'}
-                              className={`w-full px-3 py-2 bg-input border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent ${stockInType === 'purchase' && item.material && (item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined) ? 'border-destructive' : 'border-border'} ${stockInType === 'kitchen' ? 'cursor-default' : ''}`}
+                              className={`w-full min-w-0 max-w-full px-2 py-2 bg-input border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent ${stockInType === 'purchase' && item.material && (item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined) ? 'border-destructive' : 'border-border'} ${stockInType === 'kitchen' ? 'cursor-default' : ''}`}
                               disabled={!item.material}
                             />
                           </td>
-                          <td className="px-3 py-2 text-sm font-medium text-foreground">
+                          <td className="px-2 py-2 align-top min-w-0 text-xs sm:text-sm font-medium text-foreground tabular-nums">
                             {item.total_cost != null ? `₹${parseFloat(item.total_cost || 0).toFixed(2)}` : '—'}
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-1 py-2 align-top text-center">
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(index)}
-                              className="text-destructive hover:text-destructive/80 p-1"
+                              className="text-destructive hover:text-destructive/80 p-1 inline-flex"
                               title="Remove row"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
