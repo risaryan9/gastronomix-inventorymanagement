@@ -7,6 +7,7 @@ import AdminUsers from './admin/AdminUsers'
 import AdminOperators from './admin/AdminOperators'
 import AdminRecipes from './admin/AdminRecipes'
 import AdminOutlets from './admin/AdminOutlets'
+import AdminVendors from './admin/AdminVendors'
 
 const NAV_STRUCTURE = [
   {
@@ -31,6 +32,7 @@ const NAV_STRUCTURE = [
     label: 'Settings',
     children: [
       { id: 'materials', label: 'Materials' },
+      { id: 'vendors', label: 'Vendors' },
       { id: 'recipes', label: 'Recipes' },
       { id: 'users', label: 'Users' },
       { id: 'operators', label: 'Operators' },
@@ -84,6 +86,8 @@ const AdminDashboard = () => {
     activeParentId === 'settings' && activeChildId === 'users'
   const isOperatorsSection =
     activeParentId === 'settings' && activeChildId === 'operators'
+  const isVendorsSection =
+    activeParentId === 'settings' && activeChildId === 'vendors'
 
   return (
     <div className="min-h-screen bg-background">
@@ -223,6 +227,10 @@ const AdminDashboard = () => {
             ) : isUsersSection ? (
               <div className="-mt-2">
                 <AdminUsers />
+              </div>
+            ) : isVendorsSection ? (
+              <div className="-mt-2">
+                <AdminVendors />
               </div>
             ) : isOperatorsSection ? (
               <div className="-mt-2">
