@@ -253,7 +253,7 @@ const StockIn = () => {
       raw_material_id: null,
       material: null,
       quantity: '',
-      unit_cost: 0,
+      unit_cost: '',
       previous_cost: null,
       gst_percent: '',
       total_cost: 0
@@ -262,7 +262,8 @@ const StockIn = () => {
 
   // Select material for a row (from dropdown)
   const handleSelectMaterial = async (rowIndex, material) => {
-    let unitCost = 0
+    let unitCost = ''
+    let previousCost = null
     const session = getSession()
     if (session?.cloud_kitchen_id) {
       try {
@@ -274,7 +275,10 @@ const StockIn = () => {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-        if (latestBatch) unitCost = parseFloat(latestBatch.unit_cost) || 0
+        if (latestBatch) {
+          previousCost = parseFloat(latestBatch.unit_cost) || 0
+          unitCost = previousCost
+        }
       } catch (err) {
         console.error('Error fetching unit cost:', err)
       }
@@ -287,11 +291,11 @@ const StockIn = () => {
         raw_material_id: material.id,
         material,
         unit_cost: unitCost,
-        previous_cost: unitCost,
+        previous_cost: previousCost,
         total_cost: (() => {
           const quantity = parseFloat(updated[rowIndex].quantity) || 0
           const gstPercent = parseFloat(updated[rowIndex].gst_percent) || 0
-          const base = quantity * unitCost
+          const base = quantity * (parseFloat(unitCost) || 0)
           return base + (base * gstPercent / 100)
         })()
       }
@@ -811,7 +815,7 @@ const StockIn = () => {
       raw_material_id: null,
       material: null,
       quantity: '',
-      unit_cost: 0,
+      unit_cost: '',
       previous_cost: null,
       gst_percent: '',
       total_cost: 0
@@ -2117,7 +2121,6 @@ const StockIn = () => {
                               step="0.5"
                               value={item.quantity}
                               onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value)}
-                              placeholder="0"
                               className="w-full min-w-0 max-w-full px-2 py-2 bg-input border border-border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               disabled={!item.material}
                             />
@@ -2136,7 +2139,6 @@ const StockIn = () => {
                               step="0.01"
                               value={item.unit_cost || ''}
                               onChange={(e) => handleUpdateItem(index, 'unit_cost', e.target.value)}
-                              placeholder="0"
                               className="w-full min-w-0 max-w-full px-2 py-2 bg-input border border-border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               disabled={!item.material}
                             />
@@ -2146,9 +2148,8 @@ const StockIn = () => {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={stockInType === 'kitchen' ? 0 : (item.gst_percent ?? '')}
+                              value={stockInType === 'kitchen' ? '' : (item.gst_percent ?? '')}
                               onChange={(e) => handleUpdateItem(index, 'gst_percent', e.target.value)}
-                              placeholder="0"
                               title={stockInType === 'purchase' ? 'Required for purchase. Use 0 if no GST for this material.' : 'Kitchen stock-in: auto 0%.'}
                               readOnly={stockInType === 'kitchen'}
                               className={`w-full min-w-0 max-w-full px-2 py-2 bg-input border rounded-lg text-foreground text-xs sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent ${stockInType === 'purchase' && item.material && (item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined) ? 'border-destructive' : 'border-border'} ${stockInType === 'kitchen' ? 'cursor-default' : ''}`}

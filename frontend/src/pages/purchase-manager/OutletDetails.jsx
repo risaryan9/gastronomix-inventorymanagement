@@ -886,7 +886,7 @@ const OutletDetails = () => {
                             step="0.5"
                             value={row.quantity}
                             onChange={(e) => handleUpdateQuantity(index, e.target.value)}
-                            placeholder="0"
+                           
                             disabled={requesting || !row.material}
                             className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
                           />

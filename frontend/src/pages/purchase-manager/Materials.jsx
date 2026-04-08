@@ -1177,7 +1177,6 @@ const Materials = ({ isAdminMode = false }) => {
                       value={formData.low_stock_threshold}
                       onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
                       className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      placeholder="0.00"
                       disabled={saving}
                     />
                     <p className="text-xs text-muted-foreground mt-1">

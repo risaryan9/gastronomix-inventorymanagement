@@ -732,7 +732,7 @@ const OutletsPageBase = ({ role }) => {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <input type="number" min="0.5" step="0.5" value={row.quantity} onChange={(e) => handleUpdateQuantity(index, e.target.value)} placeholder="0" disabled={!row.material || requesting} className="w-full px-3 py-2 bg-input border border-border rounded-lg text-sm" />
+                          <input type="number" min="0.5" step="0.5" value={row.quantity} onChange={(e) => handleUpdateQuantity(index, e.target.value)} disabled={!row.material || requesting} className="w-full px-3 py-2 bg-input border border-border rounded-lg text-sm" />
                         </td>
                         <td className="px-3 py-2"><button type="button" onClick={() => handleRemoveRow(index)} disabled={requesting} className="text-destructive p-1">x</button></td>
                       </tr>

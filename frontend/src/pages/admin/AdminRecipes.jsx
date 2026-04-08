@@ -591,7 +591,6 @@ const AdminRecipes = () => {
                                     updateIngredient(idx, 'quantity_per_unit', e.target.value)
                                   }
                                   className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-                                  placeholder="e.g. 50"
                                   disabled={saving}
                                 />
                                 <p className="text-[10px] text-muted-foreground mt-0.5">

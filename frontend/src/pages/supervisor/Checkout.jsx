@@ -816,7 +816,7 @@ const Checkout = () => {
                                       handleFormDataChange(item.raw_material_id, 'returned', e.target.value)
                                     }
                                     className="w-full bg-input border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    placeholder="0"
+                                   
                                   />
                                 </td>
                                 <td className="border-t border-l border-border px-3 py-2.5">
@@ -831,7 +831,7 @@ const Checkout = () => {
                                       handleFormDataChange(item.raw_material_id, 'wasted', e.target.value)
                                     }
                                     className="w-full bg-input border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    placeholder="0"
+                                   
                                   />
                                 </td>
                               </tr>
@@ -855,7 +855,7 @@ const Checkout = () => {
                       value={cash}
                       onChange={(e) => setCash(e.target.value)}
                       className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                      placeholder="0.00"
+                     
                     />
                   </div>
                   <div>
@@ -869,7 +869,7 @@ const Checkout = () => {
                       value={paymentOnside}
                       onChange={(e) => setPaymentOnside(e.target.value)}
                       className="w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-                      placeholder="0.00"
+                     
                     />
                   </div>
                   <div>

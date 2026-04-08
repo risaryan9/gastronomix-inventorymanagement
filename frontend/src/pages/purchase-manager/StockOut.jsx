@@ -928,7 +928,7 @@ const StockOut = () => {
           name: material.name,
           code: material.code,
           unit: material.unit,
-          allocated_quantity: 0,
+          allocated_quantity: '',
           todays_total: todaysTotal,
           current_inventory: currentInventory
         }
@@ -944,7 +944,7 @@ const StockOut = () => {
           name: material.name,
           code: material.code,
           unit: material.unit,
-          allocated_quantity: 0,
+          allocated_quantity: '',
           current_inventory: 0
         }
         return updated
@@ -2764,7 +2764,6 @@ const StockOut = () => {
                                 value={item.allocated_quantity}
                                 onChange={(e) => handleUpdateSelfStockOutQuantity(index, e.target.value)}
                                 disabled={!item.raw_material_id}
-                                placeholder="0"
                                 className="w-full max-w-[4.25rem] min-w-0 px-2 py-1.5 bg-input border border-border rounded-lg text-foreground text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                               />
                             </td>
