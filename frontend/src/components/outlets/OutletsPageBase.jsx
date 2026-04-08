@@ -205,12 +205,15 @@ const OutletsPageBase = ({ role }) => {
       if (existingRequest) {
         setEditingRequest(existingRequest)
         setAllocationRows(
-          (existingRequest.allocation_request_items || []).map(item => ({
-            id: `row-${item.id}`,
-            raw_material_id: item.raw_materials.id,
-            material: item.raw_materials,
-            quantity: parseFloat(item.quantity).toString()
-          }))
+          [
+            ...(existingRequest.allocation_request_items || []).map(item => ({
+              id: `row-${item.id}`,
+              raw_material_id: item.raw_materials.id,
+              material: item.raw_materials,
+              quantity: parseFloat(item.quantity).toString()
+            })),
+            makeEmptyAllocationRow()
+          ]
         )
         if (isSupervisor) setSupervisorName(existingRequest.supervisor_name || '')
       } else {
@@ -279,18 +282,25 @@ const OutletsPageBase = ({ role }) => {
     })
   }
 
-  const handleAddRow = () => setAllocationRows(prev => [...prev, makeEmptyAllocationRow()])
   const handleSelectMaterial = (rowIndex, material) => {
     setAllocationRows(prev => {
       const updated = [...prev]
+      const isLastRow = rowIndex === updated.length - 1
+      const wasMaterialUnselected = !updated[rowIndex]?.raw_material_id
       updated[rowIndex] = { ...updated[rowIndex], raw_material_id: material.id, material, quantity: updated[rowIndex].quantity || '' }
+      if (isLastRow && wasMaterialUnselected) {
+        updated.push(makeEmptyAllocationRow())
+      }
       return updated
     })
     setOpenDropdownRow(-1)
     setDropdownSearchTerm('')
   }
   const handleRemoveRow = (index) => {
-    setAllocationRows(prev => prev.filter((_, i) => i !== index))
+    setAllocationRows(prev => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length > 0 ? next : [makeEmptyAllocationRow()]
+    })
     setSelectedRows(prev => {
       const next = new Set(prev)
       next.delete(index)
@@ -307,7 +317,10 @@ const OutletsPageBase = ({ role }) => {
   }
   const handleRemoveSelectedRows = () => {
     if (selectedRows.size === 0) return
-    setAllocationRows(prev => prev.filter((_, i) => !selectedRows.has(i)))
+    setAllocationRows(prev => {
+      const next = prev.filter((_, i) => !selectedRows.has(i))
+      return next.length > 0 ? next : [makeEmptyAllocationRow()]
+    })
     setSelectedRows(new Set())
   }
   const handleUpdateQuantity = (index, quantity) => {
@@ -703,7 +716,6 @@ const OutletsPageBase = ({ role }) => {
                     Remove Selected ({selectedRows.size})
                   </button>
                 )}
-                <button onClick={handleAddRow} disabled={requesting} className="ml-auto px-4 py-2 bg-accent text-background font-bold rounded-lg">+ Add Row</button>
               </div>
               <div className="overflow-x-auto border-2 border-border rounded-xl">
                 <table className="w-full min-w-[500px]">

@@ -246,20 +246,16 @@ const StockIn = () => {
     })
   }
 
-  // Add new empty row
-  const handleAddRow = () => {
-    const rowId = `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setPurchaseItems(prev => [...prev, {
-      id: rowId,
-      raw_material_id: null,
-      material: null,
-      quantity: '',
-      unit_cost: '',
-      previous_cost: null,
-      gst_percent: '',
-      total_cost: 0
-    }])
-  }
+  const makeEmptyPurchaseItemRow = () => ({
+    id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    raw_material_id: null,
+    material: null,
+    quantity: '',
+    unit_cost: '',
+    previous_cost: null,
+    gst_percent: '',
+    total_cost: 0
+  })
 
   // Select material for a row (from dropdown)
   const handleSelectMaterial = async (rowIndex, material) => {
@@ -287,6 +283,8 @@ const StockIn = () => {
 
     setPurchaseItems(prev => {
       const updated = [...prev]
+      const isLastRow = rowIndex === updated.length - 1
+      const wasMaterialUnselected = !updated[rowIndex]?.raw_material_id
       updated[rowIndex] = {
         ...updated[rowIndex],
         raw_material_id: material.id,
@@ -300,6 +298,9 @@ const StockIn = () => {
           return base + (base * gstPercent / 100)
         })()
       }
+      if (isLastRow && wasMaterialUnselected) {
+        updated.push(makeEmptyPurchaseItemRow())
+      }
       return updated
     })
     setOpenDropdownRow(-1)
@@ -308,7 +309,10 @@ const StockIn = () => {
 
   // Remove single row
   const handleRemoveRow = (index) => {
-    setPurchaseItems(prev => prev.filter((_, i) => i !== index))
+    setPurchaseItems(prev => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length > 0 ? next : [makeEmptyPurchaseItemRow()]
+    })
   }
 
   // Update item quantity
@@ -2010,17 +2014,6 @@ const StockIn = () => {
                 <p className="text-sm text-muted-foreground mb-3">
                   If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
                 </p>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleAddRow}
-                      className="px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm"
-                    >
-                      + Add Row
-                    </button>
-                  </div>
-                </div>
-
                 <div className="border-2 border-border rounded-xl overflow-hidden">
                   <table className="w-full table-fixed">
                     <colgroup>
@@ -2193,11 +2186,6 @@ const StockIn = () => {
                     </tbody>
                   </table>
                 </div>
-                {purchaseItems.length === 0 && (
-                  <p className="text-sm text-muted-foreground mt-3">
-                    Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity and unit cost.
-                  </p>
-                )}
               </div>
 
               {/* Total Cost */}

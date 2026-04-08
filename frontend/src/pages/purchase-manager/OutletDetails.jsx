@@ -173,7 +173,7 @@ const OutletDetails = () => {
       material: item.raw_materials,
       quantity: parseFloat(item.quantity).toString()
     }))
-    setAllocationRows(rows)
+    setAllocationRows([...rows, makeEmptyAllocationRow()])
     setShowAllocateModal(true)
     setSelectedRows(new Set())
   }
@@ -191,15 +191,15 @@ const OutletDetails = () => {
     })
   }
 
-  const handleAddRow = () => {
-    const rowId = `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setAllocationRows(prev => [...prev, { id: rowId, raw_material_id: null, material: null, quantity: '' }])
-  }
-
   const handleSelectMaterial = (rowIndex, material) => {
     setAllocationRows(prev => {
       const updated = [...prev]
+      const isLastRow = rowIndex === updated.length - 1
+      const wasMaterialUnselected = !updated[rowIndex]?.raw_material_id
       updated[rowIndex] = { ...updated[rowIndex], raw_material_id: material.id, material, quantity: updated[rowIndex].quantity || '' }
+      if (isLastRow && wasMaterialUnselected) {
+        updated.push(makeEmptyAllocationRow())
+      }
       return updated
     })
     setOpenDropdownRow(-1)
@@ -207,7 +207,10 @@ const OutletDetails = () => {
   }
 
   const handleRemoveRow = (index) => {
-    setAllocationRows(prev => prev.filter((_, i) => i !== index))
+    setAllocationRows(prev => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length > 0 ? next : [makeEmptyAllocationRow()]
+    })
     setSelectedRows(prev => { const n = new Set(prev); n.delete(index); return n })
   }
 
@@ -226,7 +229,10 @@ const OutletDetails = () => {
 
   const handleRemoveSelectedRows = () => {
     if (selectedRows.size === 0) return
-    setAllocationRows(prev => prev.filter((_, i) => !selectedRows.has(i)))
+    setAllocationRows(prev => {
+      const next = prev.filter((_, i) => !selectedRows.has(i))
+      return next.length > 0 ? next : [makeEmptyAllocationRow()]
+    })
     setSelectedRows(new Set())
   }
 
@@ -785,13 +791,6 @@ const OutletDetails = () => {
                     Remove Selected ({selectedRows.size})
                   </button>
                 )}
-                <button
-                  onClick={handleAddRow}
-                  disabled={requesting}
-                  className="ml-auto px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm disabled:opacity-50"
-                >
-                  + Add Row
-                </button>
               </div>
 
               <div className="overflow-x-auto border-2 border-border rounded-xl">
@@ -909,11 +908,6 @@ const OutletDetails = () => {
                   </tbody>
                 </table>
               </div>
-              {allocationRows.length === 0 && (
-                <p className="text-sm text-muted-foreground mt-3">
-                  Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity.
-                </p>
-              )}
             </div>
 
             {/* Actions */}

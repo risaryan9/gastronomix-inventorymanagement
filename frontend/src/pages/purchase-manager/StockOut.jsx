@@ -829,23 +829,23 @@ const StockOut = () => {
     }
   }
 
-  // Add new empty row for self stock out
-  const addSelfStockOutRow = () => {
-    setSelfStockOutItems(prev => [...prev, {
-      id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      raw_material_id: null,
-      name: null,
-      code: null,
-      unit: null,
-      allocated_quantity: '',
-      current_inventory: 0,
-      todays_total: 0
-    }])
-  }
+  const makeEmptySelfStockOutRow = () => ({
+    id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    raw_material_id: null,
+    name: null,
+    code: null,
+    unit: null,
+    allocated_quantity: '',
+    current_inventory: 0,
+    todays_total: 0
+  })
 
   // Remove material from self stock out
   const removeMaterialFromSelfStockOut = (index) => {
-    setSelfStockOutItems(prev => prev.filter((_, i) => i !== index))
+    setSelfStockOutItems(prev => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length > 0 ? next : [makeEmptySelfStockOutRow()]
+    })
     setSelectedStockOutRows(prev => {
       const newSet = new Set(prev)
       newSet.delete(index)
@@ -868,7 +868,10 @@ const StockOut = () => {
 
   // Remove selected rows from stock out
   const handleRemoveSelectedStockOutRows = () => {
-    setSelfStockOutItems(prev => prev.filter((_, i) => !selectedStockOutRows.has(i)))
+    setSelfStockOutItems(prev => {
+      const next = prev.filter((_, i) => !selectedStockOutRows.has(i))
+      return next.length > 0 ? next : [makeEmptySelfStockOutRow()]
+    })
     setSelectedStockOutRows(new Set())
   }
 
@@ -923,6 +926,8 @@ const StockOut = () => {
 
       setSelfStockOutItems(prev => {
         const updated = [...prev]
+        const isLastRow = index === updated.length - 1
+        const wasMaterialUnselected = !updated[index]?.raw_material_id
         updated[index] = {
           raw_material_id: materialId,
           name: material.name,
@@ -932,6 +937,9 @@ const StockOut = () => {
           todays_total: todaysTotal,
           current_inventory: currentInventory
         }
+        if (isLastRow && wasMaterialUnselected) {
+          updated.push(makeEmptySelfStockOutRow())
+        }
         return updated
       })
     } catch (err) {
@@ -939,6 +947,8 @@ const StockOut = () => {
       // Still update the material info even if inventory fetch fails
       setSelfStockOutItems(prev => {
         const updated = [...prev]
+        const isLastRow = index === updated.length - 1
+        const wasMaterialUnselected = !updated[index]?.raw_material_id
         updated[index] = {
           raw_material_id: materialId,
           name: material.name,
@@ -946,6 +956,9 @@ const StockOut = () => {
           unit: material.unit,
           allocated_quantity: '',
           current_inventory: 0
+        }
+        if (isLastRow && wasMaterialUnselected) {
+          updated.push(makeEmptySelfStockOutRow())
         }
         return updated
       })
@@ -2607,13 +2620,6 @@ const StockOut = () => {
                         Remove Selected ({selectedStockOutRows.size})
                       </button>
                     )}
-                    <button
-                      onClick={addSelfStockOutRow}
-                      disabled={allocating}
-                      className="px-4 py-2 bg-accent text-background font-bold rounded-lg hover:bg-accent/90 transition-all text-sm"
-                    >
-                      + Add Row
-                    </button>
                   </div>
                 </div>
                 
@@ -2785,11 +2791,6 @@ const StockOut = () => {
                     </table>
                   </div>
                 </div>
-                {selfStockOutItems.length === 0 && (
-                  <p className="text-sm text-muted-foreground mt-3">
-                    Click <strong>Add Row</strong> to add items. Select material from dropdown, then enter quantity.
-                  </p>
-                )}
               </div>
 
               {/* Actions */}
