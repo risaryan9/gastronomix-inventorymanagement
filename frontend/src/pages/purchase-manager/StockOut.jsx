@@ -1211,6 +1211,13 @@ const StockOut = () => {
         }
       }
 
+      if (selfStockOutReason === 'cullinary-rnd' && !selfStockOutNotes.trim()) {
+        setAlert({ type: 'error', message: 'Please mention what product the Culinary R&D is for.' })
+        allocatingRef.current = false
+        setAllocating(false)
+        return
+      }
+
       if (itemsToProcess.length === 0) {
         setAlert({ type: 'error', message: 'Please add at least one material with quantity' })
         allocatingRef.current = false
@@ -1974,7 +1981,8 @@ const StockOut = () => {
                       options={[
                         { value: 'wastage', label: 'Wastage' },
                         { value: 'staff-food', label: 'Staff Food' },
-                        { value: 'internal-production', label: 'Internal Production' }
+                        { value: 'internal-production', label: 'Internal Production' },
+                        { value: 'cullinary-rnd', label: 'Culinary R&D' }
                       ]}
                     />
                   </div>
@@ -2537,6 +2545,7 @@ const StockOut = () => {
                   <option value="staff-food">Staff Food</option>
                   <option value="internal-production">Internal Production</option>
                   <option value="inter-cloud-kitchen">Inter Cloud Kitchen Transfer</option>
+                  <option value="cullinary-rnd">Culinary R&D</option>
                 </select>
               </div>
 
@@ -2593,12 +2602,22 @@ const StockOut = () => {
               {/* Additional Notes Field */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-foreground mb-2">
-                  Additional Notes
+                  {selfStockOutReason === 'cullinary-rnd' ? (
+                    <>
+                      R&D Product <span className="text-destructive">*</span>
+                    </>
+                  ) : (
+                    'Additional Notes'
+                  )}
                 </label>
                 <textarea
                   value={selfStockOutNotes}
                   onChange={(e) => setSelfStockOutNotes(e.target.value)}
-                  placeholder="Enter any additional notes (optional)"
+                  placeholder={
+                    selfStockOutReason === 'cullinary-rnd'
+                      ? 'Enter the product for this Culinary R&D stock-out'
+                      : 'Enter any additional notes (optional)'
+                  }
                   disabled={allocating}
                   rows={3}
                   className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all resize-none"
@@ -2809,6 +2828,7 @@ const StockOut = () => {
                     !selfStockOutReason ||
                     (selfStockOutReason === 'wastage' && !wastageImageFile) ||
                     (selfStockOutReason === 'inter-cloud-kitchen' && !transferToCloudKitchenId) ||
+                    (selfStockOutReason === 'cullinary-rnd' && !selfStockOutNotes.trim()) ||
                     selfStockOutItems.filter(item => item.raw_material_id && parseFloat(item.allocated_quantity) > 0).length === 0
                   }
                   className="flex-1 bg-accent text-background font-bold px-4 py-2.5 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
