@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 import PaginationControls from '../../components/PaginationControls'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 // Unit options
 const UNITS = ['nos', 'kg', 'gm', 'liter', 'packets', 'btl']
@@ -45,8 +46,8 @@ const Materials = ({ isAdminMode = false }) => {
   const [filteredMaterials, setFilteredMaterials] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState(['all'])
+  const [typeFilter, setTypeFilter] = useState(['all'])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showDeactivateModal, setShowDeactivateModal] = useState(false)
@@ -101,8 +102,33 @@ const Materials = ({ isAdminMode = false }) => {
 
       if (materialsError) throw materialsError
 
-      setMaterials(rawMaterials || [])
-      setFilteredMaterials(rawMaterials || [])
+      const materialIds = (rawMaterials || []).map(material => material.id)
+      let materialsWithLastPrice = rawMaterials || []
+
+      if (materialIds.length > 0) {
+        const { data: batchesData, error: batchesError } = await supabase
+          .from('stock_in_batches')
+          .select('raw_material_id, unit_cost, created_at')
+          .in('raw_material_id', materialIds)
+          .order('created_at', { ascending: false })
+
+        if (batchesError) throw batchesError
+
+        const latestPriceByMaterialId = new Map()
+        ;(batchesData || []).forEach((batch) => {
+          if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
+            latestPriceByMaterialId.set(batch.raw_material_id, batch.unit_cost)
+          }
+        })
+
+        materialsWithLastPrice = materialsWithLastPrice.map((material) => ({
+          ...material,
+          last_unit_cost: latestPriceByMaterialId.get(material.id) ?? null
+        }))
+      }
+
+      setMaterials(materialsWithLastPrice)
+      setFilteredMaterials(materialsWithLastPrice)
     } catch (err) {
       console.error('Error fetching materials:', err)
       setError('Failed to load materials. Please try again.')
@@ -147,13 +173,13 @@ const Materials = ({ isAdminMode = false }) => {
     }
 
     // Category filter
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter(material => material.category === categoryFilter)
+    if (!categoryFilter.includes('all')) {
+      filtered = filtered.filter(material => categoryFilter.includes(material.category))
     }
 
     // Type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(material => material.material_type === typeFilter)
+    if (!typeFilter.includes('all')) {
+      filtered = filtered.filter(material => typeFilter.includes(material.material_type))
     }
 
     setFilteredMaterials(filtered)
@@ -678,7 +704,7 @@ const Materials = ({ isAdminMode = false }) => {
         </div>
         
         {/* Search & Filter Bar */}
-        <div className="bg-card/90 backdrop-blur-md border-2 border-border rounded-2xl p-4 sm:p-6 mb-6 shadow-2xl shadow-black/50">
+        <div className="relative z-30 bg-card/90 backdrop-blur-md border-2 border-border rounded-2xl p-4 sm:p-6 mb-6 shadow-2xl shadow-black/50">
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Search Input */}
             <input
@@ -686,32 +712,42 @@ const Materials = ({ isAdminMode = false }) => {
               placeholder="Search by name, code, or description..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+              className="sm:flex-1 sm:max-w-xs bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
             />
             
-            {/* Type Filter */}
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-            >
-              <option value="all">All Types</option>
-              {MATERIAL_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label="Material Type"
+              allLabel="All Types"
+              selectedValues={typeFilter}
+              onChange={setTypeFilter}
+              options={MATERIAL_TYPES}
+              className="sm:w-48"
+            />
 
-            {/* Category Filter */}
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-            >
-              <option value="all">All Categories</option>
-              {categories.filter(c => c !== 'all').map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label="Category"
+              allLabel="All Categories"
+              selectedValues={categoryFilter}
+              onChange={setCategoryFilter}
+              options={categories.filter(c => c !== 'all').map(cat => ({ value: cat, label: cat }))}
+              className="sm:w-56"
+            />
+            {(!typeFilter.includes('all') || !categoryFilter.includes('all')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypeFilter(['all'])
+                  setCategoryFilter(['all'])
+                }}
+                className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
 
           </div>
         </div>
@@ -724,7 +760,7 @@ const Materials = ({ isAdminMode = false }) => {
         )}
 
         {/* Materials Table */}
-        <div className="bg-card/90 backdrop-blur-md border-2 border-border rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
+        <div className="relative z-0 bg-card/90 backdrop-blur-md border-2 border-border rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
           {loading ? (
             <div className="p-8 text-center">
               <p className="text-foreground">Loading materials...</p>
@@ -732,7 +768,7 @@ const Materials = ({ isAdminMode = false }) => {
           ) : filteredMaterials.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-muted-foreground">
-                {searchQuery || categoryFilter !== 'all' || typeFilter !== 'all'
+                {searchQuery || !categoryFilter.includes('all') || !typeFilter.includes('all')
                   ? 'No materials match your filters.'
                   : 'No materials found. Add your first material to get started.'}
               </p>
@@ -760,7 +796,7 @@ const Materials = ({ isAdminMode = false }) => {
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material Code</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">UOM</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Brand</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Last Price</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
                       <button
                         type="button"
@@ -808,7 +844,11 @@ const Materials = ({ isAdminMode = false }) => {
                       <td className="px-4 py-3 text-foreground font-mono text-sm">{material.code}</td>
                       <td className="px-4 py-3 text-foreground">{material.unit}</td>
                       <td className="px-4 py-3 text-muted-foreground">{material.category || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{material.brand || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {material.last_unit_cost !== null && material.last_unit_cost !== undefined
+                          ? parseFloat(material.last_unit_cost).toFixed(2)
+                          : '—'}
+                      </td>
                       <td className="px-4 py-3 text-foreground">
                         {material.low_stock_threshold !== null && material.low_stock_threshold !== undefined
                           ? parseFloat(material.low_stock_threshold).toFixed(2)

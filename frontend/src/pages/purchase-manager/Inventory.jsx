@@ -3,6 +3,7 @@ import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import { adjustManualInventory } from '../../lib/manualInventoryAdjust'
 import PaginationControls from '../../components/PaginationControls'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -42,9 +43,9 @@ const Inventory = () => {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [stockLevelFilter, setStockLevelFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState(['all'])
+  const [typeFilter, setTypeFilter] = useState(['all'])
+  const [stockLevelFilter, setStockLevelFilter] = useState(['all'])
   const [editingItem, setEditingItem] = useState(null)
   const [editForm, setEditForm] = useState({ quantity: '' })
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -317,22 +318,22 @@ const Inventory = () => {
       material.code.toLowerCase().includes(searchTerm.toLowerCase())
 
     // Category filter
-    const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
+    const matchesCategory = categoryFilter.includes('all') || categoryFilter.includes(material.category)
 
     // Type filter
-    const matchesType = typeFilter === 'all' || material.material_type === typeFilter
+    const matchesType = typeFilter.includes('all') || typeFilter.includes(material.material_type)
 
     // Stock level filter - use low_stock_threshold from raw_materials
     let matchesStockLevel = true
     const lowStockThreshold = parseFloat(material.low_stock_threshold || 0)
     const quantity = parseFloat(item.quantity) || 0
 
-    if (stockLevelFilter === 'low') {
-      matchesStockLevel = quantity > 0 && quantity <= lowStockThreshold
-    } else if (stockLevelFilter === 'out') {
-      matchesStockLevel = quantity === 0
-    } else if (stockLevelFilter === 'in') {
-      matchesStockLevel = quantity > lowStockThreshold
+    if (!stockLevelFilter.includes('all')) {
+      const checks = []
+      if (stockLevelFilter.includes('low')) checks.push(quantity > 0 && quantity <= lowStockThreshold)
+      if (stockLevelFilter.includes('out')) checks.push(quantity === 0)
+      if (stockLevelFilter.includes('in')) checks.push(quantity > lowStockThreshold)
+      matchesStockLevel = checks.some(Boolean)
     }
 
     return matchesSearch && matchesCategory && matchesType && matchesStockLevel
@@ -743,38 +744,53 @@ const Inventory = () => {
               placeholder="Search by material name or code..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+              className="sm:flex-1 sm:max-w-xs bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
             />
-            <select 
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-            >
-              <option value="all">All Types</option>
-              {MATERIAL_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-            <select 
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-            >
-              <option value="all">All Categories</option>
-              {materials.map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
-            <select 
-              value={stockLevelFilter}
-              onChange={(e) => setStockLevelFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-            >
-              <option value="all">All Stock Levels</option>
-              <option value="in">In Stock</option>
-              <option value="low">Low Stock</option>
-              <option value="out">Out of Stock</option>
-            </select>
+            <MultiSelectFilter
+              label="Material Type"
+              allLabel="All Types"
+              selectedValues={typeFilter}
+              onChange={setTypeFilter}
+              options={MATERIAL_TYPES}
+              className="sm:w-48"
+            />
+            <MultiSelectFilter
+              label="Category"
+              allLabel="All Categories"
+              selectedValues={categoryFilter}
+              onChange={setCategoryFilter}
+              options={materials.map(category => ({ value: category, label: category }))}
+              className="sm:w-56"
+            />
+            <MultiSelectFilter
+              label="Stock Level"
+              allLabel="All Stock Levels"
+              selectedValues={stockLevelFilter}
+              onChange={setStockLevelFilter}
+              options={[
+                { value: 'in', label: 'In Stock' },
+                { value: 'low', label: 'Low Stock' },
+                { value: 'out', label: 'Out of Stock' }
+              ]}
+              className="sm:w-44"
+            />
+            {(!typeFilter.includes('all') || !categoryFilter.includes('all') || !stockLevelFilter.includes('all')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypeFilter(['all'])
+                  setCategoryFilter(['all'])
+                  setStockLevelFilter(['all'])
+                }}
+                className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 

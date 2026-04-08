@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const BRAND_OPTIONS = [
   { value: 'all', label: 'All Brands' },
@@ -24,9 +25,9 @@ const AdminOutlets = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [kitchenFilter, setKitchenFilter] = useState('all')
-  const [brandFilter, setBrandFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [kitchenFilter, setKitchenFilter] = useState(['all'])
+  const [brandFilter, setBrandFilter] = useState(['all'])
+  const [statusFilter, setStatusFilter] = useState(['all'])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingOutlet, setEditingOutlet] = useState(null)
@@ -115,12 +116,17 @@ const AdminOutlets = () => {
       const inCode = (outlet.code || '').toLowerCase().includes(q)
       if (!inName && !inCode) return false
     }
-    if (kitchenFilter !== 'all' && outlet.cloud_kitchen_id !== kitchenFilter) return false
-    if (statusFilter === 'active' && (!outlet.is_active || outlet.deleted_at)) return false
-    if (statusFilter === 'deactivated' && (outlet.is_active && !outlet.deleted_at)) return false
-    if (brandFilter !== 'all') {
+    if (!kitchenFilter.includes('all') && !kitchenFilter.includes(outlet.cloud_kitchen_id)) return false
+    if (!statusFilter.includes('all')) {
+      const isActive = outlet.is_active && !outlet.deleted_at
+      const statusMatch =
+        (statusFilter.includes('active') && isActive) ||
+        (statusFilter.includes('deactivated') && !isActive)
+      if (!statusMatch) return false
+    }
+    if (!brandFilter.includes('all')) {
       const outletBrand = getBrandFromCode(outlet.code)
-      if (outletBrand !== brandFilter) return false
+      if (!brandFilter.includes(outletBrand)) return false
     }
     return true
   })
@@ -296,48 +302,55 @@ const AdminOutlets = () => {
 
         {/* Filters */}
         <div className="bg-card border border-border rounded-2xl p-4 mb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, code…"
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+              className="sm:flex-1 sm:max-w-xs bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
             />
-            <select
-              value={kitchenFilter}
-              onChange={(e) => setKitchenFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            >
-              <option value="all">All Cloud Kitchens</option>
-              {cloudKitchens.map((ck) => (
-                <option key={ck.id} value={ck.id}>
-                  {ck.name} ({ck.code})
-                </option>
-              ))}
-            </select>
-            <select
-              value={brandFilter}
-              onChange={(e) => setBrandFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            >
-              {BRAND_OPTIONS.map((b) => (
-                <option key={b.value} value={b.value}>
-                  {b.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label="Cloud Kitchen"
+              allLabel="All Cloud Kitchens"
+              selectedValues={kitchenFilter}
+              onChange={setKitchenFilter}
+              options={cloudKitchens.map((ck) => ({ value: ck.id, label: `${ck.name} (${ck.code})` }))}
+              className="sm:w-56"
+            />
+            <MultiSelectFilter
+              label="Brand"
+              allLabel="All Brands"
+              selectedValues={brandFilter}
+              onChange={setBrandFilter}
+              options={BRAND_OPTIONS.filter((b) => b.value !== 'all')}
+              className="sm:w-44"
+            />
+            <MultiSelectFilter
+              label="Status"
+              allLabel="All Status"
+              selectedValues={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_OPTIONS.filter((s) => s.value !== 'all')}
+              className="sm:w-40"
+            />
+            {(!kitchenFilter.includes('all') || !brandFilter.includes('all') || !statusFilter.includes('all')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKitchenFilter(['all'])
+                  setBrandFilter(['all'])
+                  setStatusFilter(['all'])
+                }}
+                className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 

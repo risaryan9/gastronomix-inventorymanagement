@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 /** Latest stock_out.created_at (or allocation_date) per material for kitchen self stock-out + reason */
 async function fetchLastKitchenStockOutDatesByMaterial(
@@ -73,8 +74,8 @@ const StockOut = () => {
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
   const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
-  const [kitchenReasonFilter, setKitchenReasonFilter] = useState('all')
-  const [kitchenDateFilter, setKitchenDateFilter] = useState('all')
+  const [kitchenReasonFilter, setKitchenReasonFilter] = useState(['all'])
+  const [kitchenDateFilter, setKitchenDateFilter] = useState(['all'])
   const [kitchenDateFrom, setKitchenDateFrom] = useState('')
   const [kitchenDateTo, setKitchenDateTo] = useState('')
 
@@ -1572,30 +1573,30 @@ const StockOut = () => {
     }
 
     // Reason filter
-    if (kitchenReasonFilter !== 'all') {
-      if (record.reason !== kitchenReasonFilter) return false
+    if (!kitchenReasonFilter.includes('all')) {
+      if (!kitchenReasonFilter.includes(record.reason)) return false
     }
 
     // Date filter (allocation_date)
-    if (kitchenDateFilter === 'custom') {
+    if (kitchenDateFilter.includes('custom')) {
       if (kitchenDateFrom || kitchenDateTo) {
         const recordDate = new Date(record.allocation_date)
         if (kitchenDateFrom && recordDate < new Date(kitchenDateFrom)) return false
         if (kitchenDateTo && recordDate > new Date(kitchenDateTo)) return false
       }
-    } else if (kitchenDateFilter === 'today') {
+    } else if (kitchenDateFilter.includes('today')) {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       const recordDate = new Date(record.allocation_date)
       recordDate.setHours(0, 0, 0, 0)
       if (recordDate.getTime() !== today.getTime()) return false
-    } else if (kitchenDateFilter === 'this-week') {
+    } else if (kitchenDateFilter.includes('this-week')) {
       const today = new Date()
       const weekAgo = new Date(today)
       weekAgo.setDate(today.getDate() - 7)
       const recordDate = new Date(record.allocation_date)
       if (recordDate < weekAgo || recordDate > today) return false
-    } else if (kitchenDateFilter === 'this-month') {
+    } else if (kitchenDateFilter.includes('this-month')) {
       const today = new Date()
       const monthAgo = new Date(today)
       monthAgo.setMonth(today.getMonth() - 1)
@@ -1951,36 +1952,40 @@ const StockOut = () => {
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Reason
                     </label>
-                    <select
-                      value={kitchenReasonFilter}
-                      onChange={(e) => setKitchenReasonFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="wastage">Wastage</option>
-                      <option value="staff-food">Staff Food</option>
-                      <option value="internal-production">Internal Production</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Reason"
+                      group="kitchen-stock-out-filters"
+                      allLabel="All"
+                      selectedValues={kitchenReasonFilter}
+                      onChange={setKitchenReasonFilter}
+                      options={[
+                        { value: 'wastage', label: 'Wastage' },
+                        { value: 'staff-food', label: 'Staff Food' },
+                        { value: 'internal-production', label: 'Internal Production' }
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Date Range
                     </label>
-                    <select
-                      value={kitchenDateFilter}
-                      onChange={(e) => setKitchenDateFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All Dates</option>
-                      <option value="today">Today</option>
-                      <option value="this-week">This Week</option>
-                      <option value="this-month">This Month</option>
-                      <option value="custom">Custom Range</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Date Range"
+                      group="kitchen-stock-out-filters"
+                      allLabel="All Dates"
+                      selectedValues={kitchenDateFilter}
+                      onChange={setKitchenDateFilter}
+                      options={[
+                        { value: 'today', label: 'Today' },
+                        { value: 'this-week', label: 'This Week' },
+                        { value: 'this-month', label: 'This Month' },
+                        { value: 'custom', label: 'Custom Range' }
+                      ]}
+                    />
                   </div>
                 </div>
 
-                {kitchenDateFilter === 'custom' && (
+                {kitchenDateFilter.includes('custom') && (
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-semibold text-foreground mb-1">
@@ -2007,21 +2012,23 @@ const StockOut = () => {
                   </div>
                 )}
 
-                {(kitchenSearchTerm ||
-                  kitchenReasonFilter !== 'all' ||
-                  kitchenDateFilter !== 'all') && (
+                {(!kitchenReasonFilter.includes('all') ||
+                  !kitchenDateFilter.includes('all')) && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => {
-                        setKitchenSearchTerm('')
-                        setKitchenReasonFilter('all')
-                        setKitchenDateFilter('all')
+                        setKitchenReasonFilter(['all'])
+                        setKitchenDateFilter(['all'])
                         setKitchenDateFrom('')
                         setKitchenDateTo('')
                       }}
-                      className="text-xs bg-transparent text-foreground font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent/10 transition-all"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                      title="Clear filters"
+                      aria-label="Clear filters"
                     >
-                      Clear Filters
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
                 )}

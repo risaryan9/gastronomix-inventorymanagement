@@ -12,6 +12,7 @@ import {
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const StockIn = () => {
   const [stockInRecords, setStockInRecords] = useState([])
@@ -27,18 +28,18 @@ const StockIn = () => {
 
   // Filter and search state - Purchase panel
   const [purchaseSearchTerm, setPurchaseSearchTerm] = useState('')
-  const [purchaseItemCountFilter, setPurchaseItemCountFilter] = useState('all')
-  const [purchaseCostFilter, setPurchaseCostFilter] = useState('all')
-  const [purchaseDateFilter, setPurchaseDateFilter] = useState('all')
+  const [purchaseItemCountFilter, setPurchaseItemCountFilter] = useState(['all'])
+  const [purchaseCostFilter, setPurchaseCostFilter] = useState(['all'])
+  const [purchaseDateFilter, setPurchaseDateFilter] = useState(['all'])
   const [purchaseDateFrom, setPurchaseDateFrom] = useState('')
   const [purchaseDateTo, setPurchaseDateTo] = useState('')
   const [purchaseCurrentPage, setPurchaseCurrentPage] = useState(1)
 
   // Filter and search state - Kitchen panel
   const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
-  const [kitchenItemCountFilter, setKitchenItemCountFilter] = useState('all')
-  const [kitchenCostFilter, setKitchenCostFilter] = useState('all')
-  const [kitchenDateFilter, setKitchenDateFilter] = useState('all')
+  const [kitchenItemCountFilter, setKitchenItemCountFilter] = useState(['all'])
+  const [kitchenCostFilter, setKitchenCostFilter] = useState(['all'])
+  const [kitchenDateFilter, setKitchenDateFilter] = useState(['all'])
   const [kitchenDateFrom, setKitchenDateFrom] = useState('')
   const [kitchenDateTo, setKitchenDateTo] = useState('')
   const [kitchenCurrentPage, setKitchenCurrentPage] = useState(1)
@@ -1109,37 +1110,45 @@ const StockIn = () => {
 
       // Item count filter
       const itemCount = record.stock_in_batches?.length || 0
-      if (itemCountFilter === '1-5' && (itemCount < 1 || itemCount > 5)) return false
-      if (itemCountFilter === '6-10' && (itemCount < 6 || itemCount > 10)) return false
-      if (itemCountFilter === '11+' && itemCount < 11) return false
+      if (!itemCountFilter.includes('all')) {
+        const matchesItemCount =
+          (itemCountFilter.includes('1-5') && itemCount >= 1 && itemCount <= 5) ||
+          (itemCountFilter.includes('6-10') && itemCount >= 6 && itemCount <= 10) ||
+          (itemCountFilter.includes('11+') && itemCount >= 11)
+        if (!matchesItemCount) return false
+      }
 
       // Cost filter
       const totalCost = parseFloat(record.total_cost || 0)
-      if (costFilter === '0-1000' && (totalCost < 0 || totalCost > 1000)) return false
-      if (costFilter === '1001-5000' && (totalCost < 1001 || totalCost > 5000)) return false
-      if (costFilter === '5001-10000' && (totalCost < 5001 || totalCost > 10000)) return false
-      if (costFilter === '10000+' && totalCost < 10001) return false
+      if (!costFilter.includes('all')) {
+        const matchesCost =
+          (costFilter.includes('0-1000') && totalCost >= 0 && totalCost <= 1000) ||
+          (costFilter.includes('1001-5000') && totalCost >= 1001 && totalCost <= 5000) ||
+          (costFilter.includes('5001-10000') && totalCost >= 5001 && totalCost <= 10000) ||
+          (costFilter.includes('10000+') && totalCost >= 10001)
+        if (!matchesCost) return false
+      }
 
       // Date filter
-      if (dateFilter === 'custom') {
+      if (dateFilter.includes('custom')) {
         if (dateFrom || dateTo) {
           const recordDate = new Date(record.receipt_date)
           if (dateFrom && recordDate < new Date(dateFrom)) return false
           if (dateTo && recordDate > new Date(dateTo)) return false
         }
-      } else if (dateFilter === 'today') {
+      } else if (dateFilter.includes('today')) {
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const recordDate = new Date(record.receipt_date)
         recordDate.setHours(0, 0, 0, 0)
         if (recordDate.getTime() !== today.getTime()) return false
-      } else if (dateFilter === 'this-week') {
+      } else if (dateFilter.includes('this-week')) {
         const today = new Date()
         const weekAgo = new Date(today)
         weekAgo.setDate(today.getDate() - 7)
         const recordDate = new Date(record.receipt_date)
         if (recordDate < weekAgo || recordDate > today) return false
-      } else if (dateFilter === 'this-month') {
+      } else if (dateFilter.includes('this-month')) {
         const today = new Date()
         const monthAgo = new Date(today)
         monthAgo.setMonth(today.getMonth() - 1)
@@ -1284,32 +1293,36 @@ const StockIn = () => {
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Items
                     </label>
-                    <select
-                      value={purchaseItemCountFilter}
-                      onChange={(e) => setPurchaseItemCountFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="1-5">1-5 items</option>
-                      <option value="6-10">6-10 items</option>
-                      <option value="11+">11+ items</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Items"
+                      group="purchase-stock-in-filters"
+                      allLabel="All"
+                      selectedValues={purchaseItemCountFilter}
+                      onChange={setPurchaseItemCountFilter}
+                      options={[
+                        { value: '1-5', label: '1-5 items' },
+                        { value: '6-10', label: '6-10 items' },
+                        { value: '11+', label: '11+ items' }
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Total Cost
                     </label>
-                    <select
-                      value={purchaseCostFilter}
-                      onChange={(e) => setPurchaseCostFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="0-1000">₹0 - ₹1,000</option>
-                      <option value="1001-5000">₹1,001 - ₹5,000</option>
-                      <option value="5001-10000">₹5,001 - ₹10,000</option>
-                      <option value="10000+">₹10,000+</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Cost Range"
+                      group="purchase-stock-in-filters"
+                      allLabel="All"
+                      selectedValues={purchaseCostFilter}
+                      onChange={setPurchaseCostFilter}
+                      options={[
+                        { value: '0-1000', label: '₹0 - ₹1,000' },
+                        { value: '1001-5000', label: '₹1,001 - ₹5,000' },
+                        { value: '5001-10000', label: '₹5,001 - ₹10,000' },
+                        { value: '10000+', label: '₹10,000+' }
+                      ]}
+                    />
                   </div>
                 </div>
 
@@ -1318,19 +1331,21 @@ const StockIn = () => {
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Date Range
                     </label>
-                    <select
-                      value={purchaseDateFilter}
-                      onChange={(e) => setPurchaseDateFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All Dates</option>
-                      <option value="today">Today</option>
-                      <option value="this-week">This Week</option>
-                      <option value="this-month">This Month</option>
-                      <option value="custom">Custom Range</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Date Range"
+                      group="purchase-stock-in-filters"
+                      allLabel="All Dates"
+                      selectedValues={purchaseDateFilter}
+                      onChange={setPurchaseDateFilter}
+                      options={[
+                        { value: 'today', label: 'Today' },
+                        { value: 'this-week', label: 'This Week' },
+                        { value: 'this-month', label: 'This Month' },
+                        { value: 'custom', label: 'Custom Range' }
+                      ]}
+                    />
                   </div>
-                  {purchaseDateFilter === 'custom' && (
+                  {purchaseDateFilter.includes('custom') && (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs font-semibold text-foreground mb-1">
@@ -1358,23 +1373,25 @@ const StockIn = () => {
                   )}
                 </div>
 
-                {(purchaseSearchTerm ||
-                  purchaseItemCountFilter !== 'all' ||
-                  purchaseCostFilter !== 'all' ||
-                  purchaseDateFilter !== 'all') && (
+                {(!purchaseItemCountFilter.includes('all') ||
+                  !purchaseCostFilter.includes('all') ||
+                  !purchaseDateFilter.includes('all')) && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => {
-                        setPurchaseSearchTerm('')
-                        setPurchaseItemCountFilter('all')
-                        setPurchaseCostFilter('all')
-                        setPurchaseDateFilter('all')
+                        setPurchaseItemCountFilter(['all'])
+                        setPurchaseCostFilter(['all'])
+                        setPurchaseDateFilter(['all'])
                         setPurchaseDateFrom('')
                         setPurchaseDateTo('')
                       }}
-                      className="text-xs bg-transparent text-foreground font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent/10 transition-all"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                      title="Clear filters"
+                      aria-label="Clear filters"
                     >
-                      Clear Filters
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
                 )}
@@ -1562,32 +1579,36 @@ const StockIn = () => {
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Items
                     </label>
-                    <select
-                      value={kitchenItemCountFilter}
-                      onChange={(e) => setKitchenItemCountFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="1-5">1-5 items</option>
-                      <option value="6-10">6-10 items</option>
-                      <option value="11+">11+ items</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Items"
+                      group="kitchen-stock-in-filters"
+                      allLabel="All"
+                      selectedValues={kitchenItemCountFilter}
+                      onChange={setKitchenItemCountFilter}
+                      options={[
+                        { value: '1-5', label: '1-5 items' },
+                        { value: '6-10', label: '6-10 items' },
+                        { value: '11+', label: '11+ items' }
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Total Cost
                     </label>
-                    <select
-                      value={kitchenCostFilter}
-                      onChange={(e) => setKitchenCostFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All</option>
-                      <option value="0-1000">₹0 - ₹1,000</option>
-                      <option value="1001-5000">₹1,001 - ₹5,000</option>
-                      <option value="5001-10000">₹5,001 - ₹10,000</option>
-                      <option value="10000+">₹10,000+</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Cost Range"
+                      group="kitchen-stock-in-filters"
+                      allLabel="All"
+                      selectedValues={kitchenCostFilter}
+                      onChange={setKitchenCostFilter}
+                      options={[
+                        { value: '0-1000', label: '₹0 - ₹1,000' },
+                        { value: '1001-5000', label: '₹1,001 - ₹5,000' },
+                        { value: '5001-10000', label: '₹5,001 - ₹10,000' },
+                        { value: '10000+', label: '₹10,000+' }
+                      ]}
+                    />
                   </div>
                 </div>
 
@@ -1596,19 +1617,21 @@ const StockIn = () => {
                     <label className="block text-xs font-semibold text-foreground mb-1">
                       Date Range
                     </label>
-                    <select
-                      value={kitchenDateFilter}
-                      onChange={(e) => setKitchenDateFilter(e.target.value)}
-                      className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                    >
-                      <option value="all">All Dates</option>
-                      <option value="today">Today</option>
-                      <option value="this-week">This Week</option>
-                      <option value="this-month">This Month</option>
-                      <option value="custom">Custom Range</option>
-                    </select>
+                    <MultiSelectFilter
+                      label="Date Range"
+                      group="kitchen-stock-in-filters"
+                      allLabel="All Dates"
+                      selectedValues={kitchenDateFilter}
+                      onChange={setKitchenDateFilter}
+                      options={[
+                        { value: 'today', label: 'Today' },
+                        { value: 'this-week', label: 'This Week' },
+                        { value: 'this-month', label: 'This Month' },
+                        { value: 'custom', label: 'Custom Range' }
+                      ]}
+                    />
                   </div>
-                  {kitchenDateFilter === 'custom' && (
+                  {kitchenDateFilter.includes('custom') && (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs font-semibold text-foreground mb-1">
@@ -1636,23 +1659,25 @@ const StockIn = () => {
                   )}
                 </div>
 
-                {(kitchenSearchTerm ||
-                  kitchenItemCountFilter !== 'all' ||
-                  kitchenCostFilter !== 'all' ||
-                  kitchenDateFilter !== 'all') && (
+                {(!kitchenItemCountFilter.includes('all') ||
+                  !kitchenCostFilter.includes('all') ||
+                  !kitchenDateFilter.includes('all')) && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => {
-                        setKitchenSearchTerm('')
-                        setKitchenItemCountFilter('all')
-                        setKitchenCostFilter('all')
-                        setKitchenDateFilter('all')
+                        setKitchenItemCountFilter(['all'])
+                        setKitchenCostFilter(['all'])
+                        setKitchenDateFilter(['all'])
                         setKitchenDateFrom('')
                         setKitchenDateTo('')
                       }}
-                      className="text-xs bg-transparent text-foreground font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-accent/10 transition-all"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                      title="Clear filters"
+                      aria-label="Clear filters"
                     >
-                      Clear Filters
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
                 )}

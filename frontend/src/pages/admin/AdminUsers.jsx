@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
@@ -14,7 +15,7 @@ const AdminUsers = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState('all')
+  const [roleFilter, setRoleFilter] = useState(['all'])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
@@ -92,7 +93,7 @@ const AdminUsers = () => {
       const inPhone = (u.phone_number || '').toLowerCase().includes(q)
       if (!inName && !inLoginKey && !inPhone) return false
     }
-    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (!roleFilter.includes('all') && !roleFilter.includes(u.role)) return false
     return true
   })
 
@@ -269,20 +270,29 @@ const AdminUsers = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, login key, or phone..."
-              className="flex-1 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+              className="sm:flex-1 sm:max-w-md bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
             />
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full sm:w-52 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            >
-              <option value="all">All Roles</option>
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label="Role"
+              allLabel="All Roles"
+              selectedValues={roleFilter}
+              onChange={setRoleFilter}
+              options={ROLE_OPTIONS}
+              className="w-full sm:w-52"
+            />
+            {!roleFilter.includes('all') && (
+              <button
+                type="button"
+                onClick={() => setRoleFilter(['all'])}
+                className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 

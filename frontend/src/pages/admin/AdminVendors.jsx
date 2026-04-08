@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const AdminVendors = () => {
   const [vendors, setVendors] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState(['all'])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState(null)
@@ -67,8 +68,11 @@ const AdminVendors = () => {
       const q = search.toLowerCase()
       if (!(vendor.name || '').toLowerCase().includes(q)) return false
     }
-    if (statusFilter === 'active' && !vendor.is_active) return false
-    if (statusFilter === 'inactive' && vendor.is_active) return false
+    if (!statusFilter.includes('all')) {
+      const matchesActive = statusFilter.includes('active') && vendor.is_active
+      const matchesInactive = statusFilter.includes('inactive') && !vendor.is_active
+      if (!matchesActive && !matchesInactive) return false
+    }
     return true
   })
 
@@ -215,17 +219,32 @@ const AdminVendors = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by vendor name..."
-              className="flex-1 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+              className="sm:flex-1 sm:max-w-md bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
             />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full sm:w-52 bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+            <MultiSelectFilter
+              label="Status"
+              allLabel="All Status"
+              selectedValues={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+              className="w-full sm:w-40"
+            />
+            {!statusFilter.includes('all') && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter(['all'])}
+                className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 

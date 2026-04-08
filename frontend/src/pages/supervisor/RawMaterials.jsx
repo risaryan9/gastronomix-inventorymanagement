@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import PaginationControls from '../../components/PaginationControls'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -31,8 +32,8 @@ const RawMaterials = () => {
   const [rawMaterials, setRawMaterials] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all') // 'all', 'active', 'inactive'
+  const [categoryFilter, setCategoryFilter] = useState(['all'])
+  const [statusFilter, setStatusFilter] = useState(['all']) // 'all', 'active', 'inactive'
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   
@@ -79,12 +80,12 @@ const RawMaterials = () => {
       (material.description && material.description.toLowerCase().includes(searchTerm.toLowerCase()))
 
     // Category filter
-    const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter
+    const matchesCategory = categoryFilter.includes('all') || categoryFilter.includes(material.category)
 
     // Status filter
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && material.is_active) ||
-      (statusFilter === 'inactive' && !material.is_active)
+    const matchesStatus = statusFilter.includes('all') || 
+      (statusFilter.includes('active') && material.is_active) ||
+      (statusFilter.includes('inactive') && !material.is_active)
 
     return matchesSearch && matchesCategory && matchesStatus
   })
@@ -377,27 +378,43 @@ const RawMaterials = () => {
               placeholder="Search by name, code, or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
+              className="w-full lg:flex-1 lg:max-w-xs bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
             />
-            <select 
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
-            >
-              <option value="all">All Categories</option>
-              {CATEGORIES.map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
-            <select 
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+            <MultiSelectFilter
+              label="Category"
+              allLabel="All Categories"
+              selectedValues={categoryFilter}
+              onChange={setCategoryFilter}
+              options={CATEGORIES.map(category => ({ value: category, label: category }))}
+              className="w-full lg:w-56"
+            />
+            <MultiSelectFilter
+              label="Status"
+              allLabel="All Status"
+              selectedValues={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+              className="w-full lg:w-40"
+            />
+            {(!categoryFilter.includes('all') || !statusFilter.includes('all')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryFilter(['all'])
+                  setStatusFilter(['all'])
+                }}
+                className="self-start lg:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
