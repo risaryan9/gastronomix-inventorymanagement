@@ -58,6 +58,7 @@ const StockIn = () => {
   // Invoice image upload state (purchase stock-in only)
   const [invoiceFile, setInvoiceFile] = useState(null)
   const [invoiceFileError, setInvoiceFileError] = useState('')
+  const invoiceFileInputRef = useRef(null)
 
   // Items in the purchase slip (spreadsheet rows)
   const [purchaseItems, setPurchaseItems] = useState([])
@@ -682,6 +683,14 @@ const StockIn = () => {
 
     setInvoiceFile(file)
     setInvoiceFileError('')
+  }
+
+  const triggerInvoiceFilePicker = () => {
+    if (invoiceFileInputRef.current) {
+      // Allow re-selecting the same file and still trigger onChange.
+      invoiceFileInputRef.current.value = ''
+      invoiceFileInputRef.current.click()
+    }
   }
 
   const uploadInvoiceFile = async (file, session, invoiceNumber) => {
@@ -1938,11 +1947,19 @@ const StockIn = () => {
                       Invoice (Image or PDF) <span className="text-destructive">*</span>
                     </label>
                     <input
+                      ref={invoiceFileInputRef}
                       type="file"
                       accept="image/jpeg,image/png,application/pdf"
                       onChange={handleInvoiceFileChange}
-                      className="block w-full text-sm text-foreground file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-background hover:file:bg-accent/90"
+                      className="hidden"
                     />
+                    <button
+                      type="button"
+                      onClick={triggerInvoiceFilePicker}
+                      className="inline-flex items-center rounded-lg border border-border bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-all hover:bg-accent/90"
+                    >
+                      {invoiceFile ? 'Choose Another File' : 'Choose File'}
+                    </button>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Upload a clear photo, scan, or PDF of the invoice (JPEG, PNG, or PDF, max 5 MB).
                     </p>
