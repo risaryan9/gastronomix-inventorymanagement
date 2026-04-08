@@ -117,6 +117,14 @@ const Inventory = () => {
         .in('raw_material_id', rawMaterialIds)
         .gt('quantity_remaining', 0)
 
+      const { data: latestCostData } = await supabase
+        .from('stock_in_batches')
+        .select('raw_material_id, unit_cost, created_at')
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .in('raw_material_id', rawMaterialIds)
+        .order('created_at', { ascending: false })
+
+
       const materialValuationMap = new Map()
       if (batchesData) {
         batchesData.forEach(batch => {
@@ -143,6 +151,13 @@ const Inventory = () => {
         })
       }
 
+      const latestPriceByMaterialId = new Map()
+      ;(latestCostData || []).forEach((batch) => {
+        if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
+          latestPriceByMaterialId.set(batch.raw_material_id, batch.unit_cost)
+        }
+      })
+
       const inventoryWithMaterials = inventoryData.map(item => {
         const valuation = materialValuationMap.get(item.raw_material_id) || {
           totalValue: 0,
@@ -153,7 +168,8 @@ const Inventory = () => {
         return {
           ...item,
           fifo_total_value: valuation.totalValue,
-          fifo_average_cost: valuation.averageCost
+          fifo_average_cost: valuation.averageCost,
+          last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
         }
       })
 
@@ -414,7 +430,7 @@ const Inventory = () => {
   // Export functions (use sortedInventory so export order matches table)
   const exportToCSV = () => {
     const session = getSession()
-    const headers = ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
+    const headers = ['Type', 'Material Name', 'Last Price', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
     const rows = sortedInventory.map(item => {
       const material = item.raw_materials
       const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
@@ -423,13 +439,16 @@ const Inventory = () => {
       const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
       const totalValue = item.fifo_total_value || 0
       const avgCost = item.fifo_average_cost || 0
+      const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+        ? parseFloat(item.last_unit_cost)
+        : null
       const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
                           material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
       
       return [
         materialType,
         material?.name || 'N/A',
-        material?.code || 'N/A',
+        lastPrice !== null ? `₹${lastPrice.toFixed(2)}` : 'N/A',
         material?.category || 'N/A',
         parseFloat(item.quantity).toFixed(2),
         material?.unit || 'N/A',
@@ -491,7 +510,7 @@ const Inventory = () => {
 
     // Inventory data sheet
     const inventoryData = [
-      ['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
+      ['Type', 'Material Name', 'Last Price', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
       ...sortedInventory.map(item => {
         const material = item.raw_materials
         const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
@@ -500,13 +519,16 @@ const Inventory = () => {
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
         const totalValue = item.fifo_total_value || 0
         const avgCost = item.fifo_average_cost || 0
+        const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+          ? parseFloat(item.last_unit_cost)
+          : null
         const materialType = material?.material_type === 'raw_material' ? 'Raw Material' :
                             material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
 
         return [
           materialType,
           material?.name || 'N/A',
-          material?.code || 'N/A',
+          lastPrice !== null ? lastPrice : 'N/A',
           material?.category || 'N/A',
           parseFloat(item.quantity).toFixed(2),
           material?.unit || 'N/A',
@@ -603,13 +625,16 @@ const Inventory = () => {
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
         const totalValue = item.fifo_total_value || 0
         const avgCost = item.fifo_average_cost || 0
+        const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+          ? parseFloat(item.last_unit_cost)
+          : null
         const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
                             material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
         
         return [
           materialType,
           `${material?.name || 'N/A'} (${material?.unit || ''})`,
-          material?.code || 'N/A',
+          lastPrice !== null ? `₹${lastPrice.toFixed(2)}` : 'N/A',
           material?.category || 'N/A',
           parseFloat(item.quantity).toFixed(2),
           lowStockThreshold.toFixed(2),
@@ -621,7 +646,7 @@ const Inventory = () => {
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Type', 'Material Name', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Avg Cost/Unit', 'Total Value (FIFO)']],
+        head: [['Type', 'Material Name', 'Last Price', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Avg Cost/Unit', 'Total Value (FIFO)']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
@@ -824,7 +849,7 @@ const Inventory = () => {
                           )}
                         </button>
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Last Price</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">
                         <button
@@ -895,7 +920,9 @@ const Inventory = () => {
                           {material.name} ({material.unit})
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {material.code}
+                          {item.last_unit_cost !== null && item.last_unit_cost !== undefined
+                            ? `₹${parseFloat(item.last_unit_cost).toFixed(2)}`
+                            : 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {material.category || 'N/A'}

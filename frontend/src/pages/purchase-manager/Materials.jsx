@@ -92,6 +92,7 @@ const Materials = ({ isAdminMode = false }) => {
     try {
       setLoading(true)
       setError(null)
+      const session = getSession()
 
       // Fetch raw materials with vendor info (excluding soft-deleted)
       const { data: rawMaterials, error: materialsError } = await supabase
@@ -106,11 +107,17 @@ const Materials = ({ isAdminMode = false }) => {
       let materialsWithLastPrice = rawMaterials || []
 
       if (materialIds.length > 0) {
-        const { data: batchesData, error: batchesError } = await supabase
+        let batchesQuery = supabase
           .from('stock_in_batches')
           .select('raw_material_id, unit_cost, created_at')
           .in('raw_material_id', materialIds)
           .order('created_at', { ascending: false })
+
+        if (session?.cloud_kitchen_id) {
+          batchesQuery = batchesQuery.eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        }
+
+        const { data: batchesData, error: batchesError } = await batchesQuery
 
         if (batchesError) throw batchesError
 
