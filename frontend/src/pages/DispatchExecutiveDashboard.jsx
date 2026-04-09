@@ -56,21 +56,6 @@ const getMaterialSectionKey = (material) => {
   return material?.material_type || 'other'
 }
 
-const normalizeBrandCodes = (brandCodes) => {
-  if (Array.isArray(brandCodes)) {
-    return brandCodes.map(code => String(code).toLowerCase().trim()).filter(Boolean)
-  }
-  if (typeof brandCodes === 'string' && brandCodes.trim()) {
-    return brandCodes
-      .toLowerCase()
-      .replace(/[\[\]"']/g, ' ')
-      .split(/[\s,]+/)
-      .map(code => code.trim())
-      .filter(code => ['bp', 'ec', 'nk'].includes(code))
-  }
-  return []
-}
-
 const DispatchExecutiveDashboard = () => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -269,7 +254,6 @@ const DispatchExecutiveDashboard = () => {
     try {
       const [
         { data: outletsData, error: outletsError },
-        { data: materialsData, error: materialsError },
         { data: recipesData, error: recipesError }
       ] = await Promise.all([
         supabase
@@ -279,12 +263,6 @@ const DispatchExecutiveDashboard = () => {
           .eq('is_active', true)
           .is('deleted_at', null)
           .ilike('code', `${brandMeta.id}%`)
-          .order('name', { ascending: true }),
-        supabase
-          .from('raw_materials')
-          .select('id, name, code, unit, material_type, category, brand_codes')
-          .eq('is_active', true)
-          .is('deleted_at', null)
           .order('name', { ascending: true }),
         supabase
           .from('recipes')
@@ -302,18 +280,56 @@ const DispatchExecutiveDashboard = () => {
       ])
 
       if (outletsError) throw outletsError
-      if (materialsError) throw materialsError
       if (recipesError) throw recipesError
 
-      const brandCode = brandMeta.materialBrandCode
-      const filteredMaterials = (materialsData || []).filter(material => {
-        const codes = normalizeBrandCodes(material.brand_codes)
-        if (codes.length === 0) return false
-        return codes.includes(brandCode)
-      })
+      const { data: brandDispatchData, error: brandDispatchError } = await supabase
+        .from('brand_dispatch')
+        .select('id')
+        .ilike('code', brandMeta.id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (brandDispatchError) throw brandDispatchError
+
+      if (!brandDispatchData) {
+        setOutlets(outletsData || [])
+        setMaterials([])
+        setRecipes(recipesData || [])
+        setModalError('No dispatch brand configured for this selection. Ask an admin to add the brand and materials under Settings.')
+        return
+      }
+
+      const { data: brandItemsData, error: brandItemsError } = await supabase
+        .from('brand_dispatch_items')
+        .select(`
+          raw_material_id,
+          sort_order,
+          raw_materials (
+            id,
+            name,
+            code,
+            unit,
+            material_type,
+            category
+          )
+        `)
+        .eq('brand_dispatch_id', brandDispatchData.id)
+        .order('sort_order')
+
+      if (brandItemsError) throw brandItemsError
+
+      if (!brandItemsData || brandItemsData.length === 0) {
+        setOutlets(outletsData || [])
+        setMaterials([])
+        setRecipes(recipesData || [])
+        setModalError('No materials configured for this brand yet. Ask an admin to add materials under Settings.')
+        return
+      }
+
+      const materials = brandItemsData.map(item => item.raw_materials)
 
       setOutlets(outletsData || [])
-      setMaterials(filteredMaterials)
+      setMaterials(materials)
       setRecipes(recipesData || [])
     } catch (error) {
       console.error('Error preparing dispatch plan modal:', error)
@@ -340,7 +356,6 @@ const DispatchExecutiveDashboard = () => {
     try {
       const [
         { data: outletsData, error: outletsError },
-        { data: materialsData, error: materialsError },
         { data: itemsData, error: itemsError },
         { data: recipesData, error: recipesError }
       ] = await Promise.all([
@@ -351,12 +366,6 @@ const DispatchExecutiveDashboard = () => {
           .eq('is_active', true)
           .is('deleted_at', null)
           .ilike('code', `${brandMeta.id}%`)
-          .order('name', { ascending: true }),
-        supabase
-          .from('raw_materials')
-          .select('id, name, code, unit, material_type, category, brand_codes')
-          .eq('is_active', true)
-          .is('deleted_at', null)
           .order('name', { ascending: true }),
         supabase
           .from('dispatch_plan_items')
@@ -378,16 +387,63 @@ const DispatchExecutiveDashboard = () => {
       ])
 
       if (outletsError) throw outletsError
-      if (materialsError) throw materialsError
       if (itemsError) throw itemsError
       if (recipesError) throw recipesError
 
-      const brandCode = brandMeta.materialBrandCode
-      const filteredMaterials = (materialsData || []).filter(material => {
-        const codes = normalizeBrandCodes(material.brand_codes)
-        if (codes.length === 0) return false
-        return codes.includes(brandCode)
-      })
+      const { data: brandDispatchData, error: brandDispatchError } = await supabase
+        .from('brand_dispatch')
+        .select('id')
+        .ilike('code', brandMeta.id)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (brandDispatchError) throw brandDispatchError
+
+      let configuredMaterials = []
+      
+      if (brandDispatchData) {
+        const { data: brandItemsData, error: brandItemsError } = await supabase
+          .from('brand_dispatch_items')
+          .select(`
+            raw_material_id,
+            sort_order,
+            raw_materials (
+              id,
+              name,
+              code,
+              unit,
+              material_type,
+              category
+            )
+          `)
+          .eq('brand_dispatch_id', brandDispatchData.id)
+          .order('sort_order')
+
+        if (brandItemsError) throw brandItemsError
+
+        if (brandItemsData && brandItemsData.length > 0) {
+          configuredMaterials = brandItemsData.map(item => item.raw_materials)
+        }
+      }
+
+      const configuredMaterialIds = new Set(configuredMaterials.map(m => m.id))
+      const planMaterialIds = [...new Set((itemsData || []).map(item => item.raw_material_id))]
+      const missingMaterialIds = planMaterialIds.filter(id => !configuredMaterialIds.has(id))
+
+      let extraMaterials = []
+      if (missingMaterialIds.length > 0) {
+        const { data: extraMaterialsData, error: extraMaterialsError } = await supabase
+          .from('raw_materials')
+          .select('id, name, code, unit, material_type, category')
+          .in('id', missingMaterialIds)
+          .eq('is_active', true)
+          .order('name')
+
+        if (extraMaterialsError) throw extraMaterialsError
+        extraMaterials = extraMaterialsData || []
+      }
+
+      const allMaterials = [...configuredMaterials, ...extraMaterials]
 
       const qtyMap = {}
       ;(itemsData || []).forEach(item => {
@@ -398,7 +454,7 @@ const DispatchExecutiveDashboard = () => {
       })
 
       setOutlets(outletsData || [])
-      setMaterials(filteredMaterials)
+      setMaterials(allMaterials)
       setQuantities(qtyMap)
       setRecipes(recipesData || [])
     } catch (error) {
