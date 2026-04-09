@@ -8,6 +8,7 @@ import AdminOperators from './admin/AdminOperators'
 import AdminRecipes from './admin/AdminRecipes'
 import AdminOutlets from './admin/AdminOutlets'
 import AdminVendors from './admin/AdminVendors'
+import AdminBrandDispatch from './admin/AdminBrandDispatch'
 
 const NAV_STRUCTURE = [
   {
@@ -36,6 +37,7 @@ const NAV_STRUCTURE = [
       { id: 'recipes', label: 'Recipes' },
       { id: 'users', label: 'Users' },
       { id: 'operators', label: 'Operators' },
+      { id: 'dispatch-brands', label: 'Dispatch Brands' },
       { id: 'preferences', label: 'Preferences' },
     ],
   },
@@ -88,6 +90,8 @@ const AdminDashboard = () => {
     activeParentId === 'settings' && activeChildId === 'operators'
   const isVendorsSection =
     activeParentId === 'settings' && activeChildId === 'vendors'
+  const isDispatchBrandsSection =
+    activeParentId === 'settings' && activeChildId === 'dispatch-brands'
 
   return (
     <div className="min-h-screen bg-background">
@@ -149,10 +153,10 @@ const AdminDashboard = () => {
                       </span>
                     </button>
                     <div
-                      className={`mt-1 pl-1 overflow-hidden transition-all duration-300 ease-out ${
+                      className={`mt-1 pl-1 transition-all duration-300 ease-out ${
                         expandedParents.includes(parent.id)
-                          ? 'max-h-40 opacity-100'
-                          : 'max-h-0 opacity-0'
+                          ? 'max-h-[min(70vh,28rem)] opacity-100 overflow-y-auto'
+                          : 'max-h-0 opacity-0 overflow-hidden'
                       }`}
                     >
                       <div className="space-y-0.5">
@@ -235,6 +239,10 @@ const AdminDashboard = () => {
             ) : isOperatorsSection ? (
               <div className="-mt-2">
                 <AdminOperators />
+              </div>
+            ) : isDispatchBrandsSection ? (
+              <div className="-mt-2">
+                <AdminBrandDispatch />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">

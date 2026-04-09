@@ -7,6 +7,18 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 
+const DISPATCH_STOCK_OUT_SECTIONS = [
+  { key: 'finished', label: 'Finished' },
+  { key: 'semi_finished', label: 'Semi-finished' },
+  { key: 'raw_material', label: 'Raw materials' },
+]
+
+function selfStockOutRowSectionKey(materialType) {
+  if (materialType === 'finished') return 'finished'
+  if (materialType === 'semi_finished') return 'semi_finished'
+  return 'raw_material'
+}
+
 /** Latest stock_out.created_at (or allocation_date) per material for kitchen self stock-out + reason */
 async function fetchLastKitchenStockOutDatesByMaterial(
   cloudKitchenId,
@@ -102,6 +114,9 @@ const StockOut = () => {
   const [selectedStockOutRows, setSelectedStockOutRows] = useState(new Set())
   const [wastageImageFile, setWastageImageFile] = useState(null)
   const [wastageImageError, setWastageImageError] = useState('')
+  // Dispatch brand states
+  const [dispatchBrands, setDispatchBrands] = useState([])
+  const [selectedDispatchBrand, setSelectedDispatchBrand] = useState('')
   // Prevent double-submit on allocation (ref blocks immediately)
   const allocatingRef = useRef(false)
   // Material search popup (same design as Stock In / OutletDetails)
@@ -117,6 +132,44 @@ const StockOut = () => {
     const ids = selfStockOutItems.map((i) => i.raw_material_id).filter(Boolean)
     return [...new Set(ids)].sort().join(',')
   }, [selfStockOutItems])
+
+  /** Dispatch reason: table order — section headers + rows (indices match selfStockOutItems) */
+  const selfStockOutDispatchTableRows = useMemo(() => {
+    if (selfStockOutReason !== 'dispatch') return null
+
+    const buckets = { finished: [], semi_finished: [], raw_material: [] }
+    const empties = []
+
+    const typeFor = (item) => {
+      if (item.material_type) return item.material_type
+      const m = allMaterials.find((x) => x.id === item.raw_material_id)
+      return m?.material_type
+    }
+
+    selfStockOutItems.forEach((item, index) => {
+      if (!item.raw_material_id) {
+        empties.push({ item, index })
+        return
+      }
+      const sk = selfStockOutRowSectionKey(typeFor(item))
+      buckets[sk].push({ item, index })
+    })
+
+    const out = []
+    DISPATCH_STOCK_OUT_SECTIONS.forEach((section, sectionIdx) => {
+      const rows = buckets[section.key]
+      if (!rows.length) return
+      out.push({
+        kind: 'section',
+        key: section.key,
+        label: section.label,
+        sectionIdx,
+      })
+      rows.forEach((r) => out.push({ kind: 'row', ...r }))
+    })
+    empties.forEach((r) => out.push({ kind: 'row', ...r }))
+    return out
+  }, [selfStockOutReason, selfStockOutItems, allMaterials])
 
   // When kitchen stock-out modal is open: last self stock-out date per material for the selected reason
   useEffect(() => {
@@ -201,6 +254,39 @@ const StockOut = () => {
     if (selfStockOutReason !== 'wastage') {
       setWastageImageFile(null)
       setWastageImageError('')
+    }
+  }, [selfStockOutReason])
+
+  // Fetch dispatch brands when reason is dispatch
+  useEffect(() => {
+    if (selfStockOutReason !== 'dispatch' || !showSelfStockOutModal) {
+      setSelectedDispatchBrand('')
+      return
+    }
+
+    const fetchDispatchBrands = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('brand_dispatch')
+          .select('id, name, code, sort_order')
+          .eq('is_active', true)
+          .order('sort_order')
+
+        if (error) throw error
+        setDispatchBrands(data || [])
+      } catch (err) {
+        console.error('Error fetching dispatch brands:', err)
+        setAlert(prev => prev || { type: 'error', message: 'Failed to load dispatch brands' })
+        setDispatchBrands([])
+      }
+    }
+    fetchDispatchBrands()
+  }, [selfStockOutReason, showSelfStockOutModal])
+
+  // Clear dispatch brand when reason changes away from dispatch
+  useEffect(() => {
+    if (selfStockOutReason !== 'dispatch') {
+      setSelectedDispatchBrand('')
     }
   }, [selfStockOutReason])
 
@@ -359,6 +445,7 @@ const StockOut = () => {
       `Allocation Date: ${new Date(record.allocation_date).toLocaleDateString()}`,
       !isKitchen && record.outlets?.name ? `Outlet: ${record.outlets.name} (${record.outlets.code || ''})` : null,
       isKitchen && record.reason ? `Reason: ${record.reason.replace(/-/g, ' ')}` : null,
+      isKitchen && record.reason === 'dispatch' && record.dispatch_brand ? `Brand: ${record.dispatch_brand}` : null,
       record.notes ? `Notes: ${record.notes}` : null
     ].filter(Boolean)
 
@@ -405,6 +492,7 @@ const StockOut = () => {
       ['Allocation Date:', new Date(record.allocation_date).toLocaleDateString()],
       !isKitchen && record.outlets?.name ? ['Outlet:', `${record.outlets.name} (${record.outlets.code || ''})`] : null,
       isKitchen && record.reason ? ['Reason:', record.reason.replace(/-/g, ' ')] : null,
+      isKitchen && record.reason === 'dispatch' && record.dispatch_brand ? ['Brand:', record.dispatch_brand] : null,
       record.notes ? ['Notes:', record.notes] : null
     ].filter(Boolean)
 
@@ -519,6 +607,10 @@ const StockOut = () => {
     if (isKitchen && record.reason) {
       doc.text(`Reason: ${record.reason.replace(/-/g, ' ')}`, 25, yPos)
       yPos += 5
+      if (record.reason === 'dispatch' && record.dispatch_brand) {
+        doc.text(`Brand: ${record.dispatch_brand}`, 25, yPos)
+        yPos += 5
+      }
     }
     if (record.notes) {
       doc.text(`Notes: ${record.notes}`, 25, yPos)
@@ -790,13 +882,15 @@ const StockOut = () => {
     setSelfStockOutNotes('')
     setTransferToCloudKitchenId('')
     setOtherCloudKitchens([])
+    setSelectedDispatchBrand('')
+    setDispatchBrands([])
     const session = getSession()
 
     try {
       // Fetch all active raw materials
       const { data: materials, error: matError } = await supabase
         .from('raw_materials')
-        .select('id, name, code, unit, category')
+        .select('id, name, code, unit, category, material_type')
         .eq('is_active', true)
         .order('name')
 
@@ -875,6 +969,114 @@ const StockOut = () => {
     setSelectedStockOutRows(new Set())
   }
 
+  // Handle dispatch brand selection - auto-populate materials
+  const handleDispatchBrandChange = async (brandId) => {
+    setSelectedDispatchBrand(brandId)
+    
+    if (!brandId) {
+      // Clear to empty rows if brand is deselected
+      setSelfStockOutItems([makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow()])
+      return
+    }
+
+    const session = getSession()
+    if (!session?.cloud_kitchen_id) return
+
+    try {
+      // Fetch brand dispatch items with material details
+      const { data: brandItems, error: itemsError } = await supabase
+        .from('brand_dispatch_items')
+        .select(`
+          id,
+          raw_material_id,
+          sort_order,
+          raw_materials (
+            id,
+            name,
+            code,
+            unit,
+            material_type
+          )
+        `)
+        .eq('brand_dispatch_id', brandId)
+        .order('sort_order')
+
+      if (itemsError) throw itemsError
+
+      if (!brandItems || brandItems.length === 0) {
+        setAlert({ type: 'info', message: 'No materials configured for this brand yet. Add materials in Admin Settings.' })
+        setSelfStockOutItems([makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow()])
+        return
+      }
+
+      // Fetch inventory and today's totals for all materials in parallel
+      const materialIds = brandItems.map(item => item.raw_material_id)
+      
+      // Fetch inventory for all materials
+      const { data: inventoryData, error: invError } = await supabase
+        .from('inventory')
+        .select('raw_material_id, quantity')
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .in('raw_material_id', materialIds)
+
+      const inventoryMap = {}
+      if (inventoryData) {
+        inventoryData.forEach(inv => {
+          inventoryMap[inv.raw_material_id] = parseFloat(inv.quantity || 0)
+        })
+      }
+
+      // Fetch today's allocation totals
+      const today = new Date().toISOString().split('T')[0]
+      const { data: todayRequests, error: reqError } = await supabase
+        .from('allocation_requests')
+        .select(`
+          allocation_request_items!inner (
+            raw_material_id,
+            quantity
+          )
+        `)
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .eq('request_date', today)
+        .eq('is_packed', false)
+
+      const todaysTotalsMap = {}
+      if (todayRequests) {
+        todayRequests.forEach(req => {
+          req.allocation_request_items.forEach(item => {
+            if (materialIds.includes(item.raw_material_id)) {
+              todaysTotalsMap[item.raw_material_id] = 
+                (todaysTotalsMap[item.raw_material_id] || 0) + parseFloat(item.quantity || 0)
+            }
+          })
+        })
+      }
+
+      // Build rows from brand items
+      const newRows = brandItems.map(item => ({
+        id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        raw_material_id: item.raw_materials.id,
+        name: item.raw_materials.name,
+        code: item.raw_materials.code,
+        unit: item.raw_materials.unit,
+        material_type: item.raw_materials.material_type,
+        allocated_quantity: '',
+        current_inventory: inventoryMap[item.raw_materials.id] || 0,
+        todays_total: todaysTotalsMap[item.raw_materials.id] || 0
+      }))
+
+      // Add one empty row at the end for manual additions
+      newRows.push(makeEmptySelfStockOutRow())
+
+      setSelfStockOutItems(newRows)
+      setSelectedStockOutRows(new Set())
+    } catch (err) {
+      console.error('Error loading brand materials:', err)
+      setAlert({ type: 'error', message: 'Failed to load brand materials' })
+      setSelfStockOutItems([makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow(), makeEmptySelfStockOutRow()])
+    }
+  }
+
   // Update material selection in self stock out
   const handleSelfStockOutMaterialChange = async (index, materialId) => {
     const session = getSession()
@@ -933,6 +1135,7 @@ const StockOut = () => {
           name: material.name,
           code: material.code,
           unit: material.unit,
+          material_type: material.material_type,
           allocated_quantity: '',
           todays_total: todaysTotal,
           current_inventory: currentInventory
@@ -954,6 +1157,7 @@ const StockOut = () => {
           name: material.name,
           code: material.code,
           unit: material.unit,
+          material_type: material.material_type,
           allocated_quantity: '',
           current_inventory: 0
         }
@@ -1218,6 +1422,13 @@ const StockOut = () => {
         return
       }
 
+      if (selfStockOutReason === 'dispatch' && !selectedDispatchBrand) {
+        setAlert({ type: 'error', message: 'Please select a brand for dispatch stock out' })
+        allocatingRef.current = false
+        setAllocating(false)
+        return
+      }
+
       if (itemsToProcess.length === 0) {
         setAlert({ type: 'error', message: 'Please add at least one material with quantity' })
         allocatingRef.current = false
@@ -1286,6 +1497,10 @@ const StockOut = () => {
         stockOutPayload.notes = selfStockOutNotes.trim() || null
         if (selfStockOutReason === 'inter-cloud-kitchen') {
           stockOutPayload.transfer_to_cloud_kitchen_id = transferToCloudKitchenId
+        }
+        if (selfStockOutReason === 'dispatch') {
+          const selectedBrand = dispatchBrands.find(b => b.id === selectedDispatchBrand)
+          stockOutPayload.dispatch_brand = selectedBrand?.code || null
         }
       } else {
         // Regular stock out
@@ -1979,6 +2194,7 @@ const StockOut = () => {
                       selectedValues={kitchenReasonFilter}
                       onChange={setKitchenReasonFilter}
                       options={[
+                        { value: 'dispatch', label: 'Dispatch' },
                         { value: 'wastage', label: 'Wastage' },
                         { value: 'staff-food', label: 'Staff Food' },
                         { value: 'internal-production', label: 'Internal Production' },
@@ -2107,6 +2323,11 @@ const StockOut = () => {
                             {record.reason
                               ? record.reason.replace(/-/g, ' ')
                               : '—'}
+                            {record.reason === 'dispatch' && record.dispatch_brand && (
+                              <span className="block text-xs text-muted-foreground mt-0.5">
+                                Brand: {record.dispatch_brand}
+                              </span>
+                            )}
                             {record.reason === 'inter-cloud-kitchen' && record.destination_kitchen && (
                               <span className="block text-xs text-muted-foreground mt-0.5">
                                 → {record.destination_kitchen.name}
@@ -2541,6 +2762,7 @@ const StockOut = () => {
                   className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                 >
                   <option value="">Select reason</option>
+                  <option value="dispatch">Dispatch</option>
                   <option value="wastage">Wastage</option>
                   <option value="staff-food">Staff Food</option>
                   <option value="internal-production">Internal Production</option>
@@ -2548,6 +2770,31 @@ const StockOut = () => {
                   <option value="cullinary-rnd">Culinary R&D</option>
                 </select>
               </div>
+
+              {/* Brand selector (only when reason is dispatch) */}
+              {selfStockOutReason === 'dispatch' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-foreground mb-2">
+                    Brand <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={selectedDispatchBrand}
+                    onChange={(e) => handleDispatchBrandChange(e.target.value)}
+                    disabled={allocating}
+                    className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                  >
+                    <option value="">Select brand</option>
+                    {dispatchBrands.map((brand) => (
+                      <option key={brand.id} value={brand.id}>
+                        {brand.name} ({brand.code})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Selecting a brand will auto-populate materials configured for that brand.
+                  </p>
+                </div>
+              )}
 
               {/* Wastage photo (required when reason is wastage) */}
               {selfStockOutReason === 'wastage' && (
@@ -2667,9 +2914,29 @@ const StockOut = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {selfStockOutItems.map((item, index) => (
+                        {(selfStockOutDispatchTableRows != null
+                          ? selfStockOutDispatchTableRows
+                          : selfStockOutItems.map((item, index) => ({ kind: 'row', item, index }))
+                        ).map((entry) => {
+                          if (entry.kind === 'section') {
+                            return (
+                            <tr
+                              key={`dispatch-sec-${entry.key}`}
+                              className={`bg-muted/20 ${entry.sectionIdx > 0 ? 'border-t border-border/80' : ''}`}
+                            >
+                              <td
+                                colSpan={6}
+                                className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                              >
+                                {entry.label}
+                              </td>
+                            </tr>
+                            )
+                          }
+                          const { item, index } = entry
+                          return (
                           <tr
-                            key={item.id || index}
+                            key={item.id || `row-${index}`}
                             className={`hover:bg-accent/5 ${selectedStockOutRows.has(index) ? 'bg-accent/10' : ''}`}
                           >
                             <td className="px-2 py-2">
@@ -2805,7 +3072,8 @@ const StockOut = () => {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2826,6 +3094,7 @@ const StockOut = () => {
                   disabled={
                     allocating || 
                     !selfStockOutReason ||
+                    (selfStockOutReason === 'dispatch' && !selectedDispatchBrand) ||
                     (selfStockOutReason === 'wastage' && !wastageImageFile) ||
                     (selfStockOutReason === 'inter-cloud-kitchen' && !transferToCloudKitchenId) ||
                     (selfStockOutReason === 'cullinary-rnd' && !selfStockOutNotes.trim()) ||
@@ -2920,6 +3189,11 @@ const StockOut = () => {
                     <p className="font-semibold text-foreground capitalize">
                       {stockOutDetails.reason.replace(/-/g, ' ')}
                     </p>
+                    {stockOutDetails.reason === 'dispatch' && stockOutDetails.dispatch_brand && (
+                      <p className="text-sm text-foreground mt-1">
+                        Brand: <span className="font-semibold">{stockOutDetails.dispatch_brand}</span>
+                      </p>
+                    )}
                     {stockOutDetails.reason === 'inter-cloud-kitchen' && stockOutDetails.destination_kitchen && (
                       <p className="text-sm text-foreground mt-1">
                         Transfer to: <span className="font-semibold">{stockOutDetails.destination_kitchen.name}</span>
