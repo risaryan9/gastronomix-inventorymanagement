@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { fetchPlanExportData, exportDispatchPlanExcel, exportDispatchPlanPdf } from '../lib/dispatchPlanExport'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 import nippuKodiLogo from '../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../assets/el-chaapo-logo.png'
@@ -60,6 +61,7 @@ const KitchenExecutiveDashboard = () => {
   const [plansLoading, setPlansLoading] = useState(false)
   const [plansError, setPlansError] = useState(null)
   const [todayDraftPlan, setTodayDraftPlan] = useState(null)
+  const [todayPlan, setTodayPlan] = useState(null)
 
   const [isDraftModalOpen, setIsDraftModalOpen] = useState(false)
   const [draftModalLoading, setDraftModalLoading] = useState(false)
@@ -98,6 +100,7 @@ const KitchenExecutiveDashboard = () => {
     if (!selectedBrand || !cloudKitchenId) {
       setDispatchPlans([])
       setTodayDraftPlan(null)
+      setTodayPlan(null)
       return
     }
     fetchDispatchPlansForBrand()
@@ -180,6 +183,11 @@ const KitchenExecutiveDashboard = () => {
         plan => plan.plan_date === today && plan.status === 'draft'
       ) || null
       setTodayDraftPlan(draftToday)
+      
+      const anyTodayPlan = plans.find(
+        plan => plan.plan_date === today
+      ) || null
+      setTodayPlan(anyTodayPlan)
     } catch (error) {
       console.error('Error fetching dispatch plans (kitchen):', error)
       setPlansError('Failed to load dispatch plans. Please try again.')
@@ -304,55 +312,6 @@ const KitchenExecutiveDashboard = () => {
     })
   }
 
-  // FIFO allocation: decrement stock from batches (and let triggers update inventory)
-  const allocateStockFIFO = async (rawMaterialId, quantity) => {
-    const qty = parseFloat(quantity)
-    if (!cloudKitchenId || isNaN(qty) || qty <= 0) return
-
-    const { data: batches, error: batchError } = await supabase
-      .from('stock_in_batches')
-      .select('id, quantity_remaining, unit_cost, created_at')
-      .eq('raw_material_id', rawMaterialId)
-      .eq('cloud_kitchen_id', cloudKitchenId)
-      .gt('quantity_remaining', 0)
-      .order('created_at', { ascending: true })
-
-    if (batchError) throw batchError
-
-    if (!batches || batches.length === 0) {
-      throw new Error('No batches available for this material')
-    }
-
-    let remaining = qty
-    const updates = []
-
-    for (const batch of batches) {
-      if (remaining <= 0) break
-      const available = parseFloat(batch.quantity_remaining)
-      const toAllocate = Math.min(available, remaining)
-
-      updates.push({
-        id: batch.id,
-        newQuantityRemaining: available - toAllocate
-      })
-
-      remaining -= toAllocate
-    }
-
-    if (remaining > 0) {
-      throw new Error(`Insufficient stock. Short by ${remaining.toFixed(2)} units`)
-    }
-
-    for (const update of updates) {
-      const { error: updateError } = await supabase
-        .from('stock_in_batches')
-        .update({ quantity_remaining: update.newQuantityRemaining })
-        .eq('id', update.id)
-
-      if (updateError) throw updateError
-    }
-  }
-
   // Order materials for UI: Finished → Semi-Finished → Raw, then by name
   const orderedMaterials = [...planMaterials].sort((a, b) => {
     const orderA = MATERIAL_TYPE_ORDER[a.material_type] ?? 99
@@ -396,6 +355,26 @@ const KitchenExecutiveDashboard = () => {
     setShowLockConfirm(true)
   }
 
+  const handleDownloadPDF = async (planId) => {
+    try {
+      const data = await fetchPlanExportData(supabase, planId, session)
+      exportDispatchPlanPdf(data)
+    } catch (error) {
+      console.error('Error downloading PDF:', error)
+      alert('Failed to download PDF. Please try again.')
+    }
+  }
+
+  const handleDownloadExcel = async (planId) => {
+    try {
+      const data = await fetchPlanExportData(supabase, planId, session)
+      exportDispatchPlanExcel(data)
+    } catch (error) {
+      console.error('Error downloading Excel:', error)
+      alert('Failed to download Excel. Please try again.')
+    }
+  }
+
   const handleConfirmLock = async () => {
     if (!todayDraftPlan || !cloudKitchenId || !userId) return
 
@@ -422,67 +401,6 @@ const KitchenExecutiveDashboard = () => {
         setDraftModalError('Please keep at least one item with a positive quantity before locking.')
         setShowLockConfirm(false)
         return
-      }
-
-      // Validate inventory for each material (sum of quantities across outlets)
-      const totalsByMaterial = {}
-      items.forEach(item => {
-        const id = item.raw_material_id
-        if (!totalsByMaterial[id]) totalsByMaterial[id] = 0
-        totalsByMaterial[id] += item.quantity
-      })
-
-      for (const [materialId, totalQty] of Object.entries(totalsByMaterial)) {
-        const available = inventoryByMaterial[materialId] ?? 0
-        if (totalQty > available + 1e-6) {
-          const material = planMaterials.find(m => m.id === materialId)
-          const name = material?.name || 'Material'
-          const unit = material?.unit || ''
-          setDraftModalError(
-            `Insufficient stock for ${name}. Available: ${available.toFixed(2)} ${unit}, planned: ${totalQty.toFixed(2)} ${unit}.`
-          )
-          setShowLockConfirm(false)
-          setIsLocking(false)
-          return
-        }
-      }
-
-      // Re-check current inventory just before locking (to reduce race risk)
-      const materialIds = planMaterials.map(m => m.id)
-      if (materialIds.length > 0) {
-        const { data: invData, error: invError } = await supabase
-          .from('inventory')
-          .select('raw_material_id, quantity')
-          .eq('cloud_kitchen_id', cloudKitchenId)
-          .in('raw_material_id', materialIds)
-
-        if (invError) throw invError
-
-        const invMap = {}
-        ;(invData || []).forEach(row => {
-          invMap[row.raw_material_id] = parseFloat(row.quantity || 0)
-        })
-        setInventoryByMaterial(invMap)
-
-        for (const [materialId, totalQty] of Object.entries(totalsByMaterial)) {
-          const available = invMap[materialId] ?? 0
-          if (totalQty > available + 1e-6) {
-            const material = planMaterials.find(m => m.id === materialId)
-            const name = material?.name || 'Material'
-            const unit = material?.unit || ''
-            setDraftModalError(
-              `Insufficient stock for ${name}. Available: ${available.toFixed(2)} ${unit}, planned: ${totalQty.toFixed(2)} ${unit}.`
-            )
-            setShowLockConfirm(false)
-            setIsLocking(false)
-            return
-          }
-        }
-      }
-
-      // Decrement stock from batches using FIFO for each material
-      for (const [materialId, totalQty] of Object.entries(totalsByMaterial)) {
-        await allocateStockFIFO(materialId, totalQty)
       }
 
       // Replace dispatch_plan_items with final items
@@ -544,7 +462,7 @@ const KitchenExecutiveDashboard = () => {
 
   const today = new Date().toISOString().split('T')[0]
   const previousPlans = dispatchPlans.filter(
-    (plan) => !(todayDraftPlan && plan.id === todayDraftPlan.id)
+    (plan) => !(todayPlan && plan.id === todayPlan.id)
   )
 
   return (
@@ -617,51 +535,70 @@ const KitchenExecutiveDashboard = () => {
 
           {selectedBrand ? (
             <section className="space-y-4 lg:space-y-6">
-              {/* Today's draft dispatch plan */}
+              {/* Today's dispatch plan */}
               <div className="bg-card border border-border rounded-2xl p-4 lg:p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div>
                     <h2 className="text-base lg:text-lg font-semibold text-foreground">
-                      {getBrandMeta(selectedBrand)?.name} – Today&apos;s Draft Dispatch Plan
+                      {getBrandMeta(selectedBrand)?.name} – Today&apos;s Dispatch Plan
                     </h2>
-                    {todayDraftPlan ? (
+                    {todayPlan ? (
                       <>
-                        <p className="text-xs lg:text-sm text-muted-foreground mt-1">
-                          Draft created for {todayDraftPlan.plan_date}. Review quantities, compare with
-                          current inventory, and lock when ready. Once locked, it cannot be edited.
-                        </p>
-                        {todayDraftPlan.locked_at && (
-                          <p className="text-xs lg:text-sm text-yellow-500 mt-1">
-                            This plan is already locked.
+                        {todayPlan.status === 'draft' ? (
+                          <p className="text-xs lg:text-sm text-muted-foreground mt-1">
+                            Draft created for {todayPlan.plan_date}. Review quantities and lock when ready. 
+                            Locking finalizes the plan for operations. Stock changes are handled manually by the purchase manager.
+                          </p>
+                        ) : (
+                          <p className="text-xs lg:text-sm text-muted-foreground mt-1">
+                            Plan for {todayPlan.plan_date} is locked. Download the summary for manual stock processing.
                           </p>
                         )}
                       </>
                     ) : (
                       <p className="text-xs lg:text-sm text-muted-foreground mt-1">
-                        No draft dispatch plan has been created for today yet. The dispatch executive
+                        No dispatch plan has been created for today yet. The dispatch executive
                         will create today&apos;s plan here.
                       </p>
                     )}
                   </div>
                   <div className="flex flex-col items-stretch gap-2 min-w-[220px]">
-                    <button
-                      onClick={openDraftPlanModal}
-                      disabled={!todayDraftPlan || todayDraftPlan.status !== 'draft'}
-                      className={`w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors ${
-                        !todayDraftPlan || todayDraftPlan.status !== 'draft'
-                          ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                          : 'bg-accent text-black hover:bg-accent/90'
-                      }`}
-                    >
-                      {todayDraftPlan ? 'Open Draft Plan' : 'No Draft Available'}
-                    </button>
-                    {todayDraftPlan && todayDraftPlan.status === 'draft' && (
+                    {todayPlan && todayPlan.status === 'draft' ? (
+                      <>
+                        <button
+                          onClick={openDraftPlanModal}
+                          className="w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors bg-accent text-black hover:bg-accent/90"
+                        >
+                          Open Draft Plan
+                        </button>
+                        <button
+                          onClick={handleStartLock}
+                          className="w-full font-semibold px-4 py-2 rounded-lg text-sm lg:text-base bg-red-500/10 text-red-500 border border-red-500/40 hover:bg-red-500/15 transition-colors"
+                        >
+                          Lock Dispatch Plan
+                        </button>
+                      </>
+                    ) : todayPlan && todayPlan.status === 'locked' ? (
+                      <>
+                        <button
+                          onClick={() => handleDownloadPDF(todayPlan.id)}
+                          className="w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors bg-blue-500 text-white hover:bg-blue-600"
+                        >
+                          Download PDF
+                        </button>
+                        <button
+                          onClick={() => handleDownloadExcel(todayPlan.id)}
+                          className="w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors bg-green-500 text-white hover:bg-green-600"
+                        >
+                          Download Excel
+                        </button>
+                      </>
+                    ) : (
                       <button
-                        onClick={handleStartLock}
-                        disabled={!todayDraftPlan}
-                        className="w-full font-semibold px-4 py-2 rounded-lg text-sm lg:text-base bg-red-500/10 text-red-500 border border-red-500/40 hover:bg-red-500/15 transition-colors"
+                        disabled
+                        className="w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors bg-muted text-muted-foreground cursor-not-allowed"
                       >
-                        Lock Dispatch Plan
+                        No Plan Available
                       </button>
                     )}
                   </div>
@@ -704,6 +641,7 @@ const KitchenExecutiveDashboard = () => {
                           <th className="py-2.5 px-4">Status</th>
                           <th className="py-2.5 px-4 hidden sm:table-cell">Created At</th>
                           <th className="py-2.5 px-4 hidden md:table-cell">Notes</th>
+                          <th className="py-2.5 px-4">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -732,6 +670,34 @@ const KitchenExecutiveDashboard = () => {
                             </td>
                             <td className="py-2.5 px-4 hidden md:table-cell text-muted-foreground">
                               {plan.notes || '-'}
+                            </td>
+                            <td className="py-2.5 px-4">
+                              {plan.status === 'locked' ? (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleDownloadPDF(plan.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors"
+                                    title="Download PDF"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                    PDF
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownloadExcel(plan.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-green-500/10 text-green-600 hover:bg-green-500/20 transition-colors"
+                                    title="Download Excel"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                    Excel
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-[11px]">-</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -769,8 +735,8 @@ const KitchenExecutiveDashboard = () => {
                   {getBrandMeta(selectedBrand)?.name} · {today}
                 </h2>
                 <p className="text-[11px] lg:text-xs text-muted-foreground mt-1">
-                  Adjust quantities per outlet, compare with current inventory, then lock the plan.
-                  Once locked, inventory will be decremented and the plan cannot be edited.
+                  Adjust quantities per outlet, then lock the plan to finalize it for operations.
+                  Once locked, the plan cannot be edited.
                 </p>
               </div>
               <button
@@ -1146,8 +1112,8 @@ const KitchenExecutiveDashboard = () => {
               Lock Dispatch Plan?
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Once locked, this dispatch plan cannot be edited and the quantities will be deducted
-              from this cloud kitchen&apos;s inventory. Are you sure you want to lock it?
+              Once locked, this dispatch plan cannot be edited and will be finalized for operations.
+              Are you sure you want to lock it?
             </p>
             <div className="flex flex-col-reverse lg:flex-row gap-3 lg:justify-end">
               <button

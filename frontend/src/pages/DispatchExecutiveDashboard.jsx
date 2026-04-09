@@ -214,9 +214,46 @@ const DispatchExecutiveDashboard = () => {
     const brandMeta = getBrandMeta(selectedBrand)
     if (!brandMeta) return
 
+    const today = new Date().toISOString().split('T')[0]
+
     if (hasTodayPlan) {
-      setModalError('A dispatch plan for today already exists for this brand.')
-      setIsPlanModalOpen(true)
+      const { data: planRow, error: todayPlanError } = await supabase
+        .from('dispatch_plan')
+        .select('id, plan_date, status, created_at, notes, locked_at')
+        .eq('cloud_kitchen_id', cloudKitchenId)
+        .eq('brand', brandMeta.dbBrand)
+        .eq('plan_date', today)
+        .maybeSingle()
+
+      if (todayPlanError) {
+        console.error('Error loading today dispatch plan:', todayPlanError)
+        setEditingPlan(null)
+        setModalLoading(false)
+        setModalError('Failed to load today\'s dispatch plan. Please try again.')
+        setIsPlanModalOpen(true)
+        return
+      }
+
+      if (!planRow || planRow.status === 'cancelled') {
+        await fetchDispatchPlansForBrand()
+        setEditingPlan(null)
+        setModalLoading(false)
+        setModalError('No active plan found for today. Please try again.')
+        setIsPlanModalOpen(true)
+        return
+      }
+
+      if (planRow.status !== 'draft') {
+        setEditingPlan(null)
+        setModalLoading(false)
+        setModalError(
+          'This dispatch plan has been locked and can no longer be edited.'
+        )
+        setIsPlanModalOpen(true)
+        return
+      }
+
+      await openPlanModalForEdit(planRow)
       return
     }
 
@@ -468,6 +505,21 @@ const DispatchExecutiveDashboard = () => {
           return
         }
 
+        // Re-check immediately before mutating items (reduces race with kitchen lock)
+        const { data: planRowAgain, error: fetchAgainError } = await supabase
+          .from('dispatch_plan')
+          .select('id, status')
+          .eq('id', editingPlan.id)
+          .single()
+
+        if (fetchAgainError) throw fetchAgainError
+        if (!planRowAgain || planRowAgain.status !== 'draft') {
+          setModalError(
+            'This dispatch plan was locked before your update could complete. Close the dialog and refresh.'
+          )
+          return
+        }
+
         const { error: deleteError } = await supabase
           .from('dispatch_plan_items')
           .delete()
@@ -497,7 +549,6 @@ const DispatchExecutiveDashboard = () => {
 
       // Create new plan
       const today = new Date().toISOString().split('T')[0]
-
       const { data: existingPlans, error: existingError } = await supabase
         .from('dispatch_plan')
         .select('id, plan_date, status')
@@ -607,6 +658,9 @@ const DispatchExecutiveDashboard = () => {
 
   const firstName = session.full_name?.split(' ')[0] || 'User'
   const cloudKitchenName = session.cloud_kitchen_name
+  const todayStr = new Date().toISOString().split('T')[0]
+  const todayPlanRow = dispatchPlans.find(p => p.plan_date === todayStr) || null
+  const todayPlanIsLocked = todayPlanRow?.status === 'locked'
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -683,25 +737,30 @@ const DispatchExecutiveDashboard = () => {
                     {getBrandMeta(selectedBrand)?.name} - Today&apos;s Dispatch Plan
                   </h2>
                   <p className="text-xs lg:text-sm text-muted-foreground mt-1">
-                    Create a draft dispatch plan for all outlets catered by this cloud kitchen for today.
+                    Create or edit today&apos;s draft dispatch plan for all outlets catered by this cloud kitchen.
                   </p>
-                  {hasTodayPlan && (
+                  {hasTodayPlan && !todayPlanIsLocked && (
                     <p className="text-xs lg:text-sm text-yellow-500 mt-2">
-                      A dispatch plan for today already exists for this brand. You cannot create another one.
+                      A draft for today already exists. Use Edit to update it until the kitchen locks the plan.
+                    </p>
+                  )}
+                  {hasTodayPlan && todayPlanIsLocked && (
+                    <p className="text-xs lg:text-sm text-yellow-500 mt-2">
+                      Today&apos;s dispatch plan is locked. It can no longer be edited.
                     </p>
                   )}
                 </div>
                 <div className="flex flex-col items-stretch gap-2 min-w-[200px]">
                   <button
                     onClick={openPlanModal}
-                    disabled={hasTodayPlan}
+                    disabled={plansLoading || todayPlanIsLocked}
                     className={`w-full font-semibold px-4 py-2.5 rounded-lg text-sm lg:text-base transition-colors ${
-                      hasTodayPlan
+                      plansLoading || todayPlanIsLocked
                         ? 'bg-muted text-muted-foreground cursor-not-allowed'
                         : 'bg-accent text-black hover:bg-accent/90'
                     }`}
                   >
-                    Add Dispatch Plan for Today
+                    Edit Dispatch plan
                   </button>
                 </div>
               </div>
@@ -845,6 +904,12 @@ const DispatchExecutiveDashboard = () => {
               {modalLoading ? (
                 <div className="h-full flex items-center justify-center px-4 py-8">
                   <p className="text-sm text-muted-foreground">Loading outlets and materials...</p>
+                </div>
+              ) : modalError && outlets.length === 0 && materials.length === 0 ? (
+                <div className="px-4 py-6 lg:px-6 lg:py-8">
+                  <p className="text-sm text-muted-foreground">
+                    Close this dialog to continue.
+                  </p>
                 </div>
               ) : outlets.length === 0 || materials.length === 0 ? (
                 <div className="px-4 py-6 lg:px-6 lg:py-8">
