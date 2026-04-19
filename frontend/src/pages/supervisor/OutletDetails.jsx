@@ -11,6 +11,8 @@ const OutletDetails = () => {
   const { outletId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
+  const session = getSession()
+  const dashboardRole = session?.role || 'supervisor'
   const [outlet, setOutlet] = useState(location.state?.outlet || null)
   const [allocationRequests, setAllocationRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -538,7 +540,7 @@ const OutletDetails = () => {
       <div className="max-w-7xl mx-auto">
         {/* Back Button */}
         <button
-          onClick={() => navigate('/invmanagement/dashboard/supervisor/outlets')}
+          onClick={() => navigate(`/invmanagement/dashboard/${dashboardRole}/outlets`)}
           className="flex items-center text-accent hover:text-accent/80 font-semibold mb-4 touch-manipulation"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

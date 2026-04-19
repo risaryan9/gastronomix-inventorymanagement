@@ -102,6 +102,19 @@ function App() {
           <Route path="checkout" element={<SupervisorCheckout />} />
         </Route>
 
+        <Route 
+          path="/invmanagement/dashboard/bp_operator" 
+          element={
+            <ProtectedRoute allowedRoles={['bp_operator']}>
+              <SupervisorDashboard hideClosingForm={true} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="outlets" replace />} />
+          <Route path="outlets" element={<SupervisorOutlets />} />
+          <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
+        </Route>
+
         {/* Catch all - redirect to /invmanagement */}
         <Route path="*" element={<Navigate to="/invmanagement" replace />} />
       </Routes>

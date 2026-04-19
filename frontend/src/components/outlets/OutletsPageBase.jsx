@@ -35,11 +35,14 @@ const normalizeBrandCodes = (brandCodes) => {
 
 const OutletsPageBase = ({ role }) => {
   const isSupervisor = role === 'supervisor'
+  const isBpOperator = role === 'bp_operator'
+  const treatsAsSupervisor = isSupervisor || isBpOperator
   const [selectedBrand, setSelectedBrand] = useState(null)
   const [outlets, setOutlets] = useState([])
   const [allOutlets, setAllOutlets] = useState([])
   const [loading, setLoading] = useState(false)
   const [cloudKitchenId, setCloudKitchenId] = useState(null)
+  const [outletMapId, setOutletMapId] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [todayAllocationStatus, setTodayAllocationStatus] = useState({})
   const [alert, setAlert] = useState(null)
@@ -70,7 +73,12 @@ const OutletsPageBase = ({ role }) => {
     if (session?.cloud_kitchen_id) {
       setCloudKitchenId(session.cloud_kitchen_id)
     }
-  }, [])
+    if (isBpOperator && session?.outlet_map) {
+      setOutletMapId(session.outlet_map)
+      // For bp_operator, auto-select BP brand and skip brand selection
+      setSelectedBrand('BP')
+    }
+  }, [isBpOperator])
 
   useEffect(() => {
     fetchRawMaterials()
@@ -143,18 +151,39 @@ const OutletsPageBase = ({ role }) => {
     if (!cloudKitchenId || !selectedBrand) return
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('outlets')
         .select('*')
         .eq('cloud_kitchen_id', cloudKitchenId)
         .eq('is_active', true)
         .is('deleted_at', null)
-        .ilike('code', `${selectedBrand}%`)
-        .order('name', { ascending: true })
+
+      // For bp_operator, fetch only their mapped outlet
+      if (isBpOperator && outletMapId) {
+        query = query.eq('id', outletMapId)
+      } else {
+        // For supervisor and purchase_manager, filter by brand code
+        query = query.ilike('code', `${selectedBrand}%`)
+      }
+      
+      query = query.order('name', { ascending: true })
+
+      const { data, error } = await query
 
       if (error) throw error
 
       const fetchedOutlets = data || []
+      
+      // Validate bp_operator has their outlet
+      if (isBpOperator && fetchedOutlets.length === 0 && outletMapId) {
+        setAlert({ 
+          type: 'error', 
+          message: 'Your assigned outlet could not be found. Please contact admin.' 
+        })
+        setLoading(false)
+        return
+      }
+
       setAllOutlets(fetchedOutlets)
       setOutlets(fetchedOutlets)
 
@@ -215,11 +244,11 @@ const OutletsPageBase = ({ role }) => {
             makeEmptyAllocationRow()
           ]
         )
-        if (isSupervisor) setSupervisorName(existingRequest.supervisor_name || '')
+        if (treatsAsSupervisor) setSupervisorName(existingRequest.supervisor_name || '')
       } else {
         setEditingRequest(null)
         setAllocationRows([makeEmptyAllocationRow(), makeEmptyAllocationRow(), makeEmptyAllocationRow()])
-        if (isSupervisor) setSupervisorName('')
+        if (treatsAsSupervisor) setSupervisorName('')
       }
 
       setSelectedRows(new Set())
@@ -352,7 +381,7 @@ const OutletsPageBase = ({ role }) => {
       }
     }
 
-    if (isSupervisor && !supervisorName.trim()) {
+    if (treatsAsSupervisor && !supervisorName.trim()) {
       setAlert({ type: 'error', message: 'Supervisor name is required.' })
       return
     }
@@ -472,7 +501,7 @@ const OutletsPageBase = ({ role }) => {
           request_date: today,
           is_packed: false
         }
-        if (isSupervisor) payload.supervisor_name = supervisorName.trim() || null
+        if (treatsAsSupervisor) payload.supervisor_name = supervisorName.trim() || null
 
         const { data: allocationRequest, error: allocationError } = await supabase
           .from('allocation_requests')
@@ -523,29 +552,31 @@ const OutletsPageBase = ({ role }) => {
     <div className="p-3 lg:p-8">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-xl lg:text-3xl font-bold text-foreground mb-4 lg:mb-6">Requisition</h1>
-        <div className="mb-4 lg:mb-6">
-          <h2 className="text-sm lg:text-lg font-semibold text-foreground mb-2 lg:mb-4">Select Brand</h2>
-          <div className="flex flex-row lg:grid lg:grid-cols-3 gap-2 lg:gap-4">
-            {BRANDS.map((brand) => (
-              <button
-                key={brand.id}
-                onClick={() => {
-                  setSelectedBrand(brand.id)
-                  setSearchTerm('')
-                }}
-                className={`${brand.color} ${brand.hoverColor} text-white font-bold py-2.5 lg:py-8 px-3 lg:px-6 rounded-lg lg:rounded-xl transition-all duration-200 shadow-md lg:shadow-lg hover:shadow-lg lg:hover:shadow-xl transform hover:scale-105 active:scale-95 touch-manipulation flex-1 lg:flex-none ${
-                  selectedBrand === brand.id ? 'ring-2 lg:ring-4 ring-white ring-offset-1 lg:ring-offset-2' : ''
-                }`}
-              >
-                <div className="text-center flex flex-col items-center">
-                  <img src={brand.logo} alt={brand.name} className="h-6 lg:h-12 w-auto mb-1 lg:mb-2 object-contain" />
-                  <div className="text-xs lg:text-2xl font-black mb-0.5 lg:mb-1 truncate">{brand.name}</div>
-                  <div className="hidden lg:block text-xs lg:text-sm opacity-90">Tap to view outlets</div>
-                </div>
-              </button>
-            ))}
+        {!isBpOperator && (
+          <div className="mb-4 lg:mb-6">
+            <h2 className="text-sm lg:text-lg font-semibold text-foreground mb-2 lg:mb-4">Select Brand</h2>
+            <div className="flex flex-row lg:grid lg:grid-cols-3 gap-2 lg:gap-4">
+              {BRANDS.map((brand) => (
+                <button
+                  key={brand.id}
+                  onClick={() => {
+                    setSelectedBrand(brand.id)
+                    setSearchTerm('')
+                  }}
+                  className={`${brand.color} ${brand.hoverColor} text-white font-bold py-2.5 lg:py-8 px-3 lg:px-6 rounded-lg lg:rounded-xl transition-all duration-200 shadow-md lg:shadow-lg hover:shadow-lg lg:hover:shadow-xl transform hover:scale-105 active:scale-95 touch-manipulation flex-1 lg:flex-none ${
+                    selectedBrand === brand.id ? 'ring-2 lg:ring-4 ring-white ring-offset-1 lg:ring-offset-2' : ''
+                  }`}
+                >
+                  <div className="text-center flex flex-col items-center">
+                    <img src={brand.logo} alt={brand.name} className="h-6 lg:h-12 w-auto mb-1 lg:mb-2 object-contain" />
+                    <div className="text-xs lg:text-2xl font-black mb-0.5 lg:mb-1 truncate">{brand.name}</div>
+                    <div className="hidden lg:block text-xs lg:text-sm opacity-90">Tap to view outlets</div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {selectedBrand && (
           <div>
@@ -753,7 +784,7 @@ const OutletsPageBase = ({ role }) => {
                 </table>
               </div>
             </div>
-            {isSupervisor && (
+            {treatsAsSupervisor && (
               <div className="mt-4">
                 <label htmlFor="supervisor-name" className="block text-sm font-semibold text-foreground mb-2">Supervisor name <span className="text-destructive">*</span></label>
                 <input id="supervisor-name" type="text" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} placeholder="Enter your name" disabled={requesting} className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground text-sm" />
@@ -761,7 +792,7 @@ const OutletsPageBase = ({ role }) => {
             )}
             <div className="flex flex-col lg:flex-row gap-3 mt-6">
               <button onClick={closeAllocateModal} disabled={requesting} className="w-full lg:flex-1 bg-transparent text-foreground font-semibold px-4 py-3.5 rounded-lg border-2 border-border">Cancel</button>
-              <button onClick={handleFinalizeAllocation} disabled={requesting || getSelectedItemsForSubmit().length === 0 || (isSupervisor && !supervisorName.trim())} className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 rounded-xl border-2 border-accent disabled:opacity-50">
+              <button onClick={handleFinalizeAllocation} disabled={requesting || getSelectedItemsForSubmit().length === 0 || (treatsAsSupervisor && !supervisorName.trim())} className="w-full lg:flex-1 bg-accent text-background font-bold px-4 py-3.5 rounded-xl border-2 border-accent disabled:opacity-50">
                 {requesting ? (editingRequest ? 'Updating Request...' : 'Creating Request...') : (editingRequest ? 'Update Request' : 'Create Request')}
               </button>
             </div>

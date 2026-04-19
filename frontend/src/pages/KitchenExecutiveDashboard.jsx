@@ -1,8 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { fetchPlanExportData, exportDispatchPlanExcel, exportDispatchPlanPdf } from '../lib/dispatchPlanExport'
+import OutletCostBreakdownModal from '../components/dispatch/OutletCostBreakdownModal.jsx'
+import {
+  computeOutletFinishedCosts,
+  fetchLatestBatchUnitCosts,
+  formatRupee
+} from '../lib/dispatchPlanOutletCost.js'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 import nippuKodiLogo from '../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../assets/el-chaapo-logo.png'
@@ -71,6 +77,9 @@ const KitchenExecutiveDashboard = () => {
   const [quantities, setQuantities] = useState({})
   const [inventoryByMaterial, setInventoryByMaterial] = useState({})
 
+  const [batchUnitCosts, setBatchUnitCosts] = useState({})
+  const [outletCostModalOutlet, setOutletCostModalOutlet] = useState(null)
+
   const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
   const [materialSearchTerm, setMaterialSearchTerm] = useState('')
   const [highlightMaterialId, setHighlightMaterialId] = useState(null)
@@ -121,6 +130,33 @@ const KitchenExecutiveDashboard = () => {
     const timeout = setTimeout(() => setHighlightOutletId(null), 1000)
     return () => clearTimeout(timeout)
   }, [highlightOutletId])
+
+  useEffect(() => {
+    if (!isDraftModalOpen || !cloudKitchenId) {
+      setBatchUnitCosts({})
+      return
+    }
+    const finishedIds = planMaterials
+      .filter((m) => m.material_type === 'finished')
+      .map((m) => m.id)
+    if (finishedIds.length === 0) {
+      setBatchUnitCosts({})
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const costs = await fetchLatestBatchUnitCosts(supabase, cloudKitchenId, finishedIds)
+        if (!cancelled) setBatchUnitCosts(costs)
+      } catch (err) {
+        console.error('Failed to load batch unit costs for kitchen dispatch review:', err)
+        if (!cancelled) setBatchUnitCosts({})
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isDraftModalOpen, cloudKitchenId, planMaterials])
 
   const handleDispatchTableMouseDown = (e) => {
     if (e.button !== 0 || !dispatchTableScrollRef.current) return
@@ -206,6 +242,7 @@ const KitchenExecutiveDashboard = () => {
     setIsDraftModalOpen(true)
     setDraftModalLoading(true)
     setDraftModalError(null)
+    setOutletCostModalOutlet(null)
     setPlanMaterials([])
     setPlanOutlets([])
     setQuantities({})
@@ -321,6 +358,11 @@ const KitchenExecutiveDashboard = () => {
     const nameB = (b.name || '').toLowerCase()
     return nameA.localeCompare(nameB)
   })
+
+  const outletFinishedCosts = useMemo(
+    () => computeOutletFinishedCosts(planMaterials, planOutlets, quantities, batchUnitCosts),
+    [planMaterials, planOutlets, quantities, batchUnitCosts]
+  )
 
   const handleScrollToMaterial = (materialId) => {
     setIsMaterialSearchOpen(false)
@@ -440,6 +482,8 @@ const KitchenExecutiveDashboard = () => {
       await fetchDispatchPlansForBrand()
       setIsDraftModalOpen(false)
       setShowLockConfirm(false)
+      setOutletCostModalOutlet(null)
+      setBatchUnitCosts({})
     } catch (error) {
       console.error('Error locking dispatch plan:', error)
       setDraftModalError(error.message || 'Failed to lock dispatch plan. Please try again.')
@@ -740,7 +784,11 @@ const KitchenExecutiveDashboard = () => {
                 </p>
               </div>
               <button
-                onClick={() => setIsDraftModalOpen(false)}
+                onClick={() => {
+                  setIsDraftModalOpen(false)
+                  setOutletCostModalOutlet(null)
+                  setBatchUnitCosts({})
+                }}
                 className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                 aria-label="Close"
                 disabled={isLocking}
@@ -838,13 +886,37 @@ const KitchenExecutiveDashboard = () => {
                               <th
                                 key={outlet.id}
                                 id={`kitchen-outlet-column-${outlet.id}`}
-                                className={`border-b border-l border-border px-2 lg:px-3 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center whitespace-nowrap transition-colors ${
+                                className={`border-b border-l border-border px-1 lg:px-2 py-2 text-[11px] lg:text-xs font-semibold text-muted-foreground text-center transition-colors ${
                                   highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
                                 }`}
                               >
-                                <div className="font-mono text-[11px] lg:text-xs">
-                                  {outlet.code}
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setOutletCostModalOutlet(outlet)}
+                                  className="w-full flex flex-col items-center gap-1 rounded-lg hover:bg-muted/70 py-1 px-0.5 transition-colors"
+                                  aria-label={`Outlet ${outlet.code} finished-material cost breakdown`}
+                                >
+                                  <div className="font-mono text-[11px] lg:text-xs text-muted-foreground">
+                                    {outlet.code}
+                                  </div>
+                                  <div className="flex items-center justify-center gap-1 font-mono text-[10px] lg:text-[11px] font-semibold text-foreground whitespace-nowrap">
+                                    <span>{formatRupee(outletFinishedCosts[outlet.id]?.total ?? 0)}</span>
+                                    <svg
+                                      className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      aria-hidden
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                      />
+                                    </svg>
+                                  </div>
+                                </button>
                               </th>
                             ))}
                           </tr>
@@ -946,10 +1018,31 @@ const KitchenExecutiveDashboard = () => {
               )}
             </div>
 
+            <OutletCostBreakdownModal
+              open={Boolean(outletCostModalOutlet)}
+              onClose={() => setOutletCostModalOutlet(null)}
+              outletCode={outletCostModalOutlet?.code ?? ''}
+              outletName={outletCostModalOutlet?.name ?? ''}
+              lines={
+                outletCostModalOutlet
+                  ? outletFinishedCosts[outletCostModalOutlet.id]?.lines ?? []
+                  : []
+              }
+              total={
+                outletCostModalOutlet
+                  ? outletFinishedCosts[outletCostModalOutlet.id]?.total ?? 0
+                  : 0
+              }
+            />
+
             <div className="px-4 py-3 lg:px-6 lg:py-4 border-t border-border bg-background flex flex-col-reverse lg:flex-row lg:items-center lg:justify-between gap-3">
               <button
                 type="button"
-                onClick={() => setIsDraftModalOpen(false)}
+                onClick={() => {
+                  setIsDraftModalOpen(false)
+                  setOutletCostModalOutlet(null)
+                  setBatchUnitCosts({})
+                }}
                 className="w-full lg:w-auto px-4 py-2.5 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/60 transition-colors"
                 disabled={isLocking}
               >

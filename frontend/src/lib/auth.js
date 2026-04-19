@@ -60,3 +60,8 @@ export const isPurchaseManager = () => {
 export const isSupervisor = () => {
   return hasRole('supervisor')
 }
+
+// Check if user is boom pizza operator
+export const isBpOperator = () => {
+  return hasRole('bp_operator')
+}

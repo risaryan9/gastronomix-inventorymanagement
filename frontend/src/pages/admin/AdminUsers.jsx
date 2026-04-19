@@ -7,11 +7,13 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
   { value: 'purchase_manager', label: 'Purchase Manager' },
   { value: 'supervisor', label: 'Supervisor' },
+  { value: 'bp_operator', label: 'Boom Pizza Operator' },
 ]
 
 const AdminUsers = () => {
   const [users, setUsers] = useState([])
   const [cloudKitchens, setCloudKitchens] = useState([])
+  const [outlets, setOutlets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -28,6 +30,7 @@ const AdminUsers = () => {
     cloud_kitchen_id: '',
     phone_number: '',
     login_key: '',
+    outlet_map: '',
     is_active: true,
   })
 
@@ -40,9 +43,11 @@ const AdminUsers = () => {
       cloud_kitchen_id: '',
       phone_number: '',
       login_key: '',
+      outlet_map: '',
       is_active: true,
     })
     setFormError('')
+    setOutlets([])
   }
 
   const fetchCloudKitchens = async () => {
@@ -66,7 +71,7 @@ const AdminUsers = () => {
       setError('')
       const { data, error } = await supabase
         .from('users')
-        .select('*, cloud_kitchens(name, code)')
+        .select('*, cloud_kitchens(name, code), outlets(id, code, name)')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
@@ -102,7 +107,7 @@ const AdminUsers = () => {
     setIsModalOpen(true)
   }
 
-  const openEditModal = (user) => {
+  const openEditModal = async (user) => {
     setEditingUser(user)
     setFormData({
       full_name: user.full_name || '',
@@ -111,10 +116,53 @@ const AdminUsers = () => {
       cloud_kitchen_id: user.cloud_kitchen_id || '',
       phone_number: user.phone_number || '',
       login_key: user.login_key || '',
+      outlet_map: user.outlet_map || '',
       is_active: user.is_active !== false,
     })
     setFormError('')
+    
+    // Load outlets for bp_operator role
+    if (user.role === 'bp_operator' && user.cloud_kitchen_id) {
+      await fetchOutletsForCloudKitchen(user.cloud_kitchen_id)
+    }
+    
     setIsModalOpen(true)
+  }
+
+  const fetchOutletsForCloudKitchen = async (cloudKitchenId) => {
+    if (!cloudKitchenId) {
+      setOutlets([])
+      return
+    }
+    try {
+      const { data, error } = await supabase
+        .from('outlets')
+        .select('id, code, name')
+        .eq('cloud_kitchen_id', cloudKitchenId)
+        .ilike('code', 'BP%')
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('name')
+
+      if (error) throw error
+      setOutlets(data || [])
+    } catch (err) {
+      console.error('Error fetching outlets:', err)
+      setOutlets([])
+    }
+  }
+
+  const generateLoginKey = (cloudKitchenCode) => {
+    // Generate random suffix: first char = letter, next 3 = letter or digit
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const alphanumeric = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    
+    const firstChar = letters[Math.floor(Math.random() * letters.length)]
+    const secondChar = alphanumeric[Math.floor(Math.random() * alphanumeric.length)]
+    const thirdChar = alphanumeric[Math.floor(Math.random() * alphanumeric.length)]
+    const fourthChar = alphanumeric[Math.floor(Math.random() * alphanumeric.length)]
+    
+    return `BP-${cloudKitchenCode}${firstChar}${secondChar}${thirdChar}${fourthChar}`
   }
 
   const validateAndSave = async (e) => {
@@ -137,12 +185,17 @@ const AdminUsers = () => {
       setFormError('Login key is required for non-admin roles')
       return
     }
+    if (formData.role === 'bp_operator' && !formData.outlet_map) {
+      setFormError('Outlet is required for Boom Pizza Operator role')
+      return
+    }
 
     try {
       setSaving(true)
 
-      // Enforce: only one active user per (role, cloud_kitchen) pair (non-admin roles)
-      if (formData.role !== 'admin' && formData.cloud_kitchen_id) {
+      // Enforce: only one active user per (role, cloud_kitchen) pair for non-admin, non-bp_operator roles
+      // bp_operator uses database unique constraint on outlet_map instead
+      if (formData.role !== 'admin' && formData.role !== 'bp_operator' && formData.cloud_kitchen_id) {
         const { data: existing, error: dupError } = await supabase
           .from('users')
           .select('id')
@@ -184,6 +237,8 @@ const AdminUsers = () => {
           formData.role === 'admin'
             ? null
             : formData.login_key.trim() || null,
+        outlet_map:
+          formData.role === 'bp_operator' ? formData.outlet_map || null : null,
         // Admin users must always remain active because RLS admin checks rely on is_active = true
         is_active: formData.role === 'admin' ? true : formData.is_active,
         updated_at: new Date().toISOString(),
@@ -210,8 +265,12 @@ const AdminUsers = () => {
           'Permission denied by row-level security. Ensure you are logged in as an admin.'
         )
       } else if (err.code === '23505') {
-        // unique_violation (likely login_key or email)
-        setFormError('Login key or email must be unique. This value is already in use.')
+        // unique_violation
+        if (err.message && err.message.includes('outlet_map')) {
+          setFormError('An operator is already assigned to this outlet.')
+        } else {
+          setFormError('Login key or email must be unique. This value is already in use.')
+        }
       } else {
         setFormError(err.message || 'Failed to save user. Please try again.')
       }
@@ -315,7 +374,7 @@ const AdminUsers = () => {
               <table className="w-full">
                 <thead className="bg-background/60 border-b border-border">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground w-[30%]">
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground w-[25%]">
                       Name / Login Key
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -323,6 +382,9 @@ const AdminUsers = () => {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Cloud Kitchen
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Outlet
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Phone
@@ -365,6 +427,11 @@ const AdminUsers = () => {
                           ? `${u.cloud_kitchens.name}${
                               u.cloud_kitchens.code ? ` (${u.cloud_kitchens.code})` : ''
                             }`
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-foreground">
+                        {u.outlets
+                          ? `${u.outlets.name} (${u.outlets.code})`
                           : '—'}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
@@ -476,12 +543,15 @@ const AdminUsers = () => {
                           setFormData((prev) => ({ ...prev, login_key: e.target.value }))
                         }
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all font-mono"
-                        placeholder="e.g. PM-CK1-ABCDE"
-                        disabled={saving}
+                        placeholder={formData.role === 'bp_operator' ? 'Auto-generated' : 'e.g. PM-CK1-ABCDE'}
+                        disabled={saving || (formData.role === 'bp_operator')}
+                        readOnly={formData.role === 'bp_operator'}
                         required
                       />
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        Must be unique and is used for key-based login. Email must be empty for non-admin roles.
+                        {formData.role === 'bp_operator' 
+                          ? 'Auto-generated based on cloud kitchen. Cannot be edited.'
+                          : 'Must be unique and is used for key-based login. Email must be empty for non-admin roles.'}
                       </p>
                     </div>
                   )}
@@ -493,15 +563,29 @@ const AdminUsers = () => {
                       </label>
                       <select
                         value={formData.role}
-                        onChange={(e) =>
+                        onChange={async (e) => {
+                          const newRole = e.target.value
+                          const selectedCk = cloudKitchens.find(ck => ck.id === formData.cloud_kitchen_id)
+                          
                           setFormData((prev) => ({
                             ...prev,
-                            role: e.target.value,
+                            role: newRole,
                             // Clear CK when switching to admin
-                            cloud_kitchen_id:
-                              e.target.value === 'admin' ? '' : prev.cloud_kitchen_id,
+                            cloud_kitchen_id: newRole === 'admin' ? '' : prev.cloud_kitchen_id,
+                            outlet_map: newRole === 'bp_operator' ? prev.outlet_map : '',
+                            // Generate login key for bp_operator on create if CK is selected
+                            login_key: newRole === 'bp_operator' && !editingUser && selectedCk
+                              ? generateLoginKey(selectedCk.code)
+                              : prev.login_key
                           }))
-                        }
+                          
+                          // Load outlets if switching to bp_operator and CK is selected
+                          if (newRole === 'bp_operator' && formData.cloud_kitchen_id) {
+                            await fetchOutletsForCloudKitchen(formData.cloud_kitchen_id)
+                          } else {
+                            setOutlets([])
+                          }
+                        }}
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                         disabled={saving}
                       >
@@ -522,12 +606,25 @@ const AdminUsers = () => {
                       </label>
                       <select
                         value={formData.cloud_kitchen_id}
-                        onChange={(e) =>
+                        onChange={async (e) => {
+                          const newCkId = e.target.value
+                          const selectedCk = cloudKitchens.find(ck => ck.id === newCkId)
+                          
                           setFormData((prev) => ({
                             ...prev,
-                            cloud_kitchen_id: e.target.value,
+                            cloud_kitchen_id: newCkId,
+                            outlet_map: '', // Clear outlet when CK changes
+                            // Generate login key for bp_operator on create
+                            login_key: prev.role === 'bp_operator' && !editingUser && selectedCk
+                              ? generateLoginKey(selectedCk.code)
+                              : prev.login_key
                           }))
-                        }
+                          
+                          // Load outlets for bp_operator
+                          if (formData.role === 'bp_operator') {
+                            await fetchOutletsForCloudKitchen(newCkId)
+                          }
+                        }}
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                         disabled={saving || formData.role === 'admin'}
                       >
@@ -545,6 +642,46 @@ const AdminUsers = () => {
                       </select>
                     </div>
                   </div>
+
+                  {formData.role === 'bp_operator' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-1">
+                        Outlet <span className="text-destructive">*</span>
+                      </label>
+                      <select
+                        value={formData.outlet_map}
+                        onChange={(e) => {
+                          const selectedOutlet = outlets.find(o => o.id === e.target.value)
+                          setFormData((prev) => ({
+                            ...prev,
+                            outlet_map: e.target.value,
+                            // Auto-fill full_name if empty or default
+                            full_name: !prev.full_name.trim() || prev.full_name.startsWith('Boom Pizza Operator')
+                              ? selectedOutlet ? `Boom Pizza Operator ${selectedOutlet.code}` : prev.full_name
+                              : prev.full_name
+                          }))
+                        }}
+                        className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                        disabled={saving || !formData.cloud_kitchen_id}
+                      >
+                        <option value="">
+                          {!formData.cloud_kitchen_id
+                            ? 'Select cloud kitchen first'
+                            : outlets.length === 0
+                            ? 'No Boom Pizza outlets available'
+                            : 'Select outlet'}
+                        </option>
+                        {outlets.map((outlet) => (
+                          <option key={outlet.id} value={outlet.id}>
+                            {outlet.name} ({outlet.code})
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Only Boom Pizza outlets are shown. Each outlet can have only one active operator.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>

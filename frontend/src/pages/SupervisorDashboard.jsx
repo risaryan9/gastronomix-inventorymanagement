@@ -3,7 +3,7 @@ import { useNavigate, Outlet, useLocation } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 
-const SupervisorDashboard = () => {
+const SupervisorDashboard = ({ hideClosingForm = false }) => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -30,6 +30,8 @@ const SupervisorDashboard = () => {
 
   const firstName = session.full_name?.split(' ')[0] || 'User'
   const cloudKitchenName = session.cloud_kitchen_name
+  const isBpOperator = session.role === 'bp_operator'
+  const dashboardRole = session.role // Use actual role for navigation paths
 
   const isActiveRoute = (path) => {
     return location.pathname.includes(path)
@@ -48,7 +50,7 @@ const SupervisorDashboard = () => {
             />
             <div className="min-w-0">
               <p className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wide">
-                Supervisor Dashboard
+                {isBpOperator ? 'Boom Pizza Operator Dashboard' : 'Supervisor Dashboard'}
               </p>
               <h1 className="text-sm lg:text-xl font-semibold text-foreground truncate">
                 Welcome, {firstName}
@@ -71,7 +73,7 @@ const SupervisorDashboard = () => {
       <nav className="bg-card border-b border-border px-4 lg:px-8">
         <div className="max-w-7xl mx-auto flex gap-1">
           <button
-            onClick={() => navigate('/invmanagement/dashboard/supervisor/outlets')}
+            onClick={() => navigate(`/invmanagement/dashboard/${dashboardRole}/outlets`)}
             className={`px-4 py-3 text-sm font-semibold transition-colors border-b-2 ${
               isActiveRoute('/outlets')
                 ? 'text-accent border-accent'
@@ -80,16 +82,18 @@ const SupervisorDashboard = () => {
           >
             Requisition
           </button>
-          <button
-            onClick={() => navigate('/invmanagement/dashboard/supervisor/checkout')}
-            className={`px-4 py-3 text-sm font-semibold transition-colors border-b-2 ${
-              isActiveRoute('/checkout')
-                ? 'text-accent border-accent'
-                : 'text-muted-foreground border-transparent hover:text-foreground'
-            }`}
-          >
-            Closing form
-          </button>
+          {!hideClosingForm && (
+            <button
+              onClick={() => navigate(`/invmanagement/dashboard/${dashboardRole}/checkout`)}
+              className={`px-4 py-3 text-sm font-semibold transition-colors border-b-2 ${
+                isActiveRoute('/checkout')
+                  ? 'text-accent border-accent'
+                  : 'text-muted-foreground border-transparent hover:text-foreground'
+              }`}
+            >
+              Closing form
+            </button>
+          )}
         </div>
       </nav>
 

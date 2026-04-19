@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 
 const Login = () => {
   const navigate = useNavigate()
-  const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive'
+  const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive', 'bp_operator'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginKey, setLoginKey] = useState('')
@@ -66,7 +66,7 @@ const Login = () => {
   // Fetch cloud kitchens when login type is tied to a specific cloud kitchen
   useEffect(() => {
     const fetchCloudKitchens = async () => {
-      if (['purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive'].includes(loginType)) {
+      if (['purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive', 'bp_operator'].includes(loginType)) {
         setLoadingCloudKitchens(true)
         try {
           const { data, error } = await supabase
@@ -188,6 +188,7 @@ const Login = () => {
         cloud_kitchen_id: userData.cloud_kitchen_id,
         cloud_kitchen_name: cloudKitchenName,
         email: userData.email,
+        outlet_map: userData.outlet_map || null,
         login_type: 'key',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
       }
@@ -264,6 +265,13 @@ const Login = () => {
               >
                 Kitchen Executive
               </button>
+
+              <button
+                onClick={() => setLoginType('bp_operator')}
+                className="w-full bg-transparent text-accent font-black text-lg px-5 py-3 rounded-xl border-3 border-accent hover:bg-accent/10 transition-all duration-300"
+              >
+                Boom Pizza Operator
+              </button>
             </div>
           </div>
         ) : (
@@ -281,6 +289,8 @@ const Login = () => {
                   ? 'Dispatch Executive Login'
                   : loginType === 'kitchen_executive'
                   ? 'Kitchen Executive Login'
+                  : loginType === 'bp_operator'
+                  ? 'Boom Pizza Operator Login'
                   : 'Login'}
               </h2>
               <button
