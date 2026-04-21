@@ -19,6 +19,70 @@ function selfStockOutRowSectionKey(materialType) {
   return 'raw_material'
 }
 
+// Helper: Generate random 6-character alphanumeric string
+function generateChallanPrefix() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+// Helper: Convert number to words (Indian numbering system)
+function numberToWords(num) {
+  if (num === 0) return 'Zero'
+  
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+  
+  function convertLessThanThousand(n) {
+    if (n === 0) return ''
+    if (n < 10) return ones[n]
+    if (n < 20) return teens[n - 10]
+    if (n < 100) {
+      const ten = Math.floor(n / 10)
+      const one = n % 10
+      return tens[ten] + (one > 0 ? ' ' + ones[one] : '')
+    }
+    const hundred = Math.floor(n / 100)
+    const rest = n % 100
+    return ones[hundred] + ' Hundred' + (rest > 0 ? ' ' + convertLessThanThousand(rest) : '')
+  }
+  
+  if (num < 1000) return convertLessThanThousand(num)
+  
+  if (num < 100000) {
+    const thousands = Math.floor(num / 1000)
+    const rest = num % 1000
+    return convertLessThanThousand(thousands) + ' Thousand' + (rest > 0 ? ' ' + convertLessThanThousand(rest) : '')
+  }
+  
+  if (num < 10000000) {
+    const lakhs = Math.floor(num / 100000)
+    const rest = num % 100000
+    let result = convertLessThanThousand(lakhs) + ' Lakh'
+    if (rest >= 1000) {
+      const thousands = Math.floor(rest / 1000)
+      const remaining = rest % 1000
+      result += ' ' + convertLessThanThousand(thousands) + ' Thousand'
+      if (remaining > 0) result += ' ' + convertLessThanThousand(remaining)
+    } else if (rest > 0) {
+      result += ' ' + convertLessThanThousand(rest)
+    }
+    return result
+  }
+  
+  const crores = Math.floor(num / 10000000)
+  const rest = num % 10000000
+  let result = convertLessThanThousand(crores) + ' Crore'
+  if (rest > 0) {
+    result += ' ' + numberToWords(rest)
+  }
+  return result
+}
+
 /** Latest stock_out.created_at (or allocation_date) per material for kitchen self stock-out + reason */
 async function fetchLastKitchenStockOutDatesByMaterial(
   cloudKitchenId,
@@ -872,6 +936,236 @@ const StockOut = () => {
       setAlert({ type: 'error', message: err.message || 'Failed to generate PDF.' })
     } finally {
       setDownloadingAllocationPdf(false)
+    }
+  }
+
+  // Download Stock Out Challan for selected allocation request
+  const downloadStockOutChallan = async () => {
+    if (!selectedRequest) return
+    
+    try {
+      const session = getSession()
+      if (!session) {
+        setAlert({ type: 'error', message: 'Session not found.' })
+        return
+      }
+
+      // Generate challan number: RANDOM6/OUTLET_CODE
+      const challanPrefix = generateChallanPrefix()
+      const outletCode = selectedRequest.outlets?.code || 'UNKNOWN'
+      const challanNumber = `${challanPrefix}/${outletCode}`
+
+      // Fetch latest batch rates for all materials in this request
+      const materialIds = allocationItems.map(item => item.raw_material_id)
+      const { data: batchData, error: batchError } = await supabase
+        .from('stock_in_batches')
+        .select('raw_material_id, rate')
+        .in('raw_material_id', materialIds)
+        .order('created_at', { ascending: false })
+
+      if (batchError) {
+        console.error('Error fetching batch rates:', batchError)
+      }
+
+      // Map material_id to latest rate
+      const rateMap = {}
+      if (batchData) {
+        batchData.forEach(batch => {
+          if (!rateMap[batch.raw_material_id]) {
+            rateMap[batch.raw_material_id] = parseFloat(batch.rate || 0)
+          }
+        })
+      }
+
+      // Prepare table data with quantity fallback logic
+      const tableRows = allocationItems.map((item, index) => {
+        // Use allocated quantity if set, otherwise fallback to requested quantity
+        const quantity = (item.allocated_quantity !== null && item.allocated_quantity !== undefined && item.allocated_quantity !== '') 
+          ? parseFloat(item.allocated_quantity) 
+          : parseFloat(item.requested_quantity)
+        
+        const rate = rateMap[item.raw_material_id] || 0
+        const amount = quantity * rate
+
+        return {
+          srNo: index + 1,
+          materialName: item.name,
+          hsn: '', // Blank for manual entry
+          uom: item.unit || '',
+          quantity: quantity.toFixed(2),
+          rate: rate.toFixed(2),
+          amount: amount.toFixed(2)
+        }
+      })
+
+      // Calculate totals
+      const grandTotal = tableRows.reduce((sum, row) => sum + parseFloat(row.amount), 0)
+
+      // Create PDF
+      const doc = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+
+      let yPos = margin
+
+      // Title
+      doc.setFontSize(18)
+      doc.setFont(undefined, 'bold')
+      doc.text('STOCK OUT CHALLAN', pageWidth / 2, yPos, { align: 'center' })
+      yPos += 12
+
+      // Information Box
+      doc.setFontSize(10)
+      doc.setFont(undefined, 'bold')
+      const boxX = margin
+      const boxY = yPos
+      const boxWidth = pageWidth - 2 * margin
+      const boxHeight = 40
+
+      doc.rect(boxX, boxY, boxWidth, boxHeight)
+      
+      yPos += 6
+      doc.text(`Outlet: ${selectedRequest.outlets?.name || 'N/A'}`, boxX + 3, yPos)
+      yPos += 6
+      doc.setFont(undefined, 'normal')
+      doc.text(`Outlet Code: ${outletCode}`, boxX + 3, yPos)
+      yPos += 6
+      doc.text(`Supervisor: ${selectedRequest.supervisor_name || selectedRequest.users?.full_name || 'N/A'}`, boxX + 3, yPos)
+      yPos += 6
+      doc.text(`Request Date: ${new Date(selectedRequest.request_date).toLocaleDateString()}`, boxX + 3, yPos)
+      yPos += 6
+      doc.text(`Place of Supply: Karnataka`, boxX + 3, yPos)
+      yPos += 6
+      doc.setFont(undefined, 'bold')
+      doc.text(`Challan Number: ${challanNumber}`, boxX + 3, yPos)
+      
+      yPos = boxY + boxHeight + 10
+
+      // Materials Table (as wide as info box + centered)
+      const challanTableWidth = boxWidth
+      const challanTableMarginX = boxX
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Sr. No', 'Material Name', 'HSN/SAC', 'UOM', 'Quantity', 'Rate', 'Amount']],
+        body: tableRows.map(row => [
+          row.srNo,
+          row.materialName,
+          row.hsn,
+          row.uom,
+          row.quantity,
+          row.rate,
+          row.amount
+        ]),
+        foot: [[
+          '',
+          '',
+          '',
+          '',
+          { content: 'Total', styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: `₹${grandTotal.toFixed(2)}`, colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
+        ]],
+        showFoot: 'lastPage',
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [240, 240, 240], 
+          textColor: [0, 0, 0], 
+          fontStyle: 'bold',
+          lineWidth: 0.1,
+          lineColor: [0, 0, 0]
+        },
+        styles: { 
+          fontSize: 9, 
+          cellPadding: 3,
+          lineWidth: 0.1,
+          lineColor: [0, 0, 0]
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: 'bold',
+          lineWidth: 0.1,
+          lineColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 14 },
+          1: { halign: 'left', cellWidth: 58 },
+          2: { halign: 'center', cellWidth: 23 },
+          3: { halign: 'center', cellWidth: 19 },
+          4: { halign: 'right', cellWidth: 22 },
+          5: { halign: 'right', cellWidth: 22 },
+          6: { halign: 'right', cellWidth: 22 }
+        },
+        tableWidth: challanTableWidth,
+        margin: { left: challanTableMarginX, right: challanTableMarginX }
+      })
+
+      yPos = doc.lastAutoTable.finalY + 2
+
+      yPos += 4
+
+      // Signature Section - 3 boxes
+      const sigBoxWidth = (pageWidth - 2 * margin) / 3
+      const sigBoxHeight = 30
+      const sigBoxY = yPos
+
+      // Left box - Terms & Conditions
+      doc.rect(margin, sigBoxY, sigBoxWidth, sigBoxHeight)
+      doc.setFontSize(8)
+      doc.setFont(undefined, 'bold')
+      doc.text('Terms & Conditions', margin + 2, sigBoxY + 5)
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(7)
+      doc.text('SUBJECT TO BENGALURU', margin + 2, sigBoxY + 10)
+      doc.text('JURISDICTION', margin + 2, sigBoxY + 14)
+
+      // Middle box - Receiver Sign
+      doc.rect(margin + sigBoxWidth, sigBoxY, sigBoxWidth, sigBoxHeight)
+      doc.setFontSize(8)
+      doc.setFont(undefined, 'bold')
+      doc.text('Receiver Sign', margin + sigBoxWidth + 2, sigBoxY + 5)
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(7)
+      doc.text('___________________', margin + sigBoxWidth + 2, sigBoxY + 25)
+
+      // Right box - Authorised Sign
+      doc.rect(margin + 2 * sigBoxWidth, sigBoxY, sigBoxWidth, sigBoxHeight)
+      doc.setFontSize(8)
+      doc.setFont(undefined, 'bold')
+      doc.text('Authorised Sign', margin + 2 * sigBoxWidth + 2, sigBoxY + 5)
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(7)
+      doc.text('___________________', margin + 2 * sigBoxWidth + 2, sigBoxY + 25)
+
+      // Bottom-left: Cloud Kitchen + Purchase Manager
+      const bottomY = pageHeight - 15
+      doc.setFontSize(8)
+      doc.setFont(undefined, 'normal')
+      doc.text(`Cloud Kitchen: ${session?.cloud_kitchen_name || 'N/A'}`, margin, bottomY)
+      doc.text(`Purchase Manager: ${session?.full_name || 'N/A'}`, margin, bottomY + 4)
+
+      // Add page numbers on all pages
+      const totalPages = doc.internal.getNumberOfPages()
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p)
+        doc.setFontSize(8)
+        doc.setTextColor(0, 0, 0)
+        doc.text(
+          `Page ${p} of ${totalPages}`,
+          pageWidth - margin,
+          pageHeight - 10,
+          { align: 'right' }
+        )
+      }
+
+      // Save PDF
+      const filename = `stock-out-challan-${challanNumber.replace('/', '-')}.pdf`
+      doc.save(filename)
+      setAlert({ type: 'success', message: 'Stock Out Challan downloaded successfully.' })
+
+    } catch (err) {
+      console.error('Error generating Stock Out Challan:', err)
+      setAlert({ type: 'error', message: err.message || 'Failed to generate challan PDF.' })
     }
   }
 
@@ -2428,14 +2722,26 @@ const StockOut = () => {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
             <div className="bg-card border-2 border-border rounded-xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {selectedRequest.outlets?.name} • {new Date(selectedRequest.request_date).toLocaleDateString()}
-                    {selectedRequest.supervisor_name && (
-                      <> • Supervisor: {selectedRequest.supervisor_name}</>
-                    )}
-                  </p>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {selectedRequest.outlets?.name} • {new Date(selectedRequest.request_date).toLocaleDateString()}
+                      {selectedRequest.supervisor_name && (
+                        <> • Supervisor: {selectedRequest.supervisor_name}</>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={downloadStockOutChallan}
+                    className="px-4 py-2 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 flex items-center gap-2 text-sm font-semibold"
+                    title="Download Stock Out Challan"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download Challan
+                  </button>
                 </div>
                 <button
                   onClick={() => setShowAllocationModal(false)}
