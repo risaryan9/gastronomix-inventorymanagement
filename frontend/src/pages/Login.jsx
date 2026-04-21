@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
+const BP_OPERATOR_DEFAULT_CLOUD_KITCHEN_ID = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e'
+
 const Login = () => {
   const navigate = useNavigate()
   const [loginType, setLoginType] = useState(null) // 'admin', 'purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive', 'bp_operator'
@@ -66,7 +68,7 @@ const Login = () => {
   // Fetch cloud kitchens when login type is tied to a specific cloud kitchen
   useEffect(() => {
     const fetchCloudKitchens = async () => {
-      if (['purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive', 'bp_operator'].includes(loginType)) {
+      if (['purchase_manager', 'supervisor', 'dispatch_executive', 'kitchen_executive'].includes(loginType)) {
         setLoadingCloudKitchens(true)
         try {
           const { data, error } = await supabase
@@ -100,8 +102,12 @@ const Login = () => {
     setLoading(true)
     setError('')
 
+    const effectiveCloudKitchenId = loginType === 'bp_operator'
+      ? BP_OPERATOR_DEFAULT_CLOUD_KITCHEN_ID
+      : selectedCloudKitchenId
+
     // Validate cloud kitchen selection
-    if (!selectedCloudKitchenId) {
+    if (!effectiveCloudKitchenId) {
       setError('Please select a cloud kitchen')
       setLoading(false)
       return
@@ -117,7 +123,7 @@ const Login = () => {
       console.log('Attempting login with:', {
         loginKey: loginKey.trim(),
         role: loginType,
-        selectedCloudKitchenId: selectedCloudKitchenId
+        selectedCloudKitchenId: effectiveCloudKitchenId
       })
       
       // Use RPC function to authenticate user (bypasses RLS)
@@ -126,7 +132,7 @@ const Login = () => {
         {
           p_login_key: loginKey.trim(),
           p_role: loginType,
-          p_cloud_kitchen_id: selectedCloudKitchenId
+          p_cloud_kitchen_id: effectiveCloudKitchenId
         }
       )
 
@@ -147,7 +153,7 @@ const Login = () => {
       const userData = userDataArray && userDataArray.length > 0 ? userDataArray[0] : null
 
       if (!userData) {
-        console.error('No user found with login_key:', loginKey.trim(), 'for cloud kitchen:', selectedCloudKitchenId)
+        console.error('No user found with login_key:', loginKey.trim(), 'for cloud kitchen:', effectiveCloudKitchenId)
         throw new Error('Invalid login key or user not found for this cloud kitchen')
       }
 
@@ -350,45 +356,47 @@ const Login = () => {
             ) : (
               <form onSubmit={handleKeyLogin} className="space-y-4">
                 {/* Cloud Kitchen Selection */}
-                <div>
-                  <label htmlFor="cloudKitchen" className="block text-sm font-semibold mb-2 text-foreground">
-                    Cloud Kitchen <span className="text-destructive">*</span>
-                  </label>
-                  {loadingCloudKitchens ? (
-                    <div className="w-full bg-input border border-border rounded-lg px-4 py-3 text-muted-foreground">
-                      Loading cloud kitchens...
-                    </div>
-                  ) : cloudKitchens.length === 0 ? (
-                    <div className="w-full bg-input border border-destructive rounded-lg px-4 py-3 text-destructive text-sm">
-                      No cloud kitchens available. Please contact administrator.
-                    </div>
-                  ) : (
-                    <select
-                      id="cloudKitchen"
-                      value={selectedCloudKitchenId}
-                      onChange={(e) => {
-                        setSelectedCloudKitchenId(e.target.value)
-                        setLoginKey('') // Clear login key when cloud kitchen changes
-                        setError('') // Clear any previous errors
-                      }}
-                      required
-                      className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
-                    >
-                      <option value="">Select your cloud kitchen</option>
-                      {cloudKitchens.map((kitchen) => (
-                        <option key={kitchen.id} value={kitchen.id}>
-                          {kitchen.name} ({kitchen.code})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Select the cloud kitchen you belong to
-                  </p>
-                </div>
+                {loginType !== 'bp_operator' && (
+                  <div>
+                    <label htmlFor="cloudKitchen" className="block text-sm font-semibold mb-2 text-foreground">
+                      Cloud Kitchen <span className="text-destructive">*</span>
+                    </label>
+                    {loadingCloudKitchens ? (
+                      <div className="w-full bg-input border border-border rounded-lg px-4 py-3 text-muted-foreground">
+                        Loading cloud kitchens...
+                      </div>
+                    ) : cloudKitchens.length === 0 ? (
+                      <div className="w-full bg-input border border-destructive rounded-lg px-4 py-3 text-destructive text-sm">
+                        No cloud kitchens available. Please contact administrator.
+                      </div>
+                    ) : (
+                      <select
+                        id="cloudKitchen"
+                        value={selectedCloudKitchenId}
+                        onChange={(e) => {
+                          setSelectedCloudKitchenId(e.target.value)
+                          setLoginKey('') // Clear login key when cloud kitchen changes
+                          setError('') // Clear any previous errors
+                        }}
+                        required
+                        className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                      >
+                        <option value="">Select your cloud kitchen</option>
+                        {cloudKitchens.map((kitchen) => (
+                          <option key={kitchen.id} value={kitchen.id}>
+                            {kitchen.name} ({kitchen.code})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Select the cloud kitchen you belong to
+                    </p>
+                  </div>
+                )}
 
-                {/* Login Key Input - Only show after cloud kitchen is selected */}
-                {selectedCloudKitchenId && (
+                {/* Login Key Input */}
+                {(loginType === 'bp_operator' || selectedCloudKitchenId) && (
                   <div>
                     <label htmlFor="loginKey" className="block text-sm font-semibold mb-2 text-foreground">
                       Login Key <span className="text-destructive">*</span>
@@ -404,14 +412,16 @@ const Login = () => {
                       autoFocus
                     />
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Enter your unique login key for {cloudKitchens.find(ck => ck.id === selectedCloudKitchenId)?.name || 'this cloud kitchen'}. You can use any format (e.g. DE-CK1-A23F, deck1a23f, de-ck1-a23f).
+                      {loginType === 'bp_operator'
+                        ? 'Cloud Kitchen is fixed to CK2 for Boom Pizza operators.'
+                        : `Enter your unique login key for ${cloudKitchens.find(ck => ck.id === selectedCloudKitchenId)?.name || 'this cloud kitchen'}. You can use any format (e.g. DE-CK1-A23F, deck1a23f, de-ck1-a23f).`}
                     </p>
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={loading || !selectedCloudKitchenId || !loginKey.trim() || loadingCloudKitchens}
+                  disabled={loading || !loginKey.trim() || (loginType !== 'bp_operator' && (!selectedCloudKitchenId || loadingCloudKitchens))}
                   className="w-full bg-accent text-background font-black text-lg px-5 py-3 rounded-xl border-3 border-accent shadow-button hover:shadow-button-hover hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-button-active transition-all duration-300 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Logging in...' : 'Login'}
