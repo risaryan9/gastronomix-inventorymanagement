@@ -111,7 +111,7 @@ function App() {
           }
         >
           <Route index element={<Navigate to="outlets" replace />} />
-          <Route path="outlets" element={<SupervisorOutlets />} />
+          <Route path="outlets" element={<SupervisorOutlets isBpOperator={true} />} />
           <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
         </Route>
 

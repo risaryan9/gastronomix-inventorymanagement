@@ -1,5 +1,7 @@
 import OutletsPageBase from '../../components/outlets/OutletsPageBase'
 
-const Outlets = () => <OutletsPageBase role="supervisor" />
+const Outlets = ({ isBpOperator = false }) => (
+  <OutletsPageBase role={isBpOperator ? 'bp_operator' : 'supervisor'} />
+)
 
 export default Outlets

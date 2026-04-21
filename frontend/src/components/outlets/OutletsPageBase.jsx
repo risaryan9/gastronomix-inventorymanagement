@@ -582,30 +582,32 @@ const OutletsPageBase = ({ role }) => {
           <div>
             <div className="flex items-center justify-between mb-3 lg:mb-4">
               <h2 className="text-base lg:text-lg font-semibold text-foreground">
-                {BRANDS.find(b => b.id === selectedBrand)?.name} Outlets
+                {isBpOperator ? 'Your Outlet' : `${BRANDS.find(b => b.id === selectedBrand)?.name} Outlets`}
               </h2>
-              {outlets.length > 0 && (
+              {outlets.length > 0 && !isBpOperator && (
                 <span className="text-xs lg:text-sm text-muted-foreground">
                   {outlets.length} outlet{outlets.length !== 1 ? 's' : ''}
                 </span>
               )}
             </div>
 
-            <div className="mb-4 lg:mb-6">
-              <div className="bg-card border-2 border-border rounded-xl p-3 lg:p-4">
-                <label htmlFor="outlet-search" className="block text-sm font-semibold text-foreground mb-2">
-                  Search Outlets
-                </label>
-                <input
-                  id="outlet-search"
-                  type="text"
-                  placeholder="Search by outlet name or code (e.g. NK1001)..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
-                />
+            {!isBpOperator && (
+              <div className="mb-4 lg:mb-6">
+                <div className="bg-card border-2 border-border rounded-xl p-3 lg:p-4">
+                  <label htmlFor="outlet-search" className="block text-sm font-semibold text-foreground mb-2">
+                    Search Outlets
+                  </label>
+                  <input
+                    id="outlet-search"
+                    type="text"
+                    placeholder="Search by outlet name or code (e.g. NK1001)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {loading ? (
               <div className="bg-card border-2 border-border rounded-xl p-8 lg:p-12 text-center text-muted-foreground">Loading outlets...</div>
