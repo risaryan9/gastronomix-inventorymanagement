@@ -19,16 +19,6 @@ function selfStockOutRowSectionKey(materialType) {
   return 'raw_material'
 }
 
-// Helper: Generate random 6-character alphanumeric string
-function generateChallanPrefix() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let result = ''
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
-}
-
 // Helper: Convert number to words (Indian numbering system)
 function numberToWords(num) {
   if (num === 0) return 'Zero'
@@ -131,11 +121,13 @@ const StockOut = () => {
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showAllocationModal, setShowAllocationModal] = useState(false)
+  const [challanNotes, setChallanNotes] = useState('')
   const [allocationItems, setAllocationItems] = useState([])
   const [inventoryData, setInventoryData] = useState({})
   const [todayTotals, setTodayTotals] = useState({})
   const [allocating, setAllocating] = useState(false)
   const [alert, setAlert] = useState(null)
+  const [lastStockOutId, setLastStockOutId] = useState(null)
 
   // Outlet stock-out panel state (allocation requests)
   const [searchTerm, setSearchTerm] = useState('')
@@ -146,6 +138,11 @@ const StockOut = () => {
   const [viewAllSearchTerm, setViewAllSearchTerm] = useState('')
   const [viewAllPage, setViewAllPage] = useState(1)
   const viewAllPerPage = 15
+  // Date range for PDF exports
+  const [pdfDateRange, setPdfDateRange] = useState({
+    from: new Date().toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0]
+  })
 
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
@@ -731,22 +728,37 @@ const StockOut = () => {
     }
   }
 
-  // Download today's allocation requests as PDF (outlet-wise, no page cut inside an outlet)
+  // Download allocation requests as PDF with date range filter (outlet-wise, no page cut inside an outlet)
   const [downloadingAllocationPdf, setDownloadingAllocationPdf] = useState(false)
-  const downloadAllocationRequestsPDF = () => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const todayTime = today.getTime()
-    const isToday = (req) => {
-      const d = new Date(req.request_date)
-      d.setHours(0, 0, 0, 0)
-      return d.getTime() === todayTime
+  const downloadAllocationRequestsPDF = (mode = 'all') => {
+    const fromDate = new Date(pdfDateRange.from)
+    fromDate.setHours(0, 0, 0, 0)
+    const toDate = new Date(pdfDateRange.to)
+    toDate.setHours(23, 59, 59, 999)
+    
+    const isInRange = (req) => {
+      const reqDate = new Date(req.request_date)
+      return reqDate >= fromDate && reqDate <= toDate
     }
-    const todayRequests = allocationRequests.filter(isToday)
-    if (todayRequests.length === 0) {
+    
+    const filteredRequests = allocationRequests
+      .filter(isInRange)
+      .filter((req) => {
+        if (mode === 'requested') return !req.is_packed
+        if (mode === 'confirmed') return !!req.is_packed
+        return true
+      })
+    
+    if (filteredRequests.length === 0) {
+      const emptyMessage =
+        mode === 'requested'
+          ? `No requested (pending) allocation requests available for the selected date range.`
+          : mode === 'confirmed'
+            ? `No confirmed (packed) allocation requests available for the selected date range.`
+            : `No allocation requests available for the selected date range.`
       setAlert({
         type: 'error',
-        message: 'No allocation requests available for the day.'
+        message: emptyMessage
       })
       return
     }
@@ -760,9 +772,9 @@ const StockOut = () => {
       const margin = 20
       const safeBottom = pageHeight - 18
 
-      // Aggregate total quantity per material across all today's requests
+      // Aggregate total quantity per material across all filtered requests
       const totalByMaterial = new Map()
-      todayRequests.forEach((req) => {
+      filteredRequests.forEach((req) => {
         (req.allocation_request_items || []).forEach((item) => {
           const id = item.raw_material_id || item.raw_materials?.id
           const name = item.raw_materials?.name || 'N/A'
@@ -787,7 +799,7 @@ const StockOut = () => {
 
       // Group by outlet (outlet_id), preserve request order per outlet
       const byOutlet = new Map()
-      todayRequests.forEach((req) => {
+      filteredRequests.forEach((req) => {
         const key = req.outlet_id || req.outlets?.id || 'unknown'
         if (!byOutlet.has(key)) {
           byOutlet.set(key, {
@@ -802,6 +814,13 @@ const StockOut = () => {
         .map(([_, info]) => info)
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
+      // Format date range for display
+      const fromDateStr = new Date(pdfDateRange.from).toLocaleDateString()
+      const toDateStr = new Date(pdfDateRange.to).toLocaleDateString()
+      const dateRangeDisplay = fromDateStr === toDateStr 
+        ? fromDateStr 
+        : `${fromDateStr} to ${toDateStr}`
+
       // —— Page 1: Total quantity summary ——
       let yPos = margin
       doc.setFontSize(20)
@@ -810,14 +829,30 @@ const StockOut = () => {
       yPos += 8
       doc.setFontSize(14)
       doc.setFont(undefined, 'normal')
+      const reportTypeLabel =
+        mode === 'requested'
+          ? 'Requested (Pending)'
+          : mode === 'confirmed'
+            ? 'Confirmed (Packed)'
+            : 'All'
       doc.text(
-        `Allocation Requests — ${today.toLocaleDateString()}`,
+        `Allocation Requests (${reportTypeLabel})`,
         pageWidth / 2,
         yPos,
         { align: 'center' }
       )
       yPos += 6
+      doc.setFontSize(11)
+      doc.setFont(undefined, 'bold')
+      doc.text(
+        `Date Range: ${dateRangeDisplay}`,
+        pageWidth / 2,
+        yPos,
+        { align: 'center' }
+      )
+      yPos += 5
       doc.setFontSize(9)
+      doc.setFont(undefined, 'normal')
       doc.setTextColor(100, 100, 100)
       doc.text(
         `Generated: ${new Date().toLocaleString()} • ${session?.cloud_kitchen_name || 'Cloud Kitchen'}`,
@@ -830,7 +865,13 @@ const StockOut = () => {
 
       doc.setFontSize(12)
       doc.setFont(undefined, 'bold')
-      doc.text('Total quantity requested (all outlets)', margin, yPos)
+      const summaryTitle =
+        mode === 'requested'
+          ? 'Total quantity requested (pending, all outlets)'
+          : mode === 'confirmed'
+            ? 'Total quantity confirmed (packed, all outlets)'
+            : 'Total quantity requested (all outlets)'
+      doc.text(summaryTitle, margin, yPos)
       yPos += 8
 
       if (summaryRows.length > 0) {
@@ -928,9 +969,24 @@ const StockOut = () => {
         doc.setTextColor(0, 0, 0)
       }
 
-      const filename = `allocation_requests_${today.toISOString().split('T')[0]}.pdf`
+      const modeSuffix =
+        mode === 'requested'
+          ? 'requested_pending'
+          : mode === 'confirmed'
+            ? 'confirmed_packed'
+            : 'all'
+      const dateRangeSuffix = pdfDateRange.from === pdfDateRange.to
+        ? pdfDateRange.from
+        : `${pdfDateRange.from}_to_${pdfDateRange.to}`
+      const filename = `allocation_requests_${modeSuffix}_${dateRangeSuffix}.pdf`
       doc.save(filename)
-      setAlert({ type: 'success', message: 'Allocation requests PDF downloaded.' })
+      const successMessage =
+        mode === 'requested'
+          ? 'Requested (pending) allocation PDF downloaded.'
+          : mode === 'confirmed'
+            ? 'Confirmed (packed) allocation PDF downloaded.'
+            : 'Allocation requests PDF downloaded.'
+      setAlert({ type: 'success', message: successMessage })
     } catch (err) {
       console.error('Error generating allocation PDF:', err)
       setAlert({ type: 'error', message: err.message || 'Failed to generate PDF.' })
@@ -939,10 +995,8 @@ const StockOut = () => {
     }
   }
 
-  // Download Stock Out Challan for selected allocation request
-  const downloadStockOutChallan = async () => {
-    if (!selectedRequest) return
-    
+  // Download Stock Out Challan for a stock_out record
+  const downloadStockOutChallan = async (stockOutId, requestData = null) => {
     try {
       const session = getSession()
       if (!session) {
@@ -950,16 +1004,68 @@ const StockOut = () => {
         return
       }
 
-      // Generate challan number: RANDOM6/OUTLET_CODE
-      const challanPrefix = generateChallanPrefix()
-      const outletCode = selectedRequest.outlets?.code || 'UNKNOWN'
-      const challanNumber = `${challanPrefix}/${outletCode}`
+      // Fetch stock_out record with items and allocation request details
+      const { data: stockOutRecord, error: stockOutError } = await supabase
+        .from('stock_out')
+        .select(`
+          *,
+          stock_out_items (
+            raw_material_id,
+            quantity
+          ),
+          allocation_requests (
+            outlets (
+              name,
+              code
+            ),
+            supervisor_name,
+            request_date,
+            users (
+              full_name
+            )
+          )
+        `)
+        .eq('id', stockOutId)
+        .single()
 
-      // Fetch latest batch rates for all materials in this request
-      const materialIds = allocationItems.map(item => item.raw_material_id)
+      if (stockOutError || !stockOutRecord) {
+        throw new Error('Stock out record not found')
+      }
+
+      const allocationRequest = Array.isArray(stockOutRecord.allocation_requests) 
+        ? stockOutRecord.allocation_requests[0] 
+        : stockOutRecord.allocation_requests
+
+      const outlet = allocationRequest?.outlets || requestData?.outlets
+      const outletCode = outlet?.code || 'UNKNOWN'
+
+      // Generate challan number from stock_out.created_at timestamp
+      const challanTimestamp = new Date(stockOutRecord.created_at)
+      const dd = String(challanTimestamp.getDate()).padStart(2, '0')
+      const mm = String(challanTimestamp.getMonth() + 1).padStart(2, '0')
+      const yy = String(challanTimestamp.getFullYear()).slice(-2)
+      const hh = String(challanTimestamp.getHours()).padStart(2, '0')
+      const min = String(challanTimestamp.getMinutes()).padStart(2, '0')
+      const challanNumber = `${dd}${mm}${yy}${hh}${min}/${outletCode}`
+
+      // Fetch raw material details for stock_out_items
+      const materialIds = stockOutRecord.stock_out_items.map(item => item.raw_material_id)
+      const { data: materialsData, error: materialsError } = await supabase
+        .from('raw_materials')
+        .select('id, name, code, unit')
+        .in('id', materialIds)
+
+      if (materialsError) throw materialsError
+
+      const materialsMap = {}
+      ;(materialsData || []).forEach(m => {
+        materialsMap[m.id] = m
+      })
+
+      // Fetch latest batch costs for all materials
       const { data: batchData, error: batchError } = await supabase
         .from('stock_in_batches')
-        .select('raw_material_id, rate')
+        .select('raw_material_id, unit_cost, gst_percent')
         .in('raw_material_id', materialIds)
         .order('created_at', { ascending: false })
 
@@ -967,31 +1073,31 @@ const StockOut = () => {
         console.error('Error fetching batch rates:', batchError)
       }
 
-      // Map material_id to latest rate
+      // Map material_id to latest GST-inclusive rate from the latest batch
       const rateMap = {}
       if (batchData) {
         batchData.forEach(batch => {
           if (!rateMap[batch.raw_material_id]) {
-            rateMap[batch.raw_material_id] = parseFloat(batch.rate || 0)
+            const unitCost = parseFloat(batch.unit_cost || 0)
+            const gstPercent = parseFloat(batch.gst_percent || 0)
+            const gstInclusiveRate = unitCost * (1 + gstPercent / 100)
+            rateMap[batch.raw_material_id] = gstInclusiveRate
           }
         })
       }
 
-      // Prepare table data with quantity fallback logic
-      const tableRows = allocationItems.map((item, index) => {
-        // Use allocated quantity if set, otherwise fallback to requested quantity
-        const quantity = (item.allocated_quantity !== null && item.allocated_quantity !== undefined && item.allocated_quantity !== '') 
-          ? parseFloat(item.allocated_quantity) 
-          : parseFloat(item.requested_quantity)
-        
+      // Prepare table data from stock_out_items
+      const tableRows = stockOutRecord.stock_out_items.map((item, index) => {
+        const material = materialsMap[item.raw_material_id] || {}
+        const quantity = parseFloat(item.quantity || 0)
         const rate = rateMap[item.raw_material_id] || 0
         const amount = quantity * rate
 
         return {
           srNo: index + 1,
-          materialName: item.name,
+          materialName: material.name || 'N/A',
           hsn: '', // Blank for manual entry
-          uom: item.unit || '',
+          uom: material.unit || '',
           quantity: quantity.toFixed(2),
           rate: rate.toFixed(2),
           amount: amount.toFixed(2)
@@ -1012,33 +1118,52 @@ const StockOut = () => {
       // Title
       doc.setFontSize(18)
       doc.setFont(undefined, 'bold')
-      doc.text('STOCK OUT CHALLAN', pageWidth / 2, yPos, { align: 'center' })
+      doc.text('TRANSFER CHALLAN', pageWidth / 2, yPos, { align: 'center' })
       yPos += 12
 
-      // Information Box
+      // Information + Notes split box
       doc.setFontSize(10)
-      doc.setFont(undefined, 'bold')
       const boxX = margin
       const boxY = yPos
       const boxWidth = pageWidth - 2 * margin
-      const boxHeight = 40
+      const boxHeight = 32
 
-      doc.rect(boxX, boxY, boxWidth, boxHeight)
-      
-      yPos += 6
-      doc.text(`Outlet: ${selectedRequest.outlets?.name || 'N/A'}`, boxX + 3, yPos)
-      yPos += 6
-      doc.setFont(undefined, 'normal')
-      doc.text(`Outlet Code: ${outletCode}`, boxX + 3, yPos)
-      yPos += 6
-      doc.text(`Supervisor: ${selectedRequest.supervisor_name || selectedRequest.users?.full_name || 'N/A'}`, boxX + 3, yPos)
-      yPos += 6
-      doc.text(`Request Date: ${new Date(selectedRequest.request_date).toLocaleDateString()}`, boxX + 3, yPos)
-      yPos += 6
-      doc.text(`Place of Supply: Karnataka`, boxX + 3, yPos)
-      yPos += 6
+      const leftBoxWidth = Math.floor(boxWidth * 0.4)
+      const rightBoxWidth = boxWidth - leftBoxWidth
+      const rightBoxX = boxX + leftBoxWidth
+
+      doc.rect(boxX, boxY, leftBoxWidth, boxHeight)
+      doc.rect(rightBoxX, boxY, rightBoxWidth, boxHeight)
+
+      let leftY = boxY + 5
       doc.setFont(undefined, 'bold')
-      doc.text(`Challan Number: ${challanNumber}`, boxX + 3, yPos)
+      doc.text(`Outlet: ${outlet?.name || 'N/A'}`, boxX + 3, leftY)
+      leftY += 4.5
+      doc.setFont(undefined, 'normal')
+      doc.text(`Outlet Code: ${outletCode}`, boxX + 3, leftY)
+      leftY += 4.5
+      doc.text(`Supervisor: ${allocationRequest?.supervisor_name || allocationRequest?.users?.full_name || 'N/A'}`, boxX + 3, leftY)
+      leftY += 4.5
+      doc.text(`Request Date: ${allocationRequest?.request_date ? new Date(allocationRequest.request_date).toLocaleDateString() : 'N/A'}`, boxX + 3, leftY)
+      leftY += 4.5
+      doc.text('Place of Supply: Karnataka', boxX + 3, leftY)
+      leftY += 4.5
+      doc.setFont(undefined, 'bold')
+      doc.text(`Challan Number: ${challanNumber}`, boxX + 3, leftY)
+
+      doc.setFont(undefined, 'bold')
+      doc.text('Notes', rightBoxX + 3, boxY + 5)
+      doc.setFont(undefined, 'normal')
+      doc.setFontSize(8)
+      const notesValue = stockOutRecord.notes?.trim() || '—'
+      const wrappedNotes = doc.splitTextToSize(notesValue, rightBoxWidth - 6)
+      const notesStartY = boxY + 8
+      const notesBottomPadding = 2
+      const approxLineHeight = 3.5
+      const availableHeight = boxY + boxHeight - notesStartY - notesBottomPadding
+      const maxNoteLines = Math.max(1, Math.floor(availableHeight / approxLineHeight))
+      doc.text(wrappedNotes.slice(0, maxNoteLines), rightBoxX + 3, notesStartY)
+      doc.setFontSize(10)
       
       yPos = boxY + boxHeight + 10
 
@@ -1071,12 +1196,15 @@ const StockOut = () => {
           fillColor: [240, 240, 240], 
           textColor: [0, 0, 0], 
           fontStyle: 'bold',
+          fontSize: 8,
           lineWidth: 0.1,
-          lineColor: [0, 0, 0]
+          lineColor: [0, 0, 0],
+          cellPadding: 2
         },
         styles: { 
-          fontSize: 9, 
-          cellPadding: 3,
+          fontSize: 8,
+          cellPadding: 2,
+          minCellHeight: 5,
           lineWidth: 0.1,
           lineColor: [0, 0, 0]
         },
@@ -1084,6 +1212,8 @@ const StockOut = () => {
           fillColor: [255, 255, 255],
           textColor: [0, 0, 0],
           fontStyle: 'bold',
+          fontSize: 8,
+          cellPadding: 2,
           lineWidth: 0.1,
           lineColor: [0, 0, 0]
         },
@@ -1106,36 +1236,41 @@ const StockOut = () => {
 
       // Signature Section - 3 boxes
       const sigBoxWidth = (pageWidth - 2 * margin) / 3
-      const sigBoxHeight = 30
+      const sigBoxHeight = 24
+      const requiredSignatureSpace = sigBoxHeight + 18
+      if (yPos + requiredSignatureSpace > pageHeight - margin) {
+        doc.addPage()
+        yPos = margin
+      }
       const sigBoxY = yPos
 
       // Left box - Terms & Conditions
       doc.rect(margin, sigBoxY, sigBoxWidth, sigBoxHeight)
       doc.setFontSize(8)
       doc.setFont(undefined, 'bold')
-      doc.text('Terms & Conditions', margin + 2, sigBoxY + 5)
+      doc.text('Terms & Conditions', margin + 2, sigBoxY + 4)
       doc.setFont(undefined, 'normal')
       doc.setFontSize(7)
-      doc.text('SUBJECT TO BENGALURU', margin + 2, sigBoxY + 10)
-      doc.text('JURISDICTION', margin + 2, sigBoxY + 14)
+      doc.text('SUBJECT TO BENGALURU', margin + 2, sigBoxY + 8)
+      doc.text('JURISDICTION', margin + 2, sigBoxY + 11.5)
 
       // Middle box - Receiver Sign
       doc.rect(margin + sigBoxWidth, sigBoxY, sigBoxWidth, sigBoxHeight)
       doc.setFontSize(8)
       doc.setFont(undefined, 'bold')
-      doc.text('Receiver Sign', margin + sigBoxWidth + 2, sigBoxY + 5)
+      doc.text('Receiver Sign', margin + sigBoxWidth + 2, sigBoxY + 4)
       doc.setFont(undefined, 'normal')
       doc.setFontSize(7)
-      doc.text('___________________', margin + sigBoxWidth + 2, sigBoxY + 25)
+      doc.text('___________________', margin + sigBoxWidth + 2, sigBoxY + 20)
 
       // Right box - Authorised Sign
       doc.rect(margin + 2 * sigBoxWidth, sigBoxY, sigBoxWidth, sigBoxHeight)
       doc.setFontSize(8)
       doc.setFont(undefined, 'bold')
-      doc.text('Authorised Sign', margin + 2 * sigBoxWidth + 2, sigBoxY + 5)
+      doc.text('Authorised Sign', margin + 2 * sigBoxWidth + 2, sigBoxY + 4)
       doc.setFont(undefined, 'normal')
       doc.setFontSize(7)
-      doc.text('___________________', margin + 2 * sigBoxWidth + 2, sigBoxY + 25)
+      doc.text('___________________', margin + 2 * sigBoxWidth + 2, sigBoxY + 20)
 
       // Bottom-left: Cloud Kitchen + Purchase Manager
       const bottomY = pageHeight - 15
@@ -1515,6 +1650,7 @@ const StockOut = () => {
   const openAllocationModal = async (request) => {
     setIsSelfStockOut(false)
     setSelectedRequest(request)
+    setChallanNotes('')
     const session = getSession()
 
     // Prepare items with requested quantities
@@ -1800,7 +1936,7 @@ const StockOut = () => {
         // Regular stock out
         stockOutPayload.allocation_request_id = selectedRequest.id
         stockOutPayload.outlet_id = selectedRequest.outlet_id
-        stockOutPayload.notes = `Allocated from request #${selectedRequest.id.substring(0, 8)}`
+        stockOutPayload.notes = challanNotes.trim() || null
       }
 
       const { data: stockOutData, error: stockOutError } = await supabase
@@ -1980,7 +2116,13 @@ const StockOut = () => {
             ? `Transfer completed successfully! Stock sent to ${otherCloudKitchens.find(c => c.id === transferToCloudKitchenId)?.name || 'destination'}.`
             : 'Self stock out completed successfully!')
         : 'Stock allocated successfully!'
-      setAlert({ type: 'success', message: successMessage })
+      
+      // Store stock_out ID for challan download
+      if (!isSelfStockOut && stockOutData?.id) {
+        setLastStockOutId(stockOutData.id)
+      }
+      
+      setAlert({ type: 'success', message: successMessage, showChallanDownload: !isSelfStockOut })
       
       if (isSelfStockOut) {
         setShowSelfStockOutModal(false)
@@ -2249,17 +2391,55 @@ const StockOut = () => {
           {/* Outlet Stock-Out Panel */}
           {layoutMode !== 'kitchen-full' && (
           <div className="bg-card border-2 border-border rounded-xl overflow-hidden transition-all duration-300">
-            <div className="px-4 pt-4 pb-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground">Outlet Stock Out</h2>
-                <span className="text-xs text-muted-foreground">
-                  {allocationRequests.length} request(s)
-                </span>
+            <div className="px-4 pt-4 pb-2 border-b border-border">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-foreground">Outlet Stock Out</h2>
+                  <span className="text-xs text-muted-foreground">
+                    {allocationRequests.length} request(s)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowViewAllAllocationModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                  >
+                    View all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode(layoutMode === 'outlet-full' ? 'split' : 'outlet-full')}
+                    className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                  >
+                    {layoutMode === 'outlet-full' ? 'Restore Split' : 'Maximize'}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[140px]">
+                  <label className="block text-xs font-semibold text-foreground mb-1">
+                    PDF Date Range
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={pdfDateRange.from}
+                      onChange={(e) => setPdfDateRange({ ...pdfDateRange, from: e.target.value })}
+                      className="flex-1 bg-input border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                    <span className="text-muted-foreground self-center text-xs">to</span>
+                    <input
+                      type="date"
+                      value={pdfDateRange.to}
+                      onChange={(e) => setPdfDateRange({ ...pdfDateRange, to: e.target.value })}
+                      className="flex-1 bg-input border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={downloadAllocationRequestsPDF}
+                  onClick={() => downloadAllocationRequestsPDF('requested')}
                   disabled={downloadingAllocationPdf}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -2270,23 +2450,26 @@ const StockOut = () => {
                       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      Download PDF
+                      Requested PDF
                     </>
                   )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowViewAllAllocationModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
+                  onClick={() => downloadAllocationRequestsPDF('confirmed')}
+                  disabled={downloadingAllocationPdf}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  View all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLayoutMode(layoutMode === 'outlet-full' ? 'split' : 'outlet-full')}
-                  className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all"
-                >
-                  {layoutMode === 'outlet-full' ? 'Restore Split' : 'Maximize'}
+                  {downloadingAllocationPdf ? (
+                    'Generating…'
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Confirmed PDF
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -2722,26 +2905,14 @@ const StockOut = () => {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
             <div className="bg-card border-2 border-border rounded-xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedRequest.outlets?.name} • {new Date(selectedRequest.request_date).toLocaleDateString()}
-                      {selectedRequest.supervisor_name && (
-                        <> • Supervisor: {selectedRequest.supervisor_name}</>
-                      )}
-                    </p>
-                  </div>
-                  <button
-                    onClick={downloadStockOutChallan}
-                    className="px-4 py-2 bg-accent/10 text-accent border-2 border-accent/30 rounded-lg hover:bg-accent/20 hover:border-accent/50 transition-all duration-200 flex items-center gap-2 text-sm font-semibold"
-                    title="Download Stock Out Challan"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Download Challan
-                  </button>
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {selectedRequest.outlets?.name} • {new Date(selectedRequest.request_date).toLocaleDateString()}
+                    {selectedRequest.supervisor_name && (
+                      <> • Supervisor: {selectedRequest.supervisor_name}</>
+                    )}
+                  </p>
                 </div>
                 <button
                   onClick={() => setShowAllocationModal(false)}
@@ -2810,6 +2981,19 @@ const StockOut = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-foreground mb-2">
+                  Notes (for challan only)
+                </label>
+                <textarea
+                  value={challanNotes}
+                  onChange={(e) => setChallanNotes(e.target.value)}
+                  placeholder="Enter notes to appear on the downloadable challan..."
+                  rows={3}
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all resize-y"
+                />
               </div>
 
               {/* Actions */}
@@ -3450,10 +3634,10 @@ const StockOut = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleExportStockOut('pdf', stockOutDetails)}
+                onClick={() => downloadStockOutChallan(stockOutDetails.id, stockOutDetails)}
                 className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border-2 border-red-500/70 bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all"
               >
-                Download PDF
+                Download Challan
               </button>
             </div>
 
@@ -3621,7 +3805,21 @@ const StockOut = () => {
                   </p>
                 </div>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-col gap-2">
+                {alert.showChallanDownload && lastStockOutId && (
+                  <button
+                    onClick={() => {
+                      downloadStockOutChallan(lastStockOutId)
+                      setAlert(null)
+                    }}
+                    className="w-full font-bold px-4 py-3 rounded-xl transition-all duration-200 text-base touch-manipulation bg-accent text-background hover:bg-accent/90 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download Transfer Challan
+                  </button>
+                )}
                 <button
                   onClick={() => setAlert(null)}
                   className={`w-full font-bold px-4 py-3 rounded-xl transition-all duration-200 text-base touch-manipulation ${
@@ -3630,7 +3828,7 @@ const StockOut = () => {
                     'bg-yellow-500 text-white hover:bg-yellow-600'
                   }`}
                 >
-                  OK
+                  {alert.showChallanDownload ? 'Close' : 'OK'}
                 </button>
               </div>
             </div>

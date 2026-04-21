@@ -9,6 +9,7 @@ import AdminRecipes from './admin/AdminRecipes'
 import AdminOutlets from './admin/AdminOutlets'
 import AdminVendors from './admin/AdminVendors'
 import AdminBrandDispatch from './admin/AdminBrandDispatch'
+import AdminRequisitionsReports from './admin/AdminRequisitionsReports'
 
 const NAV_STRUCTURE = [
   {
@@ -48,6 +49,13 @@ const NAV_STRUCTURE = [
       { id: 'user-audit-logs', label: 'User Audit Logs' },
       { id: 'cloud-kitchen-audit-logs', label: 'Cloud Kitchen Audit Logs' },
       { id: 'alerts', label: 'Alerts' },
+    ],
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    children: [
+      { id: 'requisitions-reports', label: 'Requisitions Reports' },
     ],
   },
 ]
@@ -92,6 +100,8 @@ const AdminDashboard = () => {
     activeParentId === 'settings' && activeChildId === 'vendors'
   const isDispatchBrandsSection =
     activeParentId === 'settings' && activeChildId === 'dispatch-brands'
+  const isRequisitionsReportsSection =
+    activeParentId === 'reports' && activeChildId === 'requisitions-reports'
 
   return (
     <div className="min-h-screen bg-background">
@@ -243,6 +253,10 @@ const AdminDashboard = () => {
             ) : isDispatchBrandsSection ? (
               <div className="-mt-2">
                 <AdminBrandDispatch />
+              </div>
+            ) : isRequisitionsReportsSection ? (
+              <div className="-mt-2">
+                <AdminRequisitionsReports />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">

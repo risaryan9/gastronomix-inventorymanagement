@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
@@ -33,6 +33,17 @@ const normalizeBrandCodes = (brandCodes) => {
   return []
 }
 
+const buildChallanNumber = (timestamp, outletCode = 'UNKNOWN') => {
+  const dt = new Date(timestamp)
+  if (Number.isNaN(dt.getTime())) return `INVALID/${outletCode}`
+  const dd = String(dt.getDate()).padStart(2, '0')
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const yy = String(dt.getFullYear()).slice(-2)
+  const hh = String(dt.getHours()).padStart(2, '0')
+  const min = String(dt.getMinutes()).padStart(2, '0')
+  return `${dd}${mm}${yy}${hh}${min}/${outletCode}`
+}
+
 const OutletsPageBase = ({ role }) => {
   const isSupervisor = role === 'supervisor'
   const isBpOperator = role === 'bp_operator'
@@ -62,7 +73,11 @@ const OutletsPageBase = ({ role }) => {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyRequests, setHistoryRequests] = useState([])
   const [historyPage, setHistoryPage] = useState(1)
-  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historySearchTerm, setHistorySearchTerm] = useState('')
+  const [historyDateFrom, setHistoryDateFrom] = useState('')
+  const [historyDateTo, setHistoryDateTo] = useState('')
+  const [historyMinAmount, setHistoryMinAmount] = useState('')
+  const [historyMaxAmount, setHistoryMaxAmount] = useState('')
   const [supervisorName, setSupervisorName] = useState('')
   const dropdownSearchRef = useRef(null)
   const requestingRef = useRef(false)
@@ -265,14 +280,67 @@ const OutletsPageBase = ({ role }) => {
     setActiveOutlet(outlet)
     setShowHistoryModal(true)
     setHistoryLoading(true)
+    setHistorySearchTerm('')
+    setHistoryDateFrom('')
+    setHistoryDateTo('')
+    setHistoryMinAmount('')
+    setHistoryMaxAmount('')
     try {
       const { data, count } = await fetchOutletAllocationRequests({
         outletId: outlet.id,
-        page,
-        pageSize: historyPageSize
+        page: 1,
+        pageSize: 1000
       })
-      setHistoryRequests(data)
-      setHistoryTotal(count)
+
+      const rawMaterialIds = Array.from(
+        new Set(
+          (data || [])
+            .flatMap(req => {
+              const stockOutRecord = Array.isArray(req.stock_out) ? req.stock_out[0] : req.stock_out
+              return (stockOutRecord?.stock_out_items || []).map(item => item.raw_material_id).filter(Boolean)
+            })
+        )
+      )
+
+      const rateMap = {}
+      if (rawMaterialIds.length > 0) {
+        const { data: batchData, error: batchError } = await supabase
+          .from('stock_in_batches')
+          .select('raw_material_id, unit_cost, gst_percent, created_at')
+          .in('raw_material_id', rawMaterialIds)
+          .order('created_at', { ascending: false })
+        if (batchError) throw batchError
+
+        ;(batchData || []).forEach(batch => {
+          if (!rateMap[batch.raw_material_id]) {
+            const unitCost = parseFloat(batch.unit_cost || 0)
+            const gstPercent = parseFloat(batch.gst_percent || 0)
+            rateMap[batch.raw_material_id] = unitCost * (1 + gstPercent / 100)
+          }
+        })
+      }
+
+      const enriched = (data || []).map(req => {
+        const stockOutRecord = Array.isArray(req.stock_out) ? req.stock_out[0] : req.stock_out
+        const challanTimestamp =
+          stockOutRecord?.created_at ||
+          stockOutRecord?.allocation_date ||
+          req.created_at ||
+          req.request_date
+        const challanNumber = buildChallanNumber(challanTimestamp, outlet.code || 'UNKNOWN')
+        const totalAmount = (stockOutRecord?.stock_out_items || []).reduce((sum, item) => {
+          const qty = parseFloat(item.quantity || 0)
+          const rate = parseFloat(rateMap[item.raw_material_id] || 0)
+          return sum + (qty * rate)
+        }, 0)
+        return {
+          ...req,
+          challan_number: challanNumber,
+          total_amount: totalAmount
+        }
+      })
+
+      setHistoryRequests(enriched)
       setHistoryPage(page)
     } catch (err) {
       setAlert({ type: 'error', message: `Failed to fetch request history: ${err.message}` })
@@ -546,7 +614,44 @@ const OutletsPageBase = ({ role }) => {
     if (isSupervisor) setSupervisorName('')
   }
 
-  const totalHistoryPages = Math.max(1, Math.ceil(historyTotal / historyPageSize))
+  const filteredHistoryRequests = useMemo(() => {
+    const q = historySearchTerm.trim().toLowerCase()
+    const minAmount = historyMinAmount === '' ? null : parseFloat(historyMinAmount)
+    const maxAmount = historyMaxAmount === '' ? null : parseFloat(historyMaxAmount)
+
+    return historyRequests.filter((request) => {
+      const requestDate = request.request_date || ''
+      if (historyDateFrom && requestDate < historyDateFrom) return false
+      if (historyDateTo && requestDate > historyDateTo) return false
+
+      const totalAmount = parseFloat(request.total_amount || 0)
+      if (minAmount !== null && !Number.isNaN(minAmount) && totalAmount < minAmount) return false
+      if (maxAmount !== null && !Number.isNaN(maxAmount) && totalAmount > maxAmount) return false
+
+      if (!q) return true
+      const materialsText = (request.allocation_request_items || [])
+        .map(item => `${item.raw_materials?.name || ''} ${item.raw_materials?.code || ''}`)
+        .join(' ')
+        .toLowerCase()
+      const haystack = [
+        request.challan_number || '',
+        request.id || '',
+        request.supervisor_name || '',
+        materialsText
+      ].join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [historyRequests, historySearchTerm, historyDateFrom, historyDateTo, historyMinAmount, historyMaxAmount])
+
+  useEffect(() => {
+    setHistoryPage(1)
+  }, [historySearchTerm, historyDateFrom, historyDateTo, historyMinAmount, historyMaxAmount])
+
+  const totalHistoryPages = Math.max(1, Math.ceil(filteredHistoryRequests.length / historyPageSize))
+  const paginatedHistoryRequests = filteredHistoryRequests.slice(
+    (historyPage - 1) * historyPageSize,
+    historyPage * historyPageSize
+  )
 
   return (
     <div className="p-3 lg:p-8">
@@ -687,17 +792,79 @@ const OutletsPageBase = ({ role }) => {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Search (Challan number, material, supervisor)
+                </label>
+                <input
+                  type="text"
+                  value={historySearchTerm}
+                  onChange={(e) => setHistorySearchTerm(e.target.value)}
+                  placeholder="Search by challan number (ddMMyyhhmm/code), material, supervisor..."
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Date from</label>
+                <input
+                  type="date"
+                  value={historyDateFrom}
+                  onChange={(e) => setHistoryDateFrom(e.target.value)}
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Date to</label>
+                <input
+                  type="date"
+                  value={historyDateTo}
+                  onChange={(e) => setHistoryDateTo(e.target.value)}
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Min total amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={historyMinAmount}
+                  onChange={(e) => setHistoryMinAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Max total amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={historyMaxAmount}
+                  onChange={(e) => setHistoryMaxAmount(e.target.value)}
+                  placeholder="99999.00"
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                />
+              </div>
+            </div>
             {historyLoading ? (
               <p className="text-muted-foreground">Loading history...</p>
-            ) : historyRequests.length === 0 ? (
+            ) : filteredHistoryRequests.length === 0 ? (
               <p className="text-muted-foreground">No previous requests found.</p>
             ) : (
               <div className="space-y-3">
-                {historyRequests.map((request) => (
+                {paginatedHistoryRequests.map((request) => (
                   <div key={request.id} className="bg-background border border-border rounded-lg p-3">
                     <div className="flex justify-between">
-                      <p className="text-sm font-semibold text-foreground">{new Date(request.request_date).toLocaleDateString()}</p>
-                      <span className={`text-xs font-semibold ${request.is_packed ? 'text-green-500' : 'text-yellow-600'}`}>{request.is_packed ? 'Packed' : 'Open'}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{new Date(request.request_date).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{request.challan_number}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">₹{parseFloat(request.total_amount || 0).toFixed(2)}</p>
+                        <p className={`text-xs font-semibold ${request.is_packed ? 'text-green-500' : 'text-yellow-600'}`}>{request.is_packed ? 'Packed' : 'Open'}</p>
+                      </div>
                     </div>
                     <div className="mt-2 space-y-1">
                       {(request.allocation_request_items || []).map(item => (
@@ -710,7 +877,7 @@ const OutletsPageBase = ({ role }) => {
             )}
             <div className="mt-4 flex items-center justify-between">
               <button
-                onClick={() => openHistoryModal(activeOutlet, historyPage - 1)}
+                onClick={() => setHistoryPage(prev => Math.max(1, prev - 1))}
                 disabled={historyPage <= 1 || historyLoading}
                 className="px-4 py-2 border border-border rounded-lg disabled:opacity-50"
               >
@@ -718,7 +885,7 @@ const OutletsPageBase = ({ role }) => {
               </button>
               <span className="text-sm text-muted-foreground">Page {historyPage} / {totalHistoryPages}</span>
               <button
-                onClick={() => openHistoryModal(activeOutlet, historyPage + 1)}
+                onClick={() => setHistoryPage(prev => Math.min(totalHistoryPages, prev + 1))}
                 disabled={historyPage >= totalHistoryPages || historyLoading}
                 className="px-4 py-2 border border-border rounded-lg disabled:opacity-50"
               >

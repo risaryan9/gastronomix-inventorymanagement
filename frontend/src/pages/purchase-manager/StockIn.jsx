@@ -718,35 +718,18 @@ const StockIn = () => {
     const folder = cloudKitchenIdentifier || 'cloud_kitchen'
     const baseName = `${cloudKitchenIdentifier || 'cloud_kitchen'}-${invoiceIdentifier}`
 
-    const maxAttempts = 20
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const suffix = attempt === 0 ? '' : `-${attempt + 1}`
-      const path = `${folder}/${baseName}${suffix}.${extension}`
+    const path = `${folder}/${baseName}.${extension}`
+    const { error } = await supabase.storage.from('invoices').upload(path, file, {
+      // Make uploads idempotent for the same invoice number/file name and avoid duplicate conflict noise.
+      upsert: true
+    })
 
-      const { error } = await supabase.storage.from('invoices').upload(path, file, {
-        upsert: false
-      })
-
-      if (!error) {
-        const { data: publicData } = supabase.storage.from('invoices').getPublicUrl(path)
-        return publicData?.publicUrl || null
-      }
-
-      const message = (error.message || '').toLowerCase()
-      const isConflict =
-        error.status === 409 ||
-        error.statusCode === '409' ||
-        message.includes('already exists') ||
-        message.includes('duplicate') ||
-        message.includes('conflict')
-
-      if (!isConflict) {
-        throw error
-      }
-      // If conflict, try next suffix
+    if (error) {
+      throw error
     }
 
-    throw new Error('Could not store invoice file because too many files share the same name.')
+    const { data: publicData } = supabase.storage.from('invoices').getPublicUrl(path)
+    return publicData?.publicUrl || null
   }
 
   const beginAddModalFlow = (requestedType = 'purchase') => {

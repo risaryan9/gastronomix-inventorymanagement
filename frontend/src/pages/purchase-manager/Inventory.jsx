@@ -448,8 +448,13 @@ const Inventory = () => {
       const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
         ? parseFloat(item.last_unit_cost)
         : null
-      const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
-                          material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
+      const materialType = material?.material_type === 'raw_material'
+        ? 'Raw Material'
+        : material?.material_type === 'semi_finished'
+          ? 'Semi-Finished'
+          : material?.material_type === 'finished'
+            ? 'Finished'
+            : 'Non-Food'
       
       return [
         materialType,
@@ -528,8 +533,13 @@ const Inventory = () => {
         const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
           ? parseFloat(item.last_unit_cost)
           : null
-        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' :
-                            material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
+        const materialType = material?.material_type === 'raw_material'
+          ? 'Raw Material'
+          : material?.material_type === 'semi_finished'
+            ? 'Semi-Finished'
+            : material?.material_type === 'finished'
+              ? 'Finished'
+              : 'Non-Food'
 
         return [
           materialType,
@@ -634,8 +644,13 @@ const Inventory = () => {
         const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
           ? parseFloat(item.last_unit_cost)
           : null
-        const materialType = material?.material_type === 'raw_material' ? 'Raw Material' : 
-                            material?.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'
+        const materialType = material?.material_type === 'raw_material'
+          ? 'Raw Material'
+          : material?.material_type === 'semi_finished'
+            ? 'Semi-Finished'
+            : material?.material_type === 'finished'
+              ? 'Finished'
+              : 'Non-Food'
         
         return [
           materialType,
@@ -912,14 +927,21 @@ const Inventory = () => {
                       >
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${
-                            material.material_type === 'raw_material' 
-                              ? 'bg-blue-500/20 text-blue-400' 
+                            material.material_type === 'raw_material'
+                              ? 'bg-blue-500/20 text-blue-400'
                               : material.material_type === 'semi_finished'
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-green-500/20 text-green-400'
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : material.material_type === 'finished'
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-purple-500/20 text-purple-400'
                           }`}>
-                            {material.material_type === 'raw_material' ? 'Raw Material' : 
-                             material.material_type === 'semi_finished' ? 'Semi-Finished' : 'Finished'}
+                            {material.material_type === 'raw_material'
+                              ? 'Raw Material'
+                              : material.material_type === 'semi_finished'
+                                ? 'Semi-Finished'
+                                : material.material_type === 'finished'
+                                  ? 'Finished'
+                                  : 'Non-Food'}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-foreground font-medium">

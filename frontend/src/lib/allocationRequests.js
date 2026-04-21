@@ -27,6 +27,7 @@ export const fetchOutletAllocationRequests = async ({ outletId, page = 1, pageSi
       stock_out (
         id,
         allocation_date,
+        created_at,
         stock_out_items (
           id,
           raw_material_id,
@@ -72,5 +73,104 @@ export const fetchTodayAllocationStatus = async ({ cloudKitchenId, outletIds }) 
   })
 
   return statusMap
+}
+
+export const fetchReportOutlets = async () => {
+  const { data, error } = await supabase
+    .from('outlets')
+    .select(`
+      id,
+      name,
+      cloud_kitchen_id,
+      cloud_kitchens (
+        id,
+        name
+      )
+    `)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+export const fetchOutletRequisitionReportRows = async (outletId) => {
+  const { data, error } = await supabase
+    .from('allocation_requests')
+    .select(`
+      id,
+      outlet_id,
+      cloud_kitchen_id,
+      request_date,
+      created_at,
+      is_packed,
+      notes,
+      supervisor_name,
+      stock_out!inner (
+        id,
+        allocation_date,
+        created_at
+      )
+    `)
+    .eq('outlet_id', outletId)
+    .order('request_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export const fetchRequisitionVarianceDetails = async (allocationRequestId) => {
+  const { data, error } = await supabase
+    .from('allocation_requests')
+    .select(`
+      id,
+      outlet_id,
+      cloud_kitchen_id,
+      request_date,
+      created_at,
+      is_packed,
+      notes,
+      supervisor_name,
+      outlets (
+        id,
+        name
+      ),
+      cloud_kitchens (
+        id,
+        name
+      ),
+      allocation_request_items (
+        id,
+        raw_material_id,
+        quantity,
+        raw_materials (
+          id,
+          name,
+          code,
+          unit
+        )
+      ),
+      stock_out (
+        id,
+        allocation_date,
+        created_at,
+        stock_out_items (
+          id,
+          raw_material_id,
+          quantity,
+          raw_materials (
+            id,
+            name,
+            code,
+            unit
+          )
+        )
+      )
+    `)
+    .eq('id', allocationRequestId)
+    .single()
+
+  if (error) throw error
+  return data
 }
 
