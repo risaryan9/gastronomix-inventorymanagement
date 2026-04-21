@@ -102,23 +102,61 @@ const Inventory = () => {
           return
         }
 
-        // Fetch material costs - get the latest cost for each material
-        const { data: costsData, error: costsError } = await supabase
-          .from('material_costs')
-          .select('raw_material_id, cost_per_unit, created_at')
+        // Fetch batches data to calculate GST-inclusive costs
+        const { data: batchesData } = await supabase
+          .from('stock_in_batches')
+          .select('raw_material_id, quantity_remaining, unit_cost, gst_percent')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+          .in('raw_material_id', rawMaterialIds)
+          .gt('quantity_remaining', 0)
+
+        const { data: latestCostData } = await supabase
+          .from('stock_in_batches')
+          .select('raw_material_id, unit_cost, gst_percent, created_at')
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .in('raw_material_id', rawMaterialIds)
           .order('created_at', { ascending: false })
 
-        // Create a map of raw_material_id -> latest cost
-        const costsMap = new Map()
-        if (costsData) {
-          // Get the most recent cost for each material
-          costsData.forEach(cost => {
-            if (!costsMap.has(cost.raw_material_id)) {
-              costsMap.set(cost.raw_material_id, parseFloat(cost.cost_per_unit))
+        // Calculate FIFO average cost with GST included
+        const materialValuationMap = new Map()
+        if (batchesData) {
+          batchesData.forEach(batch => {
+            const materialId = batch.raw_material_id
+            const unitCost = parseFloat(batch.unit_cost)
+            const gstPercent = parseFloat(batch.gst_percent || 0)
+            const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
+            const batchValue = parseFloat(batch.quantity_remaining) * gstInclusiveCost
+
+            if (!materialValuationMap.has(materialId)) {
+              materialValuationMap.set(materialId, {
+                totalValue: 0,
+                totalQuantity: 0,
+                averageCost: 0
+              })
+            }
+
+            const current = materialValuationMap.get(materialId)
+            current.totalValue += batchValue
+            current.totalQuantity += parseFloat(batch.quantity_remaining)
+          })
+
+          materialValuationMap.forEach((value) => {
+            if (value.totalQuantity > 0) {
+              value.averageCost = value.totalValue / value.totalQuantity
             }
           })
         }
+
+        // Get latest GST-inclusive price
+        const latestPriceByMaterialId = new Map()
+        ;(latestCostData || []).forEach((batch) => {
+          if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
+            const unitCost = parseFloat(batch.unit_cost)
+            const gstPercent = parseFloat(batch.gst_percent || 0)
+            const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
+            latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveCost)
+          }
+        })
 
         // Create a map of raw_material_id -> material data
         const materialsMap = new Map()
@@ -128,12 +166,23 @@ const Inventory = () => {
           })
         }
 
-        // Join inventory with materials and costs
-        const inventoryWithMaterials = inventoryData.map(item => ({
-          ...item,
-          raw_materials: materialsMap.get(item.raw_material_id) || null,
-          cost_per_unit: costsMap.get(item.raw_material_id) || 0
-        }))
+        // Join inventory with materials and GST-inclusive costs
+        const inventoryWithMaterials = inventoryData.map(item => {
+          const valuation = materialValuationMap.get(item.raw_material_id) || {
+            totalValue: 0,
+            totalQuantity: 0,
+            averageCost: 0
+          }
+
+          return {
+            ...item,
+            raw_materials: materialsMap.get(item.raw_material_id) || null,
+            cost_per_unit: valuation.averageCost,
+            fifo_total_value: valuation.totalValue,
+            fifo_average_cost: valuation.averageCost,
+            last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
+          }
+        })
 
         // Sort by material name
         inventoryWithMaterials.sort((a, b) => {
@@ -285,32 +334,35 @@ const Inventory = () => {
     totalItems: inventory.length,
     lowStockItems: inventory.filter(item => item.quantity <= item.low_stock_threshold).length,
     totalValue: inventory.reduce((sum, item) => {
-      const quantity = parseFloat(item.quantity) || 0
-      const costPerUnit = item.cost_per_unit || 0
-      return sum + (quantity * costPerUnit)
+      return sum + (item.fifo_total_value || 0)
     }, 0)
   }
 
   // Export functions
   const exportToCSV = () => {
     const session = getSession()
-    const headers = ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Cost per Unit', 'Total Value']
+    const headers = ['Material Name', 'Last Price', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
     const rows = filteredInventory.map(item => {
       const material = item.raw_materials
       const isLowStock = item.quantity <= item.low_stock_threshold
       const isOutOfStock = item.quantity === 0
       const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
-      const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+      const totalValue = item.fifo_total_value || 0
+      const avgCost = item.fifo_average_cost || 0
+      const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+        ? parseFloat(item.last_unit_cost)
+        : null
       
       return [
         material?.name || 'N/A',
+        lastPrice !== null ? `₹${lastPrice.toFixed(2)}` : 'N/A',
         material?.code || 'N/A',
         material?.category || 'N/A',
         parseFloat(item.quantity).toFixed(2),
         material?.unit || 'N/A',
         parseFloat(item.low_stock_threshold || 0).toFixed(2),
         status,
-        `₹${(item.cost_per_unit || 0).toFixed(2)}`,
+        `₹${avgCost.toFixed(2)}`,
         `₹${totalValue.toFixed(2)}`
       ]
     })
@@ -366,23 +418,28 @@ const Inventory = () => {
 
     // Inventory data sheet
     const inventoryData = [
-      ['Material Name', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Cost per Unit', 'Total Value'],
+      ['Material Name', 'Last Price', 'Code', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
       ...filteredInventory.map(item => {
         const material = item.raw_materials
         const isLowStock = item.quantity <= item.low_stock_threshold
         const isOutOfStock = item.quantity === 0
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
-        const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+        const totalValue = item.fifo_total_value || 0
+        const avgCost = item.fifo_average_cost || 0
+        const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+          ? parseFloat(item.last_unit_cost)
+          : null
         
         return [
           material?.name || 'N/A',
+          lastPrice !== null ? lastPrice : 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
           parseFloat(item.quantity).toFixed(2),
           material?.unit || 'N/A',
           parseFloat(item.low_stock_threshold || 0).toFixed(2),
           status,
-          item.cost_per_unit || 0,
+          avgCost,
           totalValue
         ]
       })
@@ -470,38 +527,44 @@ const Inventory = () => {
         const isLowStock = item.quantity <= item.low_stock_threshold
         const isOutOfStock = item.quantity === 0
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
-        const totalValue = (parseFloat(item.quantity) || 0) * (item.cost_per_unit || 0)
+        const totalValue = item.fifo_total_value || 0
+        const avgCost = item.fifo_average_cost || 0
+        const lastPrice = item.last_unit_cost !== null && item.last_unit_cost !== undefined
+          ? parseFloat(item.last_unit_cost)
+          : null
         
         return [
           material?.name || 'N/A',
+          lastPrice !== null ? `₹${lastPrice.toFixed(2)}` : 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
           `${parseFloat(item.quantity).toFixed(2)} ${material?.unit || ''}`,
           parseFloat(item.low_stock_threshold || 0).toFixed(2),
           status,
-          `₹${(item.cost_per_unit || 0).toFixed(2)}`,
+          `₹${avgCost.toFixed(2)}`,
           `₹${totalValue.toFixed(2)}`
         ]
       })
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Material Name', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Cost/Unit', 'Total Value']],
+        head: [['Material Name', 'Last Price', 'Code', 'Category', 'Quantity', 'Low Stock Threshold', 'Status', 'Avg Cost/Unit', 'Total Value (FIFO)']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 2 },
         columnStyles: {
-          0: { cellWidth: 40 },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 30 },
+          0: { cellWidth: 35 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 20 },
           5: { cellWidth: 25 },
-          6: { cellWidth: 25 },
-          7: { cellWidth: 25 }
+          6: { cellWidth: 20 },
+          7: { cellWidth: 20 },
+          8: { cellWidth: 20 }
         },
-        margin: { left: 20, right: 20 }
+        margin: { left: 10, right: 10 }
       })
 
       // Footer
@@ -721,6 +784,7 @@ const Inventory = () => {
                   <thead className="bg-background border-b border-border">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Last Price</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Code</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Category</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Quantity</th>
@@ -745,6 +809,11 @@ const Inventory = () => {
                       >
                         <td className="px-4 py-3 text-foreground font-medium">
                           {material.name}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {item.last_unit_cost !== null && item.last_unit_cost !== undefined
+                            ? `₹${parseFloat(item.last_unit_cost).toFixed(2)}`
+                            : 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {material.code}

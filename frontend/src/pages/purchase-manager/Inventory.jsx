@@ -112,14 +112,14 @@ const Inventory = () => {
       const rawMaterialIds = inventoryData.map(item => item.raw_material_id)
       const { data: batchesData } = await supabase
         .from('stock_in_batches')
-        .select('raw_material_id, quantity_remaining, unit_cost')
+        .select('raw_material_id, quantity_remaining, unit_cost, gst_percent')
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
         .in('raw_material_id', rawMaterialIds)
         .gt('quantity_remaining', 0)
 
       const { data: latestCostData } = await supabase
         .from('stock_in_batches')
-        .select('raw_material_id, unit_cost, created_at')
+        .select('raw_material_id, unit_cost, gst_percent, created_at')
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
         .in('raw_material_id', rawMaterialIds)
         .order('created_at', { ascending: false })
@@ -129,7 +129,10 @@ const Inventory = () => {
       if (batchesData) {
         batchesData.forEach(batch => {
           const materialId = batch.raw_material_id
-          const batchValue = parseFloat(batch.quantity_remaining) * parseFloat(batch.unit_cost)
+          const unitCost = parseFloat(batch.unit_cost)
+          const gstPercent = parseFloat(batch.gst_percent || 0)
+          const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
+          const batchValue = parseFloat(batch.quantity_remaining) * gstInclusiveCost
 
           if (!materialValuationMap.has(materialId)) {
             materialValuationMap.set(materialId, {
@@ -154,7 +157,10 @@ const Inventory = () => {
       const latestPriceByMaterialId = new Map()
       ;(latestCostData || []).forEach((batch) => {
         if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
-          latestPriceByMaterialId.set(batch.raw_material_id, batch.unit_cost)
+          const unitCost = parseFloat(batch.unit_cost)
+          const gstPercent = parseFloat(batch.gst_percent || 0)
+          const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
+          latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveCost)
         }
       })
 
