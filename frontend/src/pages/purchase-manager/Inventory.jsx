@@ -87,7 +87,8 @@ const Inventory = () => {
               unit,
               category,
               low_stock_threshold,
-              material_type
+              material_type,
+              is_active
             )
           `)
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
@@ -177,7 +178,7 @@ const Inventory = () => {
           fifo_average_cost: valuation.averageCost,
           last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
         }
-      })
+      }).filter(item => item.raw_materials?.is_active !== false)
 
       const stockStatusOrder = (item) => {
         const qty = parseFloat(item.quantity) || 0

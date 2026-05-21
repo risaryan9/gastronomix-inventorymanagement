@@ -62,6 +62,18 @@ const getMaterialSectionKey = (material) => {
   return material?.material_type || 'other'
 }
 
+const formatPct = (value) => {
+  if (value === null || value === undefined) return '-'
+  return `${value.toFixed(1)}%`
+}
+
+const getDeviationCellClass = (lastWeekPct) => {
+  if (lastWeekPct === null || lastWeekPct === undefined) return ''
+  if (lastWeekPct < 15) return 'bg-green-50'
+  if (lastWeekPct > 30) return 'bg-red-50'
+  return ''
+}
+
 const DispatchExecutiveDashboard = () => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -95,6 +107,9 @@ const DispatchExecutiveDashboard = () => {
 
   const [batchUnitCosts, setBatchUnitCosts] = useState({})
   const [outletCostModalOutlet, setOutletCostModalOutlet] = useState(null)
+
+  const [deviationMap, setDeviationMap] = useState({})
+  const [historicalQtyMap, setHistoricalQtyMap] = useState({})
 
   const dispatchTableScrollRef = useRef(null)
   const dragRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 })
@@ -286,6 +301,7 @@ const DispatchExecutiveDashboard = () => {
     setMaterials([])
     setQuantities({})
     setManualOverrides({})
+    setDeviationMap({})
 
     try {
       const [
@@ -364,9 +380,26 @@ const DispatchExecutiveDashboard = () => {
 
       const materials = brandItemsData.map(item => item.raw_materials)
 
+      const { prefillMap, deviations, historicalQuantities } = await fetchAnalyticsData(today, brandMeta.dbBrand)
+      
+      const initialQuantities = {}
+      materials.forEach(material => {
+        initialQuantities[material.id] = {}
+        outletsData.forEach(outlet => {
+          const key = `${material.id}:${outlet.id}`
+          const prefillValue = prefillMap[key]
+          if (prefillValue !== undefined && prefillValue !== null) {
+            initialQuantities[material.id][outlet.id] = prefillValue.toString()
+          }
+        })
+      })
+
       setOutlets(outletsData || [])
       setMaterials(materials)
       setRecipes(recipesData || [])
+      setQuantities(initialQuantities)
+      setDeviationMap(deviations)
+      setHistoricalQtyMap(historicalQuantities)
     } catch (error) {
       console.error('Error preparing dispatch plan modal:', error)
       setModalError('Failed to load outlets or materials. Please try again.')
@@ -388,6 +421,7 @@ const DispatchExecutiveDashboard = () => {
     setMaterials([])
     setQuantities({})
     setManualOverrides({})
+    setDeviationMap({})
 
     try {
       const [
@@ -489,10 +523,14 @@ const DispatchExecutiveDashboard = () => {
         qtyMap[mid][oid] = item.quantity != null ? String(item.quantity) : ''
       })
 
+      const { prefillMap, deviations, historicalQuantities } = await fetchAnalyticsData(plan.plan_date, brandMeta.dbBrand)
+
       setOutlets(outletsData || [])
       setMaterials(allMaterials)
       setQuantities(qtyMap)
       setRecipes(recipesData || [])
+      setDeviationMap(deviations)
+      setHistoricalQtyMap(historicalQuantities)
     } catch (error) {
       console.error('Error loading dispatch plan for edit:', error)
       setModalError('Failed to load dispatch plan. Please try again.')
@@ -545,6 +583,142 @@ const DispatchExecutiveDashboard = () => {
 
       return updated
     })
+  }
+
+  const fetchAnalyticsData = async (todayDate, brandDbName) => {
+    try {
+      const today = new Date(todayDate)
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+      const lastWeekSameDay = new Date(today)
+      lastWeekSameDay.setDate(lastWeekSameDay.getDate() - 7)
+      const lastWeekStr = lastWeekSameDay.toISOString().split('T')[0]
+
+      const [yesterdayPlanRes, lastWeekPlanRes] = await Promise.all([
+        supabase
+          .from('dispatch_plan')
+          .select('id')
+          .eq('cloud_kitchen_id', cloudKitchenId)
+          .eq('brand', brandDbName)
+          .eq('plan_date', yesterdayStr)
+          .eq('status', 'locked')
+          .maybeSingle(),
+        supabase
+          .from('dispatch_plan')
+          .select('id')
+          .eq('cloud_kitchen_id', cloudKitchenId)
+          .eq('brand', brandDbName)
+          .eq('plan_date', lastWeekStr)
+          .eq('status', 'locked')
+          .maybeSingle()
+      ])
+
+      const prefillMap = {}
+      const deviations = {}
+      const historicalQuantities = {}
+
+      if (lastWeekPlanRes.data) {
+        const { data: lastWeekItems } = await supabase
+          .from('dispatch_plan_items')
+          .select('raw_material_id, outlet_id, quantity')
+          .eq('dispatch_plan_id', lastWeekPlanRes.data.id)
+
+        if (lastWeekItems) {
+          lastWeekItems.forEach(item => {
+            const key = `${item.raw_material_id}:${item.outlet_id}`
+            prefillMap[key] = item.quantity
+          })
+        }
+      }
+
+      const computeReturnMetrics = async (planId, planItems) => {
+        if (!planId) return { pctMap: {}, qtyMap: {} }
+        
+        const { data: checkoutForms } = await supabase
+          .from('checkout_form')
+          .select('id')
+          .eq('dispatch_plan_id', planId)
+          .eq('status', 'confirmed')
+
+        if (!checkoutForms || checkoutForms.length === 0) return { pctMap: {}, qtyMap: {} }
+
+        const formIds = checkoutForms.map(f => f.id)
+        const { data: returnItems } = await supabase
+          .from('checkout_form_return_items')
+          .select('outlet_id, raw_material_id, returned_quantity')
+          .in('checkout_form_id', formIds)
+
+        if (!returnItems || !planItems) return { pctMap: {}, qtyMap: {} }
+
+        const returnMap = {}
+        returnItems.forEach(item => {
+          const key = `${item.raw_material_id}:${item.outlet_id}`
+          returnMap[key] = (returnMap[key] || 0) + parseFloat(item.returned_quantity)
+        })
+
+        const pctMap = {}
+        planItems.forEach(item => {
+          const key = `${item.raw_material_id}:${item.outlet_id}`
+          const returnQty = returnMap[key] || 0
+          const dispatchQty = parseFloat(item.quantity)
+          
+          if (dispatchQty > 0) {
+            pctMap[key] = (returnQty / dispatchQty) * 100
+          } else {
+            pctMap[key] = null
+          }
+        })
+
+        return { pctMap, qtyMap: returnMap }
+      }
+
+      const [yesterdayPlanItems, lastWeekPlanItems] = await Promise.all([
+        yesterdayPlanRes.data
+          ? supabase
+              .from('dispatch_plan_items')
+              .select('raw_material_id, outlet_id, quantity')
+              .eq('dispatch_plan_id', yesterdayPlanRes.data.id)
+              .then(res => res.data)
+          : Promise.resolve(null),
+        lastWeekPlanRes.data
+          ? supabase
+              .from('dispatch_plan_items')
+              .select('raw_material_id, outlet_id, quantity')
+              .eq('dispatch_plan_id', lastWeekPlanRes.data.id)
+              .then(res => res.data)
+          : Promise.resolve(null)
+      ])
+
+      const [yesterdayMetrics, lastWeekMetrics] = await Promise.all([
+        computeReturnMetrics(yesterdayPlanRes.data?.id, yesterdayPlanItems),
+        computeReturnMetrics(lastWeekPlanRes.data?.id, lastWeekPlanItems)
+      ])
+
+      Object.keys({ ...yesterdayMetrics.pctMap, ...lastWeekMetrics.pctMap }).forEach(key => {
+        deviations[key] = {
+          yesterdayPct: yesterdayMetrics.pctMap[key] !== undefined ? yesterdayMetrics.pctMap[key] : null,
+          lastWeekPct: lastWeekMetrics.pctMap[key] !== undefined ? lastWeekMetrics.pctMap[key] : null
+        }
+      })
+
+      ;(yesterdayPlanItems || []).forEach(item => {
+        const key = `${item.raw_material_id}:${item.outlet_id}`
+        if (!historicalQuantities[key]) historicalQuantities[key] = { yesterdayQty: null, lastWeekQty: null }
+        historicalQuantities[key].yesterdayQty = item.quantity != null ? parseFloat(item.quantity) : null
+      })
+      ;(lastWeekPlanItems || []).forEach(item => {
+        const key = `${item.raw_material_id}:${item.outlet_id}`
+        if (!historicalQuantities[key]) historicalQuantities[key] = { yesterdayQty: null, lastWeekQty: null }
+        historicalQuantities[key].lastWeekQty = item.quantity != null ? parseFloat(item.quantity) : null
+      })
+
+      return { prefillMap, deviations, historicalQuantities }
+    } catch (error) {
+      console.error('Error fetching analytics data:', error)
+      return { prefillMap: {}, deviations: {}, historicalQuantities: {} }
+    }
   }
 
   const handleSaveDispatchPlan = async () => {
@@ -715,6 +889,37 @@ const DispatchExecutiveDashboard = () => {
     () => computeOutletFinishedCosts(materials, outlets, quantities, batchUnitCosts),
     [materials, outlets, quantities, batchUnitCosts]
   )
+
+  const outletModalAnalytics = useMemo(() => {
+    const analytics = {}
+    outlets.forEach((outlet) => {
+      const base = outletFinishedCosts[outlet.id] || { lines: [], total: 0 }
+      let yesterdayTotal = 0
+      let lastWeekTotal = 0
+      const lines = (base.lines || []).map((row) => {
+        const key = `${row.materialId}:${outlet.id}`
+        const qtyMeta = historicalQtyMap[key] || {}
+        const yesterdayQty = qtyMeta.yesterdayQty
+        const lastWeekQty = qtyMeta.lastWeekQty
+        const yCost = yesterdayQty != null ? yesterdayQty * row.unitCost : 0
+        const lwCost = lastWeekQty != null ? lastWeekQty * row.unitCost : 0
+        yesterdayTotal += yCost
+        lastWeekTotal += lwCost
+        return {
+          ...row,
+          yesterdayQty,
+          lastWeekQty
+        }
+      })
+      analytics[outlet.id] = {
+        lines,
+        total: base.total || 0,
+        yesterdayTotal,
+        lastWeekTotal
+      }
+    })
+    return analytics
+  }, [outlets, outletFinishedCosts, historicalQtyMap])
 
   const handleScrollToMaterial = (materialId) => {
     setIsMaterialSearchOpen(false)
@@ -987,6 +1192,8 @@ const DispatchExecutiveDashboard = () => {
                   setEditingPlan(null)
                   setOutletCostModalOutlet(null)
                   setBatchUnitCosts({})
+                  setDeviationMap({})
+                  setHistoricalQtyMap({})
                 }}
                 className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                 aria-label="Close"
@@ -1170,11 +1377,14 @@ const DispatchExecutiveDashboard = () => {
                                 </td>
                                 {outlets.map(outlet => {
                                   const value = quantities[material.id]?.[outlet.id] ?? ''
+                                  const key = `${material.id}:${outlet.id}`
+                                  const deviation = deviationMap[key] || {}
+                                  const lwClass = getDeviationCellClass(deviation.lastWeekPct)
                                   return (
                                     <td
                                       key={outlet.id}
                                       className={`border-t border-l border-border px-1.5 lg:px-2 py-1.5 lg:py-2 align-middle transition-colors ${
-                                        highlightOutletId === outlet.id ? 'bg-yellow-100/70' : ''
+                                        highlightOutletId === outlet.id ? 'bg-yellow-100/70' : lwClass
                                       }`}
                                     >
                                       <input
@@ -1193,6 +1403,9 @@ const DispatchExecutiveDashboard = () => {
                                         }
                                         className="w-full bg-input border border-border rounded-md px-1.5 py-1 text-[11px] lg:text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
                                       />
+                                      <div className="mt-1 text-[9px] lg:text-[10px] text-muted-foreground font-mono whitespace-nowrap">
+                                        Y: {formatPct(deviation.yesterdayPct)} | LW: {formatPct(deviation.lastWeekPct)}
+                                      </div>
                                     </td>
                                   )
                                 })}
@@ -1350,12 +1563,22 @@ const DispatchExecutiveDashboard = () => {
               outletName={outletCostModalOutlet?.name ?? ''}
               lines={
                 outletCostModalOutlet
-                  ? outletFinishedCosts[outletCostModalOutlet.id]?.lines ?? []
+                  ? outletModalAnalytics[outletCostModalOutlet.id]?.lines ?? []
                   : []
               }
               total={
                 outletCostModalOutlet
-                  ? outletFinishedCosts[outletCostModalOutlet.id]?.total ?? 0
+                  ? outletModalAnalytics[outletCostModalOutlet.id]?.total ?? 0
+                  : 0
+              }
+              yesterdayTotal={
+                outletCostModalOutlet
+                  ? outletModalAnalytics[outletCostModalOutlet.id]?.yesterdayTotal ?? 0
+                  : 0
+              }
+              lastWeekTotal={
+                outletCostModalOutlet
+                  ? outletModalAnalytics[outletCostModalOutlet.id]?.lastWeekTotal ?? 0
                   : 0
               }
             />

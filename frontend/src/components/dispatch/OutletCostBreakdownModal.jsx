@@ -9,7 +9,9 @@ const OutletCostBreakdownModal = ({
   outletCode,
   outletName,
   lines,
-  total
+  total,
+  yesterdayTotal,
+  lastWeekTotal
 }) => {
   if (!open) return null
 
@@ -66,6 +68,8 @@ const OutletCostBreakdownModal = ({
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="py-2 pr-2 font-medium">Material</th>
                   <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Qty</th>
+                  <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Y Qty</th>
+                  <th className="py-2 px-2 font-medium text-right whitespace-nowrap">LW Qty</th>
                   <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Unit cost</th>
                   <th className="py-2 pl-2 font-medium text-right whitespace-nowrap">Line</th>
                 </tr>
@@ -81,6 +85,20 @@ const OutletCostBreakdownModal = ({
                       {row.qty.toLocaleString('en-IN', { maximumFractionDigits: 3 })}
                     </td>
                     <td className="py-2 px-2 align-top text-right font-mono whitespace-nowrap">
+                      {row.yesterdayQty == null
+                        ? '-'
+                        : row.yesterdayQty.toLocaleString('en-IN', {
+                            maximumFractionDigits: 3
+                          })}
+                    </td>
+                    <td className="py-2 px-2 align-top text-right font-mono whitespace-nowrap">
+                      {row.lastWeekQty == null
+                        ? '-'
+                        : row.lastWeekQty.toLocaleString('en-IN', {
+                            maximumFractionDigits: 3
+                          })}
+                    </td>
+                    <td className="py-2 px-2 align-top text-right font-mono whitespace-nowrap">
                       {formatRupee(row.unitCost)}
                     </td>
                     <td className="py-2 pl-2 align-top text-right font-mono whitespace-nowrap font-semibold text-foreground">
@@ -93,9 +111,19 @@ const OutletCostBreakdownModal = ({
           )}
         </div>
 
-        <div className="border-t border-border px-4 py-3 flex items-center justify-between bg-muted/30 flex-shrink-0">
-          <span className="text-xs lg:text-sm font-semibold text-foreground">Total</span>
-          <span className="text-sm lg:text-base font-bold font-mono text-foreground">{formatRupee(total)}</span>
+        <div className="border-t border-border px-4 py-3 bg-muted/30 flex-shrink-0 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs lg:text-sm font-semibold text-foreground">Total Amount</span>
+            <span className="text-sm lg:text-base font-bold font-mono text-foreground">{formatRupee(total)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] lg:text-xs text-muted-foreground">
+            <span>Yesterday Total Amount</span>
+            <span className="font-mono">{formatRupee(yesterdayTotal || 0)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] lg:text-xs text-muted-foreground">
+            <span>Last week Total Amount</span>
+            <span className="font-mono">{formatRupee(lastWeekTotal || 0)}</span>
+          </div>
         </div>
       </div>
     </div>
