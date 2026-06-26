@@ -126,6 +126,8 @@ const StockOut = () => {
   const [inventoryData, setInventoryData] = useState({})
   const [todayTotals, setTodayTotals] = useState({})
   const [allocating, setAllocating] = useState(false)
+  const [cancelingId, setCancelingId] = useState(null)
+  const [cancelTarget, setCancelTarget] = useState(null)
   const [alert, setAlert] = useState(null)
   const [lastStockOutId, setLastStockOutId] = useState(null)
 
@@ -1728,63 +1730,25 @@ const StockOut = () => {
   }
 
   // FIFO Allocation Logic (no-op when quantity <= 0). Returns { totalCost, totalQty } for inter-cloud transfer costing.
-  const allocateStockFIFO = async (rawMaterialId, quantity, cloudKitchenId) => {
+  // Delegates to the atomic fifo_consume RPC, which decrements stock_in_batches oldest-first
+  // and records a stock_out_batch_consumption row per batch touched (so the stock-out is reversible).
+  const allocateStockFIFO = async (stockOutId, rawMaterialId, quantity, cloudKitchenId) => {
     const qty = parseFloat(quantity)
     if (qty <= 0) return { totalCost: 0, totalQty: 0 }
 
-    // Query stock_in_batches ordered by created_at (oldest first)
-    const { data: batches, error: batchError } = await supabase
-      .from('stock_in_batches')
-      .select('id, quantity_remaining, unit_cost, created_at')
-      .eq('raw_material_id', rawMaterialId)
-      .eq('cloud_kitchen_id', cloudKitchenId)
-      .gt('quantity_remaining', 0)
-      .order('created_at', { ascending: true })
+    const { data, error } = await supabase.rpc('fifo_consume', {
+      p_stock_out_id: stockOutId,
+      p_raw_material_id: rawMaterialId,
+      p_quantity: qty,
+      p_cloud_kitchen_id: cloudKitchenId
+    })
 
-    if (batchError) throw batchError
+    if (error) throw error
 
-    if (!batches || batches.length === 0) {
-      throw new Error('No batches available for this material')
+    return {
+      totalCost: parseFloat(data?.total_cost) || 0,
+      totalQty: parseFloat(data?.total_consumed) || qty
     }
-
-    let remainingQuantity = parseFloat(quantity)
-    const batchUpdates = []
-    let totalCost = 0
-
-    // Iterate through batches and allocate FIFO
-    for (const batch of batches) {
-      if (remainingQuantity <= 0) break
-
-      const availableInBatch = parseFloat(batch.quantity_remaining)
-      const toAllocate = Math.min(availableInBatch, remainingQuantity)
-      const unitCost = parseFloat(batch.unit_cost) || 0
-      totalCost += toAllocate * unitCost
-
-      // Prepare batch update
-      batchUpdates.push({
-        id: batch.id,
-        newQuantityRemaining: availableInBatch - toAllocate
-      })
-
-      remainingQuantity -= toAllocate
-    }
-
-    // Check if we have enough stock
-    if (remainingQuantity > 0) {
-      throw new Error(`Insufficient stock. Short by ${remainingQuantity.toFixed(2)} units`)
-    }
-
-    // Update batches
-    for (const update of batchUpdates) {
-      const { error: updateError } = await supabase
-        .from('stock_in_batches')
-        .update({ quantity_remaining: update.newQuantityRemaining })
-        .eq('id', update.id)
-
-      if (updateError) throw updateError
-    }
-
-    return { totalCost, totalQty: qty }
   }
 
   // Handle allocation submission (both regular and self stock out)
@@ -1913,6 +1877,35 @@ const StockOut = () => {
     }
 
     try {
+      // Regular requisition packing: handled atomically server-side via RPC.
+      // The RPC creates the stock_out + items, FIFO-consumes (logging each batch
+      // in stock_out_batch_consumption), and marks the request packed — all in one
+      // transaction, so it can be cleanly reversed by cancel_allocation_packing.
+      if (!isSelfStockOut) {
+        const items = allocationItems.map((item) => ({
+          raw_material_id: item.raw_material_id,
+          quantity: parseFloat(item.allocated_quantity) || 0
+        }))
+
+        const { data: packResult, error: packError } = await supabase.rpc('pack_allocation_request', {
+          p_allocation_request_id: selectedRequest.id,
+          p_items: items,
+          p_notes: challanNotes,
+          p_acting_user_id: session.id
+        })
+
+        if (packError) throw packError
+
+        if (packResult?.stock_out_id) {
+          setLastStockOutId(packResult.stock_out_id)
+        }
+
+        setAlert({ type: 'success', message: 'Stock allocated successfully!', showChallanDownload: true })
+        setShowAllocationModal(false)
+        fetchAllocationRequests()
+        return
+      }
+
       // Create stock_out record
       const stockOutPayload = {
         cloud_kitchen_id: session.cloud_kitchen_id,
@@ -1988,6 +1981,7 @@ const StockOut = () => {
         if (qty > 0) {
           // Allocate stock using FIFO and update inventory (returns { totalCost, totalQty } for inter-cloud)
           const fifoResult = await allocateStockFIFO(
+            stockOutData.id,
             item.raw_material_id,
             qty,
             session.cloud_kitchen_id
@@ -2140,6 +2134,50 @@ const StockOut = () => {
     } finally {
       allocatingRef.current = false
       setAllocating(false)
+    }
+  }
+
+  // Open the cancellation confirmation modal for a packed requisition.
+  const handleCancelPacking = (request) => {
+    if (!request?.id || cancelingId) return
+    setCancelTarget(request)
+  }
+
+  // Cancel the packing of a requisition. Reverses FIFO consumption by restoring stock to the
+  // exact batches it was taken from (via cancel_allocation_packing RPC), then reopens the request.
+  // Only valid on the same day the packing was done; the RPC enforces this and returns a clear error.
+  const confirmCancelPacking = async () => {
+    const request = cancelTarget
+    if (!request?.id || cancelingId) return
+
+    const session = getSession()
+    if (!session?.id) {
+      setAlert({ type: 'error', message: 'Session expired. Please log in again.' })
+      setCancelTarget(null)
+      return
+    }
+
+    setCancelingId(request.id)
+    try {
+      const { data, error } = await supabase.rpc('cancel_allocation_packing', {
+        p_allocation_request_id: request.id,
+        p_acting_user_id: session.id
+      })
+
+      if (error) throw error
+
+      const restored = parseFloat(data?.restored_qty) || 0
+      setAlert({
+        type: 'success',
+        message: `Packing cancelled. ${restored > 0 ? `${restored} units returned to inventory.` : 'Stock returned to inventory.'}`
+      })
+      setCancelTarget(null)
+      fetchAllocationRequests()
+    } catch (err) {
+      console.error('Error cancelling packing:', err)
+      setAlert({ type: 'error', message: err.message || 'Failed to cancel packing. Please try again.' })
+    } finally {
+      setCancelingId(null)
     }
   }
 
@@ -2593,7 +2631,13 @@ const StockOut = () => {
                           </td>
                           <td className="px-4 py-3">
                             {request.is_packed ? (
-                              <span className="text-sm text-muted-foreground">Completed</span>
+                              <button
+                                onClick={() => handleCancelPacking(request)}
+                                disabled={cancelingId === request.id}
+                                className="px-3 py-1.5 bg-red-500/10 text-red-600 border-2 border-red-500/30 rounded-lg hover:bg-red-500/20 hover:border-red-500/50 transition-all duration-200 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {cancelingId === request.id ? 'Cancelling…' : 'Cancel Packing'}
+                              </button>
                             ) : (
                               <button
                                 onClick={() => openAllocationModal(request)}
@@ -2900,6 +2944,62 @@ const StockOut = () => {
           )}
         </div>
 
+        {/* Cancel Packing Confirmation Modal */}
+        {cancelTarget && (
+          <div className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4">
+            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-md w-full">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-foreground">Cancel Packing?</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {cancelTarget.outlets?.name || 'This requisition'}
+                    {cancelTarget.outlets?.code && (
+                      <span className="font-mono"> • {cancelTarget.outlets.code}</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <p className="text-sm text-foreground">
+                  The packed stock will be returned to the exact inventory batches it was taken
+                  from, and the request will reopen for re-packing.
+                </p>
+                <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2">
+                  <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-yellow-700">
+                    This can only be done on the <strong>same day</strong> the packing was made.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setCancelTarget(null)}
+                  disabled={cancelingId === cancelTarget.id}
+                  className="px-4 py-2 rounded-lg border-2 border-border bg-input text-foreground hover:bg-accent/10 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Keep Packing
+                </button>
+                <button
+                  onClick={confirmCancelPacking}
+                  disabled={cancelingId === cancelTarget.id}
+                  className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cancelingId === cancelTarget.id ? 'Cancelling…' : 'Yes, Cancel Packing'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Allocation Modal */}
         {showAllocationModal && selectedRequest && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -3137,7 +3237,13 @@ const StockOut = () => {
                             </td>
                             <td className="px-4 py-3">
                               {request.is_packed ? (
-                                <span className="text-sm text-muted-foreground">Completed</span>
+                                <button
+                                  onClick={() => handleCancelPacking(request)}
+                                  disabled={cancelingId === request.id}
+                                  className="px-3 py-1.5 bg-red-500/10 text-red-600 border-2 border-red-500/30 rounded-lg hover:bg-red-500/20 hover:border-red-500/50 transition-all duration-200 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {cancelingId === request.id ? 'Cancelling…' : 'Cancel Packing'}
+                                </button>
                               ) : (
                                 <button
                                   onClick={() => {

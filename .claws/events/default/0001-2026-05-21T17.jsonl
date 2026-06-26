@@ -1,3 +1,0 @@
-{"topic":"system.heartbeat","from":"server","ts_server":"2026-05-21T17:05:58.623Z","payload":{"uptimeMs":60007,"peers":0,"terminals":0},"sequence":0}
-{"topic":"system.metrics","from":"server","ts_server":"2026-05-21T17:05:58.623Z","payload":{"publishRate_per_sec":0,"queueDepth":0,"peerCount":0,"eventLogLastSeq":0,"uptimeMs":60007,"ts":"2026-05-21T17:05:58.623Z"},"sequence":1}
-{"topic":"system.terminal.1.alive","from":"server","ts_server":"2026-05-21T17:05:58.623Z","payload":{"terminal_id":"1","ts":"2026-05-21T17:05:58.623Z"},"sequence":2}

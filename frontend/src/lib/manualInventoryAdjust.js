@@ -159,43 +159,17 @@ export async function adjustManualInventory(supabase, params) {
       throw new Error(`Failed to create stock_out_items: ${stockOutItemError.message}`)
     }
 
-    const { data: batches, error: batchError } = await supabase
-      .from('stock_in_batches')
-      .select('id, quantity_remaining')
-      .eq('raw_material_id', rawMaterialId)
-      .eq('cloud_kitchen_id', cloudKitchenId)
-      .gt('quantity_remaining', 0)
-      .order('created_at', { ascending: true })
+    // FIFO-consume via the atomic RPC: decrements stock_in_batches oldest-first and
+    // records a stock_out_batch_consumption row per batch touched (so this decrement is reversible).
+    const { error: consumeError } = await supabase.rpc('fifo_consume', {
+      p_stock_out_id: stockOutId,
+      p_raw_material_id: rawMaterialId,
+      p_quantity: decrementQty,
+      p_cloud_kitchen_id: cloudKitchenId
+    })
 
-    if (batchError) {
-      throw new Error(`Failed to fetch batches: ${batchError.message}`)
-    }
-    if (!batches?.length) {
-      throw new Error('No batches available to decrement from')
-    }
-
-    let remainingToDecrement = decrementQty
-    for (const batch of batches) {
-      if (remainingToDecrement <= 0) break
-      const availableInBatch = parseFloat(batch.quantity_remaining)
-      const toDecrement = Math.min(availableInBatch, remainingToDecrement)
-      const newRemaining = availableInBatch - toDecrement
-
-      const { error: updateError } = await supabase
-        .from('stock_in_batches')
-        .update({ quantity_remaining: newRemaining })
-        .eq('id', batch.id)
-
-      if (updateError) {
-        throw new Error(`Failed to update batch: ${updateError.message}`)
-      }
-      remainingToDecrement -= toDecrement
-    }
-
-    if (remainingToDecrement > 0) {
-      throw new Error(
-        `Insufficient stock to decrement. Short by ${remainingToDecrement.toFixed(3)} units`
-      )
+    if (consumeError) {
+      throw new Error(`Failed to decrement stock: ${consumeError.message}`)
     }
   }
 

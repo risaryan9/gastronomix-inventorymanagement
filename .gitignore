@@ -39,4 +39,13 @@ next-env.d.ts
 # Supabase
 .supabase
 
+# Claws
+.claws/
+
+# AI agent / tooling artifacts
+.agents/
+.claude/
+.mcp.json
+skills-lock.json
+promptest.md
 

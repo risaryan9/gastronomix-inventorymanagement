@@ -293,56 +293,18 @@ serve(async (req) => {
         )
       }
 
-      // 3. FIFO reduce stock_in_batches
-      const { data: batches, error: batchError } = await supabaseClient
-        .from('stock_in_batches')
-        .select('id, quantity_remaining')
-        .eq('raw_material_id', raw_material_id)
-        .eq('cloud_kitchen_id', cloud_kitchen_id)
-        .gt('quantity_remaining', 0)
-        .order('created_at', { ascending: true })
+      // 3. FIFO reduce stock_in_batches via the atomic fifo_consume RPC, which decrements
+      //    oldest-first and logs a stock_out_batch_consumption row per batch (reversible).
+      const { error: consumeError } = await supabaseClient.rpc('fifo_consume', {
+        p_stock_out_id: stockOutId,
+        p_raw_material_id: raw_material_id,
+        p_quantity: decrementQty,
+        p_cloud_kitchen_id: cloud_kitchen_id
+      })
 
-      if (batchError) {
+      if (consumeError) {
         return new Response(
-          JSON.stringify({ error: `Failed to fetch batches: ${batchError.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      if (!batches || batches.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No batches available to decrement from' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      let remainingToDecrement = decrementQty
-
-      for (const batch of batches) {
-        if (remainingToDecrement <= 0) break
-
-        const availableInBatch = parseFloat(batch.quantity_remaining)
-        const toDecrement = Math.min(availableInBatch, remainingToDecrement)
-        const newRemaining = availableInBatch - toDecrement
-
-        const { error: updateError } = await supabaseClient
-          .from('stock_in_batches')
-          .update({ quantity_remaining: newRemaining })
-          .eq('id', batch.id)
-
-        if (updateError) {
-          return new Response(
-            JSON.stringify({ error: `Failed to update batch: ${updateError.message}` }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
-
-        remainingToDecrement -= toDecrement
-      }
-
-      if (remainingToDecrement > 0) {
-        return new Response(
-          JSON.stringify({ error: `Insufficient stock to decrement. Short by ${remainingToDecrement.toFixed(3)} units` }),
+          JSON.stringify({ error: `Failed to decrement stock: ${consumeError.message}` }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }

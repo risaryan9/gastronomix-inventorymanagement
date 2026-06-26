@@ -1,3 +1,0 @@
-{"type":"sidecar.connected","socket":"/home/aryan/Projects/gastronomix-inventorymanagement/.claws/claws.sock","role":"observer","ts":"2026-05-21T17:05:21.248Z"}
-{"type":"sidecar.hello.ack","peerId":"p_000001","ts":"2026-05-21T17:05:21.252Z"}
-{"type":"sidecar.subscribed","topic":"**","subscriptionId":"s_0001","ok":true,"ts":"2026-05-21T17:05:21.252Z"}
