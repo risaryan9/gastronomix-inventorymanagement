@@ -544,13 +544,12 @@ const AdminUsers = () => {
                         }
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all font-mono"
                         placeholder={formData.role === 'bp_operator' ? 'Auto-generated' : 'e.g. PM-CK1-ABCDE'}
-                        disabled={saving || (formData.role === 'bp_operator')}
-                        readOnly={formData.role === 'bp_operator'}
+                        disabled={saving}
                         required
                       />
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        {formData.role === 'bp_operator' 
-                          ? 'Auto-generated based on cloud kitchen. Cannot be edited.'
+                        {formData.role === 'bp_operator'
+                          ? 'Auto-generated based on cloud kitchen — you can edit it if needed. Must be unique and is used for key-based login.'
                           : 'Must be unique and is used for key-based login. Email must be empty for non-admin roles.'}
                       </p>
                     </div>
