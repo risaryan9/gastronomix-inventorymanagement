@@ -10,6 +10,7 @@ import AdminOutlets from './admin/AdminOutlets'
 import AdminVendors from './admin/AdminVendors'
 import AdminBrandDispatch from './admin/AdminBrandDispatch'
 import AdminRequisitionsReports from './admin/AdminRequisitionsReports'
+import AdminFranchiseCloning from './admin/AdminFranchiseCloning'
 
 const NAV_STRUCTURE = [
   {
@@ -58,6 +59,13 @@ const NAV_STRUCTURE = [
       { id: 'requisitions-reports', label: 'Requisitions Reports' },
     ],
   },
+  {
+    id: 'franchise',
+    label: 'Franchise',
+    children: [
+      { id: 'data-cloning', label: 'Data Cloning' },
+    ],
+  },
 ]
 
 const AdminDashboard = () => {
@@ -102,6 +110,8 @@ const AdminDashboard = () => {
     activeParentId === 'settings' && activeChildId === 'dispatch-brands'
   const isRequisitionsReportsSection =
     activeParentId === 'reports' && activeChildId === 'requisitions-reports'
+  const isFranchiseCloningSection =
+    activeParentId === 'franchise' && activeChildId === 'data-cloning'
 
   return (
     <div className="min-h-screen bg-background">
@@ -257,6 +267,10 @@ const AdminDashboard = () => {
             ) : isRequisitionsReportsSection ? (
               <div className="-mt-2">
                 <AdminRequisitionsReports />
+              </div>
+            ) : isFranchiseCloningSection ? (
+              <div className="-mt-2">
+                <AdminFranchiseCloning />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">
