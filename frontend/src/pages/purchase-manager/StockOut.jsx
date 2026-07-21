@@ -6,6 +6,9 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import PaginationControls from '../../components/PaginationControls'
+import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
+import useBodyScrollLock from '../../hooks/useBodyScrollLock'
+import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
 
 const DISPATCH_STOCK_OUT_SECTIONS = [
   { key: 'finished', label: 'Finished' },
@@ -180,6 +183,10 @@ const StockOut = () => {
   // Self stock out creation modal states
   const [showSelfStockOutModal, setShowSelfStockOutModal] = useState(false)
   const [selfStockOutItems, setSelfStockOutItems] = useState([])
+  // Keep the self stock-out items table pinned to the newest row as rows are added
+  const selfStockOutScrollRef = useAutoScrollOnAdd(selfStockOutItems.length, showSelfStockOutModal)
+  // Lock the page behind the item modals so scrolling their tables can't move it
+  useBodyScrollLock(showSelfStockOutModal || showAllocationModal)
   const [selfStockOutReason, setSelfStockOutReason] = useState('')
   const [selfStockOutNotes, setSelfStockOutNotes] = useState('')
   const [transferToCloudKitchenId, setTransferToCloudKitchenId] = useState('')
@@ -1921,7 +1928,7 @@ const StockOut = () => {
       const trigger = document.querySelector(`[data-self-stock-out-trigger="${openMaterialDropdownRow}"]`)
       if (trigger) {
         const rect = trigger.getBoundingClientRect()
-        setMaterialDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+        setMaterialDropdownPosition(getAnchoredDropdownStyle(rect))
       }
       const t = setTimeout(() => materialDropdownSearchRef.current?.focus(), 50)
       return () => clearTimeout(t)
@@ -3238,9 +3245,9 @@ const StockOut = () => {
 
               {/* Items Table */}
               <div className="mb-6">
-                <div className="overflow-x-auto">
-                  <table className="w-full border border-border rounded-lg">
-                    <thead className="bg-background border-b border-border">
+                <div className="overflow-x-auto overflow-y-auto max-h-[45vh] scroll-smooth overscroll-contain rounded-lg border border-border">
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-20 bg-background border-b border-border">
                       <tr>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Requested</th>
@@ -3670,9 +3677,12 @@ const StockOut = () => {
                 </div>
                 
                 <div className="rounded-xl border-2 border-border overflow-hidden bg-background">
-                  <div className="overflow-x-auto">
+                  <div
+                    ref={selfStockOutScrollRef}
+                    className="overflow-x-auto overflow-y-auto max-h-[42vh] scroll-smooth overscroll-contain"
+                  >
                     <table className="w-full table-fixed border-collapse min-w-0">
-                      <thead>
+                      <thead className="sticky top-0 z-20 bg-background">
                         <tr className="bg-muted/40 border-b-2 border-border select-none">
                           <th className="px-2 py-2.5 w-9 align-middle"></th>
                           <th className="px-2 py-2.5 text-left text-sm font-bold text-foreground w-[38%] min-w-0 align-middle">
@@ -3717,7 +3727,7 @@ const StockOut = () => {
                           return (
                           <tr
                             key={item.id || `row-${index}`}
-                            className={`hover:bg-accent/5 ${selectedStockOutRows.has(index) ? 'bg-accent/10' : ''}`}
+                            className={`animate-row-in hover:bg-accent/5 ${selectedStockOutRows.has(index) ? 'bg-accent/10' : ''}`}
                           >
                             <td className="px-2 py-2">
                               <input
@@ -3747,13 +3757,8 @@ const StockOut = () => {
                                 </button>
                                 {openMaterialDropdownRow === index && ReactDOM.createPortal(
                                   <div
-                                    className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
-                                    style={{
-                                      top: materialDropdownPosition.top,
-                                      left: materialDropdownPosition.left,
-                                      width: materialDropdownPosition.width,
-                                      minWidth: 280
-                                    }}
+                                    className="fixed z-[9999] flex flex-col bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
+                                    style={{ ...materialDropdownPosition, minWidth: 280 }}
                                   >
                                     <input
                                       ref={materialDropdownSearchRef}
@@ -3761,9 +3766,9 @@ const StockOut = () => {
                                       value={materialDropdownSearchTerm}
                                       onChange={(e) => setMaterialDropdownSearchTerm(e.target.value)}
                                       placeholder="Search material..."
-                                      className="w-full px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                                      className="w-full shrink-0 px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
                                     />
-                                    <div className="max-h-44 overflow-y-auto bg-card">
+                                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-card">
                                       {getFilteredMaterialsForSelfStockOut(index).length === 0 ? (
                                         <div className="p-4 text-center text-sm text-muted-foreground">
                                           No materials found. Add in Materials first.

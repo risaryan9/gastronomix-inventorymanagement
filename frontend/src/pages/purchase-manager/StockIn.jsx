@@ -14,6 +14,9 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 import PaginationControls from '../../components/PaginationControls'
+import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
+import useBodyScrollLock from '../../hooks/useBodyScrollLock'
+import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
 
 const StockIn = () => {
   const [stockInRecords, setStockInRecords] = useState([])
@@ -63,6 +66,10 @@ const StockIn = () => {
 
   // Items in the purchase slip (spreadsheet rows)
   const [purchaseItems, setPurchaseItems] = useState([])
+  // Keep the items table pinned to the newest row as rows are added
+  const purchaseItemsScrollRef = useAutoScrollOnAdd(purchaseItems.length, showAddModal)
+  // Lock the page behind the modal so scrolling the items table can't move it
+  useBodyScrollLock(showAddModal)
 
   // Which row's material dropdown is open (-1 = none)
   const [openDropdownRow, setOpenDropdownRow] = useState(-1)
@@ -201,7 +208,7 @@ const StockIn = () => {
       const trigger = document.querySelector(`[data-dropdown-trigger="${openDropdownRow}"]`)
       if (trigger) {
         const rect = trigger.getBoundingClientRect()
-        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+        setDropdownPosition(getAnchoredDropdownStyle(rect))
       }
       const t = setTimeout(() => dropdownSearchRef.current?.focus(), 50)
       return () => clearTimeout(t)
@@ -1932,7 +1939,10 @@ const StockIn = () => {
                 <p className="text-sm text-muted-foreground mb-3">
                   If the material you're looking for isn't listed, please go to the <strong>Materials</strong> section to add it first, then come back here.
                 </p>
-                <div className="border-2 border-border rounded-xl overflow-hidden">
+                <div
+                  ref={purchaseItemsScrollRef}
+                  className="border-2 border-border rounded-xl overflow-y-auto overflow-x-hidden max-h-[42vh] scroll-smooth overscroll-contain"
+                >
                   <table className="w-full table-fixed">
                     <colgroup>
                       <col style={{ width: '44%' }} />
@@ -1943,7 +1953,7 @@ const StockIn = () => {
                       <col style={{ width: '11%' }} />
                       <col style={{ width: '7%' }} />
                     </colgroup>
-                    <thead>
+                    <thead className="sticky top-0 z-20">
                       <tr className="bg-background border-b-2 border-border select-none">
                         <th className="px-2 py-2 text-left text-xs sm:text-sm font-bold text-foreground">
                           Name
@@ -1981,7 +1991,7 @@ const StockIn = () => {
                       {purchaseItems.map((item, index) => (
                         <tr
                           key={item.id || index}
-                          className="border-b border-border hover:bg-accent/5"
+                          className="border-b border-border hover:bg-accent/5 animate-row-in"
                         >
                           <td className="px-2 py-2 relative material-dropdown-container align-top min-w-0">
                             <div className="min-w-0">
@@ -2002,13 +2012,8 @@ const StockIn = () => {
                               </button>
                               {openDropdownRow === index && ReactDOM.createPortal(
                                 <div
-                                  className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
-                                  style={{
-                                    top: dropdownPosition.top,
-                                    left: dropdownPosition.left,
-                                    width: dropdownPosition.width,
-                                    minWidth: 300
-                                  }}
+                                  className="fixed z-[9999] flex flex-col bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container"
+                                  style={{ ...dropdownPosition, minWidth: 300 }}
                                 >
                                   <input
                                     ref={dropdownSearchRef}
@@ -2016,9 +2021,9 @@ const StockIn = () => {
                                     value={dropdownSearchTerm}
                                     onChange={(e) => setDropdownSearchTerm(e.target.value)}
                                     placeholder="Search material..."
-                                    className="w-full px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                                    className="w-full shrink-0 px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
                                   />
-                                  <div className="max-h-44 overflow-y-auto bg-card">
+                                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-card">
                                     {getFilteredMaterialsForRow(index).length === 0 ? (
                                       <div className="p-4 text-center text-sm text-muted-foreground">
                                         No materials found. Add in Materials first.

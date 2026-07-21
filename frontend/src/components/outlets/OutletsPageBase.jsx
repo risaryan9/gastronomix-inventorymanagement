@@ -6,6 +6,9 @@ import { fetchOutletAllocationRequests, fetchTodayAllocationStatus, getLocalDate
 import nippuKodiLogo from '../../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../../assets/el-chaapo-logo.png'
 import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
+import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
+import useBodyScrollLock from '../../hooks/useBodyScrollLock'
+import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
 
 const BRANDS = [
   { id: 'NK', name: 'Nippu Kodi', color: 'bg-black', hoverColor: 'hover:bg-gray-900', logo: nippuKodiLogo },
@@ -64,6 +67,9 @@ const OutletsPageBase = ({ role }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [activeOutlet, setActiveOutlet] = useState(null)
   const [allocationRows, setAllocationRows] = useState([])
+  // Keep the allocation items table pinned to the newest row as rows are added
+  const allocationRowsScrollRef = useAutoScrollOnAdd(allocationRows.length, showAllocateModal)
+  useBodyScrollLock(showAllocateModal)
   const [selectedRows, setSelectedRows] = useState(new Set())
   const [openDropdownRow, setOpenDropdownRow] = useState(-1)
   const [dropdownSearchTerm, setDropdownSearchTerm] = useState('')
@@ -129,7 +135,7 @@ const OutletsPageBase = ({ role }) => {
       const trigger = document.querySelector(`[data-dropdown-trigger="${openDropdownRow}"]`)
       if (trigger) {
         const rect = trigger.getBoundingClientRect()
-        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) })
+        setDropdownPosition(getAnchoredDropdownStyle(rect))
       }
       const timeout = setTimeout(() => dropdownSearchRef.current?.focus(), 50)
       return () => clearTimeout(timeout)
@@ -917,21 +923,21 @@ const OutletsPageBase = ({ role }) => {
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto border-2 border-border rounded-xl">
+              <div ref={allocationRowsScrollRef} className="overflow-x-auto overflow-y-auto max-h-[42vh] scroll-smooth overscroll-contain border-2 border-border rounded-xl">
                 <table className="w-full min-w-[500px]">
-                  <thead><tr className="bg-background border-b-2 border-border"><th className="px-3 py-2 w-10"></th><th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th><th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Quantity</th><th className="px-3 py-2 w-12"></th></tr></thead>
+                  <thead className="sticky top-0 z-20"><tr className="bg-background border-b-2 border-border"><th className="px-3 py-2 w-10"></th><th className="px-3 py-2 text-left text-sm font-bold text-foreground">Name</th><th className="px-3 py-2 text-left text-sm font-bold text-foreground w-32">Quantity</th><th className="px-3 py-2 w-12"></th></tr></thead>
                   <tbody>
                     {allocationRows.map((row, index) => (
-                      <tr key={row.id || index} className={`border-b border-border ${selectedRows.has(index) ? 'bg-accent/10' : ''}`}>
+                      <tr key={row.id || index} className={`border-b border-border animate-row-in ${selectedRows.has(index) ? 'bg-accent/10' : ''}`}>
                         <td className="px-3 py-2"><input type="checkbox" checked={selectedRows.has(index)} onChange={() => handleToggleRowSelect(index)} disabled={requesting} /></td>
                         <td className="px-3 py-2 relative material-dropdown-container">
                           <button type="button" data-dropdown-trigger={index} onClick={() => { setOpenDropdownRow(openDropdownRow === index ? -1 : index); setDropdownSearchTerm('') }} className="w-full text-left px-3 py-2 bg-input border border-border rounded-lg text-sm truncate">
                             {row.material ? <span>{row.material.name} <span className="text-muted-foreground text-xs">({row.material.unit})</span></span> : <span className="text-muted-foreground">Select material...</span>}
                           </button>
                           {openDropdownRow === index && ReactDOM.createPortal(
-                            <div className="fixed z-[9999] bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container" style={{ top: dropdownPosition.top, left: dropdownPosition.left, width: dropdownPosition.width, minWidth: 280 }}>
-                              <input ref={dropdownSearchRef} type="text" value={dropdownSearchTerm} onChange={(e) => setDropdownSearchTerm(e.target.value)} placeholder="Search material..." className="w-full px-4 py-3 border-b-2 border-border bg-background text-foreground" />
-                              <div className="max-h-44 overflow-y-auto bg-card">
+                            <div className="fixed z-[9999] flex flex-col bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden material-dropdown-container" style={{ ...dropdownPosition, minWidth: 280 }}>
+                              <input ref={dropdownSearchRef} type="text" value={dropdownSearchTerm} onChange={(e) => setDropdownSearchTerm(e.target.value)} placeholder="Search material..." className="w-full shrink-0 px-4 py-3 border-b-2 border-border bg-background text-foreground" />
+                              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-card">
                                 {getFilteredMaterialsForRow(index).map((m) => (
                                   <button key={m.id} type="button" onClick={() => handleSelectMaterial(index, m)} className="w-full text-left px-4 py-3 hover:bg-accent/30 border-b border-border/50">
                                     <div className="text-sm">{m.name}</div>
