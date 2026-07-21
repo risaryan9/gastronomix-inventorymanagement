@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
@@ -21,6 +22,37 @@ import SessionRedirect from './components/SessionRedirect'
 import './App.css'
 
 function App() {
+  // Quantity/number inputs must only change by typing. The native spinner
+  // buttons are hidden via CSS, but a focused number input still changes its
+  // value on scroll-wheel and on Up/Down arrows — both easy to trigger by
+  // accident (e.g. scrolling a modal's item list). Neutralise them globally.
+  useEffect(() => {
+    const handleWheel = () => {
+      const el = document.activeElement
+      if (el instanceof HTMLInputElement && el.type === 'number') {
+        // Drop focus so the wheel scrolls the page instead of nudging the value.
+        el.blur()
+      }
+    }
+    const handleKeyDown = (e) => {
+      if (
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+        e.target instanceof HTMLInputElement &&
+        e.target.type === 'number'
+      ) {
+        e.preventDefault()
+      }
+    }
+    // passive:true is fine — we blur rather than preventDefault, so the page
+    // still scrolls normally.
+    window.addEventListener('wheel', handleWheel, { passive: true })
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
   return (
     <BrowserRouter>
       <Routes>

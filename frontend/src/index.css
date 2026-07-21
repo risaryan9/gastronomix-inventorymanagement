@@ -25,14 +25,17 @@ body {
   min-height: 100vh;
 }
 
-/* Hide number input spinners everywhere (more room for digits; still keyboard-accessible) */
+/* Hide number input spinners everywhere so quantities can only be typed
+   (no stray increment/decrement from clicks or scroll). */
 input[type='number'] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
+  appearance: none;
   margin: 0;
 }
 
