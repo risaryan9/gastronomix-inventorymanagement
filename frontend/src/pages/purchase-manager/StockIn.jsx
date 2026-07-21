@@ -1184,7 +1184,8 @@ const StockIn = () => {
     purchaseCostFilter,
     purchaseDateFilter,
     purchaseDateFrom,
-    purchaseDateTo
+    purchaseDateTo,
+    true
   )
 
   const kitchenFiltered = applyFilters(
@@ -1285,11 +1286,11 @@ const StockIn = () => {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1">
-                    Search (Invoice # or Supplier)
+                    Search (Invoice # / Supplier / Material)
                   </label>
                   <input
                     type="text"
-                    placeholder="Search by invoice number or supplier name..."
+                    placeholder="Search by invoice number, supplier, or material name..."
                     value={purchaseSearchTerm}
                     onChange={(e) => setPurchaseSearchTerm(e.target.value)}
                     className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
