@@ -2,7 +2,7 @@ import { getVisiblePaginationItems } from '../utils/pagination'
 
 /**
  * Previous / windowed page numbers (with ellipsis) / Next.
- * @param {'default' | 'supervisor'} variant — supervisor uses larger touch targets on small screens
+ * @param {'default' | 'supervisor' | 'compact'} variant — supervisor uses larger touch targets on small screens; compact matches the tight text-xs panel footers
  */
 export default function PaginationControls({
   currentPage,
@@ -17,12 +17,16 @@ export default function PaginationControls({
   const navBtn =
     variant === 'supervisor'
       ? 'px-4 py-2.5 lg:px-3 lg:py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 active:bg-accent/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm touch-manipulation'
-      : 'px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold'
+      : variant === 'compact'
+        ? 'px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold'
+        : 'px-3 py-2 bg-input border border-border rounded-lg text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold'
 
   const pageBtnBase =
     variant === 'supervisor'
       ? 'px-3 py-2 rounded-lg font-semibold transition-all text-sm touch-manipulation min-w-[2.25rem]'
-      : 'px-3 py-2 rounded-lg font-semibold transition-all min-w-[2.25rem]'
+      : variant === 'compact'
+        ? 'px-2 py-1 rounded-lg text-xs font-semibold transition-all min-w-[1.75rem]'
+        : 'px-3 py-2 rounded-lg font-semibold transition-all min-w-[2.25rem]'
 
   const pageBtnActive = 'bg-accent text-background'
   const pageBtnIdle =

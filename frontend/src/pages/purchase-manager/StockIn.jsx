@@ -13,6 +13,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
+import PaginationControls from '../../components/PaginationControls'
 
 const StockIn = () => {
   const [stockInRecords, setStockInRecords] = useState([])
@@ -1493,45 +1494,12 @@ const StockIn = () => {
                         {Math.min(purchaseEndIndex, purchaseFiltered.length)} of{' '}
                         {purchaseFiltered.length} records
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setPurchaseCurrentPage((prev) => Math.max(1, prev - 1))
-                          }
-                          disabled={purchaseCurrentPage === 1}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Previous
-                        </button>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: purchaseTotalPages }, (_, i) => i + 1).map(
-                            (page) => (
-                              <button
-                                key={page}
-                                onClick={() => setPurchaseCurrentPage(page)}
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                  purchaseCurrentPage === page
-                                    ? 'bg-accent text-background'
-                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            )
-                          )}
-                        </div>
-                        <button
-                          onClick={() =>
-                            setPurchaseCurrentPage((prev) =>
-                              Math.min(purchaseTotalPages, prev + 1)
-                            )
-                          }
-                          disabled={purchaseCurrentPage === purchaseTotalPages}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Next
-                        </button>
-                      </div>
+                      <PaginationControls
+                        variant="compact"
+                        currentPage={purchaseCurrentPage}
+                        totalPages={purchaseTotalPages}
+                        onPageChange={setPurchaseCurrentPage}
+                      />
                     </div>
                   )}
                 </>
@@ -1767,45 +1735,12 @@ const StockIn = () => {
                         {Math.min(kitchenEndIndex, kitchenFiltered.length)} of{' '}
                         {kitchenFiltered.length} records
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setKitchenCurrentPage((prev) => Math.max(1, prev - 1))
-                          }
-                          disabled={kitchenCurrentPage === 1}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Previous
-                        </button>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: kitchenTotalPages }, (_, i) => i + 1).map(
-                            (page) => (
-                              <button
-                                key={page}
-                                onClick={() => setKitchenCurrentPage(page)}
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                  kitchenCurrentPage === page
-                                    ? 'bg-accent text-background'
-                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            )
-                          )}
-                        </div>
-                        <button
-                          onClick={() =>
-                            setKitchenCurrentPage((prev) =>
-                              Math.min(kitchenTotalPages, prev + 1)
-                            )
-                          }
-                          disabled={kitchenCurrentPage === kitchenTotalPages}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Next
-                        </button>
-                      </div>
+                      <PaginationControls
+                        variant="compact"
+                        currentPage={kitchenCurrentPage}
+                        totalPages={kitchenTotalPages}
+                        onPageChange={setKitchenCurrentPage}
+                      />
                     </div>
                   )}
                 </>

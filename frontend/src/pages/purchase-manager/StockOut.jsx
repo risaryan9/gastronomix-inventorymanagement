@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
-import MultiSelectFilter from '../../components/MultiSelectFilter'
+import PaginationControls from '../../components/PaginationControls'
 
 const DISPATCH_STOCK_OUT_SECTIONS = [
   { key: 'finished', label: 'Finished' },
@@ -125,24 +125,6 @@ const KITCHEN_REASON_OPTIONS = [
   { value: 'cullinary-rnd', label: 'Culinary R&D' }
 ]
 
-// Number-of-items filter buckets for the Kitchen stock-out panel
-const KITCHEN_ITEMS_OPTIONS = [
-  { value: '1', label: '1 item' },
-  { value: '2-5', label: '2–5 items' },
-  { value: '6-10', label: '6–10 items' },
-  { value: '11+', label: '11+ items' }
-]
-
-const matchesItemsBucket = (count, bucket) => {
-  switch (bucket) {
-    case '1': return count === 1
-    case '2-5': return count >= 2 && count <= 5
-    case '6-10': return count >= 6 && count <= 10
-    case '11+': return count >= 11
-    default: return false
-  }
-}
-
 const StockOut = () => {
   const [allocationRequests, setAllocationRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -176,8 +158,6 @@ const StockOut = () => {
   // Kitchen stock-out (self stock-out) records panel state
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
   const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
-  const [kitchenReasonFilter, setKitchenReasonFilter] = useState(['all'])
-  const [kitchenItemsFilter, setKitchenItemsFilter] = useState(['all'])
   // Date range for kitchen stock-out per-reason PDF exports
   const [kitchenPdfDateRange, setKitchenPdfDateRange] = useState({
     from: new Date().toISOString().split('T')[0],
@@ -563,7 +543,55 @@ const StockOut = () => {
     document.body.removeChild(link)
   }
 
-  const downloadStockOutExcel = (record) => {
+  // Weighted-average GST-inclusive cost per material (mirrors Inventory valuation).
+  // Falls back to quantity_purchased weighting, then a simple average, when no live stock remains.
+  const fetchAverageRatesByMaterial = async (materialIds, cloudKitchenId) => {
+    const rateMap = {}
+    if (!materialIds.length) return rateMap
+    const { data, error } = await supabase
+      .from('stock_in_batches')
+      .select('raw_material_id, quantity_remaining, quantity_purchased, unit_cost, gst_percent')
+      .eq('cloud_kitchen_id', cloudKitchenId)
+      .in('raw_material_id', materialIds)
+    if (error) {
+      console.error('Error fetching batch rates for average:', error)
+      return rateMap
+    }
+
+    const agg = {}
+    ;(data || []).forEach((batch) => {
+      const id = batch.raw_material_id
+      const unitCost = parseFloat(batch.unit_cost || 0)
+      const gstPercent = parseFloat(batch.gst_percent || 0)
+      const gstInclusiveRate = unitCost * (1 + gstPercent / 100)
+      const remaining = parseFloat(batch.quantity_remaining || 0)
+      const purchased = parseFloat(batch.quantity_purchased || 0)
+      if (!agg[id]) {
+        agg[id] = {
+          valByRemaining: 0, qtyRemaining: 0,
+          valByPurchased: 0, qtyPurchased: 0,
+          rateSum: 0, count: 0
+        }
+      }
+      const a = agg[id]
+      a.valByRemaining += gstInclusiveRate * remaining
+      a.qtyRemaining += remaining
+      a.valByPurchased += gstInclusiveRate * purchased
+      a.qtyPurchased += purchased
+      a.rateSum += gstInclusiveRate
+      a.count += 1
+    })
+
+    Object.entries(agg).forEach(([id, a]) => {
+      if (a.qtyRemaining > 0) rateMap[id] = a.valByRemaining / a.qtyRemaining
+      else if (a.qtyPurchased > 0) rateMap[id] = a.valByPurchased / a.qtyPurchased
+      else if (a.count > 0) rateMap[id] = a.rateSum / a.count
+      else rateMap[id] = 0
+    })
+    return rateMap
+  }
+
+  const downloadStockOutExcel = async (record) => {
     if (!record) return
     const session = getSession()
     const workbook = XLSX.utils.book_new()
@@ -594,14 +622,37 @@ const StockOut = () => {
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
 
-    const data = [
-      ['Material Name', 'Code', 'Unit', 'Quantity'],
-      ...(record.stock_out_items || []).map((item) => [
+    // Average (GST-inclusive) rate per material for the record's items.
+    // The detail fetch embeds the material via `raw_materials:raw_material_id`, so the
+    // scalar column isn't returned — read the id from the embedded row.
+    const items = record.stock_out_items || []
+    const itemMaterialId = (item) => item.raw_material_id || item.raw_materials?.id
+    const materialIds = [...new Set(items.map(itemMaterialId).filter(Boolean))]
+    const rateMap = await fetchAverageRatesByMaterial(
+      materialIds,
+      record.cloud_kitchen_id || session?.cloud_kitchen_id
+    )
+
+    const itemRows = items.map((item) => {
+      const quantity = parseFloat(item.quantity || 0)
+      const rate = rateMap[itemMaterialId(item)] || 0
+      const amount = quantity * rate
+      return [
         item.raw_materials?.name || 'N/A',
         item.raw_materials?.code || 'N/A',
         item.raw_materials?.unit || 'N/A',
-        parseFloat(item.quantity || 0)
-      ])
+        quantity,
+        Number(rate.toFixed(2)),
+        Number(amount.toFixed(2))
+      ]
+    })
+    const totalAmount = itemRows.reduce((sum, row) => sum + (row[5] || 0), 0)
+
+    const data = [
+      ['Material Name', 'Code', 'Unit', 'Quantity', 'Rate (Avg, incl. GST)', 'Amount'],
+      ...itemRows,
+      [],
+      ['', '', '', '', 'Grand Total', Number(totalAmount.toFixed(2))]
     ]
 
     const sheet = XLSX.utils.aoa_to_sheet(data)
@@ -752,7 +803,10 @@ const StockOut = () => {
         downloadStockOutCSV(record)
         break
       case 'excel':
-        downloadStockOutExcel(record)
+        downloadStockOutExcel(record).catch((err) => {
+          console.error('Error generating stock-out Excel:', err)
+          setAlert({ type: 'error', message: err.message || 'Failed to generate Excel.' })
+        })
         break
       case 'pdf':
         downloadStockOutPDF(record)
@@ -1029,19 +1083,22 @@ const StockOut = () => {
     }
   }
 
-  // Download kitchen (self) stock-out records for a single reason, filtered by the PDF date range
+  // Download kitchen (self) stock-out records, filtered by the PDF date range.
+  // Pass 'all' to include every reason, or a specific reason value.
   const downloadKitchenStockOutPDF = (reason) => {
+    const isAll = reason === 'all'
     const fromDate = new Date(kitchenPdfDateRange.from)
     fromDate.setHours(0, 0, 0, 0)
     const toDate = new Date(kitchenPdfDateRange.to)
     toDate.setHours(23, 59, 59, 999)
 
-    const reasonLabel =
-      KITCHEN_REASON_OPTIONS.find((o) => o.value === reason)?.label ||
-      reason.replace(/-/g, ' ')
+    const reasonLabel = isAll
+      ? 'All Reasons'
+      : KITCHEN_REASON_OPTIONS.find((o) => o.value === reason)?.label ||
+        reason.replace(/-/g, ' ')
 
     const records = kitchenStockOutRecords.filter((r) => {
-      if (r.reason !== reason) return false
+      if (!isAll && r.reason !== reason) return false
       const d = new Date(r.allocation_date)
       return d >= fromDate && d <= toDate
     })
@@ -1152,6 +1209,9 @@ const StockOut = () => {
         let recHeader = `${new Date(rec.allocation_date).toLocaleDateString()} • ${
           rec.stock_out_items?.length || 0
         } item(s)`
+        if (isAll && rec.reason) {
+          recHeader += ` • ${rec.reason.replace(/-/g, ' ')}`
+        }
         if (rec.reason === 'dispatch' && rec.dispatch_brand) {
           recHeader += ` • Brand: ${rec.dispatch_brand}`
         }
@@ -2513,20 +2573,6 @@ const StockOut = () => {
       if (!matches) return false
     }
 
-    // Reason filter
-    if (!kitchenReasonFilter.includes('all')) {
-      if (!kitchenReasonFilter.includes(record.reason)) return false
-    }
-
-    // Number-of-items filter (multi-select buckets)
-    if (!kitchenItemsFilter.includes('all')) {
-      const itemCount = record.stock_out_items?.length || 0
-      const inAnyBucket = kitchenItemsFilter.some((bucket) =>
-        matchesItemsBucket(itemCount, bucket)
-      )
-      if (!inAnyBucket) return false
-    }
-
     return true
   })
 
@@ -2550,7 +2596,7 @@ const StockOut = () => {
 
   useEffect(() => {
     setKitchenCurrentPage(1)
-  }, [kitchenSearchTerm, kitchenReasonFilter, kitchenItemsFilter])
+  }, [kitchenSearchTerm])
 
   const openStockOutDetailsModal = async (request) => {
     try {
@@ -2931,6 +2977,23 @@ const StockOut = () => {
                   Download PDF by reason
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadKitchenStockOutPDF('all')}
+                    disabled={downloadingKitchenPdf !== null}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-accent bg-accent/10 hover:bg-accent/20 text-accent transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {downloadingKitchenPdf === 'all' ? (
+                      'Generating…'
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        All Reasons
+                      </>
+                    )}
+                  </button>
                   {KITCHEN_REASON_OPTIONS.map((r) => (
                     <button
                       key={r.value}
@@ -2969,54 +3032,6 @@ const StockOut = () => {
                     className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Reason
-                    </label>
-                    <MultiSelectFilter
-                      label="Reason"
-                      group="kitchen-stock-out-filters"
-                      allLabel="All"
-                      selectedValues={kitchenReasonFilter}
-                      onChange={setKitchenReasonFilter}
-                      options={KITCHEN_REASON_OPTIONS}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Number of Items
-                    </label>
-                    <MultiSelectFilter
-                      label="Number of Items"
-                      group="kitchen-stock-out-filters"
-                      allLabel="Any"
-                      selectedValues={kitchenItemsFilter}
-                      onChange={setKitchenItemsFilter}
-                      options={KITCHEN_ITEMS_OPTIONS}
-                    />
-                  </div>
-                </div>
-
-                {(!kitchenReasonFilter.includes('all') ||
-                  !kitchenItemsFilter.includes('all')) && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => {
-                        setKitchenReasonFilter(['all'])
-                        setKitchenItemsFilter(['all'])
-                      }}
-                      className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
-                      title="Clear filters"
-                      aria-label="Clear filters"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -3125,45 +3140,12 @@ const StockOut = () => {
                         )}{' '}
                         of {kitchenFiltered.length} • {kitchenPerPage} per page
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setKitchenCurrentPage((prev) => Math.max(1, prev - 1))
-                          }
-                          disabled={kitchenCurrentPage === 1}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Previous
-                        </button>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: kitchenTotalPages }, (_, i) => i + 1).map(
-                            (page) => (
-                              <button
-                                key={page}
-                                onClick={() => setKitchenCurrentPage(page)}
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                  kitchenCurrentPage === page
-                                    ? 'bg-accent text-background'
-                                    : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            )
-                          )}
-                        </div>
-                        <button
-                          onClick={() =>
-                            setKitchenCurrentPage((prev) =>
-                              Math.min(kitchenTotalPages, prev + 1)
-                            )
-                          }
-                          disabled={kitchenCurrentPage === kitchenTotalPages}
-                          className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                        >
-                          Next
-                        </button>
-                      </div>
+                      <PaginationControls
+                        variant="compact"
+                        currentPage={kitchenCurrentPage}
+                        totalPages={kitchenTotalPages}
+                        onPageChange={setKitchenCurrentPage}
+                      />
                     </div>
                   )}
                 </>
@@ -3514,39 +3496,12 @@ const StockOut = () => {
                     {Math.min(viewAllStart + viewAllPerPage, viewAllFilteredRequests.length)} of{' '}
                     {viewAllFilteredRequests.length} • {viewAllPerPage} per page
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewAllPage((p) => Math.max(1, p - 1))}
-                      disabled={viewAllPage === 1}
-                      className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                    >
-                      Previous
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: viewAllTotalPages }, (_, i) => i + 1).map((page) => (
-                        <button
-                          key={page}
-                          onClick={() => setViewAllPage(page)}
-                          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
-                            viewAllPage === page
-                              ? 'bg-accent text-background'
-                              : 'bg-input border border-border text-foreground hover:bg-accent/10'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() =>
-                        setViewAllPage((p) => Math.min(viewAllTotalPages, p + 1))
-                      }
-                      disabled={viewAllPage === viewAllTotalPages}
-                      className="px-2 py-1 bg-input border border-border rounded-lg text-xs text-foreground hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-                    >
-                      Next
-                    </button>
-                  </div>
+                  <PaginationControls
+                    variant="compact"
+                    currentPage={viewAllPage}
+                    totalPages={viewAllTotalPages}
+                    onPageChange={setViewAllPage}
+                  />
                 </div>
               )}
             </div>
