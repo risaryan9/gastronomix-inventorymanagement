@@ -119,6 +119,49 @@ async function fetchLastKitchenStockOutDatesByMaterial(
   return map
 }
 
+/**
+ * Most recent prior allocation (date + quantity) of each material to a given
+ * outlet — i.e. the last time this item was actually packed/sent to that outlet.
+ * Returns a map: raw_material_id -> { date, quantity }.
+ */
+async function fetchLastOutletAllocationByMaterial(outletId, materialIds) {
+  if (!outletId || !materialIds.length) return {}
+  const { data, error } = await supabase
+    .from('stock_out_items')
+    .select(`
+      raw_material_id,
+      quantity,
+      stock_out!inner (
+        outlet_id,
+        self_stock_out,
+        created_at,
+        allocation_date
+      )
+    `)
+    .in('raw_material_id', materialIds)
+    .eq('stock_out.outlet_id', outletId)
+    .eq('stock_out.self_stock_out', false)
+    .gt('quantity', 0)
+
+  if (error) {
+    console.error('fetchLastOutletAllocationByMaterial', error)
+    return {}
+  }
+  const map = {}
+  for (const row of data || []) {
+    const so = row.stock_out
+    if (!so) continue
+    const ts = so.created_at || so.allocation_date
+    if (!ts) continue
+    const mid = row.raw_material_id
+    const prev = map[mid]
+    if (!prev || new Date(ts) > new Date(prev.date)) {
+      map[mid] = { date: ts, quantity: parseFloat(row.quantity) || 0 }
+    }
+  }
+  return map
+}
+
 // Kitchen self stock-out reasons — shared by the Reason filter and the per-reason PDF export buttons
 const KITCHEN_REASON_OPTIONS = [
   { value: 'dispatch', label: 'Dispatch' },
@@ -135,6 +178,8 @@ const StockOut = () => {
   const [showAllocationModal, setShowAllocationModal] = useState(false)
   const [challanNotes, setChallanNotes] = useState('')
   const [allocationItems, setAllocationItems] = useState([])
+  // Last prior allocation (date + qty) per material for the selected request's outlet
+  const [lastAllocationByMaterial, setLastAllocationByMaterial] = useState({})
   const [inventoryData, setInventoryData] = useState({})
   const [todayTotals, setTodayTotals] = useState({})
   const [allocating, setAllocating] = useState(false)
@@ -1967,10 +2012,17 @@ const StockOut = () => {
     }))
 
     setAllocationItems(items)
+    setLastAllocationByMaterial({})
 
     // Fetch current inventory for all materials
     try {
       const materialIds = items.map(item => item.raw_material_id)
+
+      // Previous allocation (date + qty) of each material to this outlet
+      fetchLastOutletAllocationByMaterial(request.outlet_id, materialIds)
+        .then(setLastAllocationByMaterial)
+        .catch(err => console.error('Error fetching previous allocations:', err))
+
       const { data: inventoryData, error: invError } = await supabase
         .from('inventory')
         .select('raw_material_id, quantity')
@@ -3221,7 +3273,7 @@ const StockOut = () => {
         {/* Allocation Modal */}
         {showAllocationModal && selectedRequest && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-card border-2 border-border rounded-xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-foreground">Allocate Stock</h2>
@@ -3251,6 +3303,12 @@ const StockOut = () => {
                       <tr>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Material</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Requested</th>
+                        <th
+                          className="px-4 py-3 text-left text-sm font-bold text-foreground"
+                          title="Last time this material was allocated to this outlet"
+                        >
+                          Previously Allocated
+                        </th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Today's Total</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Current Stock</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Allocate Qty</th>
@@ -3272,6 +3330,20 @@ const StockOut = () => {
                             </td>
                             <td className="px-4 py-3 text-foreground">
                               {item.requested_quantity.toFixed(2)} {item.unit}
+                            </td>
+                            <td className="px-4 py-3">
+                              {lastAllocationByMaterial[item.raw_material_id] ? (
+                                <div>
+                                  <p className="text-foreground font-medium">
+                                    {lastAllocationByMaterial[item.raw_material_id].quantity.toFixed(2)} {item.unit}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {new Date(lastAllocationByMaterial[item.raw_material_id].date).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-foreground">
                               {todayTotal.toFixed(2)} {item.unit}
