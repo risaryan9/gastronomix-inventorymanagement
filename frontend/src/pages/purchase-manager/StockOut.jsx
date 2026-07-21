@@ -116,6 +116,33 @@ async function fetchLastKitchenStockOutDatesByMaterial(
   return map
 }
 
+// Kitchen self stock-out reasons — shared by the Reason filter and the per-reason PDF export buttons
+const KITCHEN_REASON_OPTIONS = [
+  { value: 'dispatch', label: 'Dispatch' },
+  { value: 'wastage', label: 'Wastage' },
+  { value: 'staff-food', label: 'Staff Food' },
+  { value: 'internal-production', label: 'Internal Production' },
+  { value: 'cullinary-rnd', label: 'Culinary R&D' }
+]
+
+// Number-of-items filter buckets for the Kitchen stock-out panel
+const KITCHEN_ITEMS_OPTIONS = [
+  { value: '1', label: '1 item' },
+  { value: '2-5', label: '2–5 items' },
+  { value: '6-10', label: '6–10 items' },
+  { value: '11+', label: '11+ items' }
+]
+
+const matchesItemsBucket = (count, bucket) => {
+  switch (bucket) {
+    case '1': return count === 1
+    case '2-5': return count >= 2 && count <= 5
+    case '6-10': return count >= 6 && count <= 10
+    case '11+': return count >= 11
+    default: return false
+  }
+}
+
 const StockOut = () => {
   const [allocationRequests, setAllocationRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -150,9 +177,14 @@ const StockOut = () => {
   const [kitchenStockOutRecords, setKitchenStockOutRecords] = useState([])
   const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
   const [kitchenReasonFilter, setKitchenReasonFilter] = useState(['all'])
-  const [kitchenDateFilter, setKitchenDateFilter] = useState(['all'])
-  const [kitchenDateFrom, setKitchenDateFrom] = useState('')
-  const [kitchenDateTo, setKitchenDateTo] = useState('')
+  const [kitchenItemsFilter, setKitchenItemsFilter] = useState(['all'])
+  // Date range for kitchen stock-out per-reason PDF exports
+  const [kitchenPdfDateRange, setKitchenPdfDateRange] = useState({
+    from: new Date().toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0]
+  })
+  // Reason currently generating a PDF (for per-button loading state), or null
+  const [downloadingKitchenPdf, setDownloadingKitchenPdf] = useState(null)
 
   // Pagination per panel
   const kitchenPerPage = 15
@@ -994,6 +1026,206 @@ const StockOut = () => {
       setAlert({ type: 'error', message: err.message || 'Failed to generate PDF.' })
     } finally {
       setDownloadingAllocationPdf(false)
+    }
+  }
+
+  // Download kitchen (self) stock-out records for a single reason, filtered by the PDF date range
+  const downloadKitchenStockOutPDF = (reason) => {
+    const fromDate = new Date(kitchenPdfDateRange.from)
+    fromDate.setHours(0, 0, 0, 0)
+    const toDate = new Date(kitchenPdfDateRange.to)
+    toDate.setHours(23, 59, 59, 999)
+
+    const reasonLabel =
+      KITCHEN_REASON_OPTIONS.find((o) => o.value === reason)?.label ||
+      reason.replace(/-/g, ' ')
+
+    const records = kitchenStockOutRecords.filter((r) => {
+      if (r.reason !== reason) return false
+      const d = new Date(r.allocation_date)
+      return d >= fromDate && d <= toDate
+    })
+
+    if (records.length === 0) {
+      setAlert({
+        type: 'error',
+        message: `No ${reasonLabel} stock-out records available for the selected date range.`
+      })
+      return
+    }
+
+    setDownloadingKitchenPdf(reason)
+    try {
+      const session = getSession()
+      const doc = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 20
+      const safeBottom = pageHeight - 18
+
+      // Aggregate total quantity per material across all records for this reason
+      const totalByMaterial = new Map()
+      records.forEach((rec) => {
+        (rec.stock_out_items || []).forEach((item) => {
+          const rm = item.raw_materials
+          const id = item.raw_material_id || rm?.id
+          const name = rm?.name || 'N/A'
+          const code = rm?.code || '—'
+          const unit = rm?.unit || ''
+          const qty = parseFloat(item.quantity ?? 0)
+          const key = id || `${name}|${code}|${unit}`
+          if (!totalByMaterial.has(key)) {
+            totalByMaterial.set(key, { name, code, unit, totalQty: 0 })
+          }
+          totalByMaterial.get(key).totalQty += qty
+        })
+      })
+      const summaryRows = Array.from(totalByMaterial.values())
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map((r) => [r.name, r.code, r.totalQty.toFixed(2), r.unit])
+
+      const fromDateStr = new Date(kitchenPdfDateRange.from).toLocaleDateString()
+      const toDateStr = new Date(kitchenPdfDateRange.to).toLocaleDateString()
+      const dateRangeDisplay =
+        fromDateStr === toDateStr ? fromDateStr : `${fromDateStr} to ${toDateStr}`
+
+      // —— Page 1: Total quantity summary ——
+      let yPos = margin
+      doc.setFontSize(20)
+      doc.setFont(undefined, 'bold')
+      doc.text('Gastronomix', pageWidth / 2, yPos, { align: 'center' })
+      yPos += 8
+      doc.setFontSize(14)
+      doc.setFont(undefined, 'normal')
+      doc.text(`Kitchen Stock-Out — ${reasonLabel}`, pageWidth / 2, yPos, { align: 'center' })
+      yPos += 6
+      doc.setFontSize(11)
+      doc.setFont(undefined, 'bold')
+      doc.text(`Date Range: ${dateRangeDisplay}`, pageWidth / 2, yPos, { align: 'center' })
+      yPos += 5
+      doc.setFontSize(9)
+      doc.setFont(undefined, 'normal')
+      doc.setTextColor(100, 100, 100)
+      doc.text(
+        `Generated: ${new Date().toLocaleString()} • ${session?.cloud_kitchen_name || 'Cloud Kitchen'} • ${records.length} record(s)`,
+        pageWidth / 2,
+        yPos,
+        { align: 'center' }
+      )
+      doc.setTextColor(0, 0, 0)
+      yPos += 12
+
+      doc.setFontSize(12)
+      doc.setFont(undefined, 'bold')
+      doc.text(`Total quantity (${reasonLabel})`, margin, yPos)
+      yPos += 8
+
+      if (summaryRows.length > 0) {
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Material', 'Code', 'Total quantity', 'Unit']],
+          body: summaryRows,
+          theme: 'striped',
+          headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 3 },
+          margin: { left: margin, right: margin },
+          rowPageBreak: 'avoid'
+        })
+        yPos = doc.lastAutoTable?.finalY ?? yPos
+      } else {
+        doc.setFont(undefined, 'normal')
+        doc.setFontSize(10)
+        doc.text('No items in these records.', margin, yPos)
+      }
+
+      // —— From page 2: record-wise detail ——
+      doc.addPage()
+      let yPosD = margin
+      records.forEach((rec) => {
+        if (yPosD + 15 > safeBottom) {
+          doc.addPage()
+          yPosD = margin
+        }
+
+        doc.setFontSize(10)
+        doc.setFont(undefined, 'bold')
+        let recHeader = `${new Date(rec.allocation_date).toLocaleDateString()} • ${
+          rec.stock_out_items?.length || 0
+        } item(s)`
+        if (rec.reason === 'dispatch' && rec.dispatch_brand) {
+          recHeader += ` • Brand: ${rec.dispatch_brand}`
+        }
+        if (rec.reason === 'inter-cloud-kitchen' && rec.destination_kitchen) {
+          recHeader += ` • → ${rec.destination_kitchen.name}`
+        }
+        doc.text(recHeader, margin, yPosD)
+        yPosD += 5
+
+        if (rec.notes) {
+          doc.setFont(undefined, 'normal')
+          doc.setFontSize(8)
+          doc.text(`Notes: ${rec.notes}`, margin, yPosD)
+          yPosD += 5
+        }
+
+        const tableData = (rec.stock_out_items || []).map((item) => [
+          item.raw_materials?.name || 'N/A',
+          item.raw_materials?.code || '—',
+          `${parseFloat(item.quantity ?? 0).toFixed(2)}`,
+          item.raw_materials?.unit || ''
+        ])
+
+        if (tableData.length > 0) {
+          const tableHeightEstimate = 8 + tableData.length * 4
+          if (yPosD + tableHeightEstimate > safeBottom) {
+            doc.addPage()
+            yPosD = margin
+          }
+          autoTable(doc, {
+            startY: yPosD,
+            head: [['Material', 'Code', 'Quantity', 'Unit']],
+            body: tableData,
+            theme: 'striped',
+            headStyles: { fillColor: [225, 187, 7], textColor: [0, 0, 0], fontStyle: 'bold' },
+            styles: { fontSize: 8, cellPadding: 2 },
+            margin: { left: margin, right: margin },
+            rowPageBreak: 'avoid'
+          })
+          yPosD = doc.lastAutoTable?.finalY ?? yPosD
+          yPosD += 6
+        }
+
+        if (yPosD > safeBottom) {
+          doc.addPage()
+          yPosD = margin
+        }
+      })
+
+      const totalPages = doc.internal.getNumberOfPages()
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p)
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.text(
+          `Generated on ${new Date().toLocaleString()} by ${session?.full_name || 'System'} • Page ${p} of ${totalPages}`,
+          pageWidth / 2,
+          pageHeight - 10,
+          { align: 'center' }
+        )
+        doc.setTextColor(0, 0, 0)
+      }
+
+      const dateRangeSuffix =
+        kitchenPdfDateRange.from === kitchenPdfDateRange.to
+          ? kitchenPdfDateRange.from
+          : `${kitchenPdfDateRange.from}_to_${kitchenPdfDateRange.to}`
+      doc.save(`kitchen_stock_out_${reason}_${dateRangeSuffix}.pdf`)
+      setAlert({ type: 'success', message: `${reasonLabel} stock-out PDF downloaded.` })
+    } catch (err) {
+      console.error('Error generating kitchen stock-out PDF:', err)
+      setAlert({ type: 'error', message: err.message || 'Failed to generate PDF.' })
+    } finally {
+      setDownloadingKitchenPdf(null)
     }
   }
 
@@ -2286,31 +2518,13 @@ const StockOut = () => {
       if (!kitchenReasonFilter.includes(record.reason)) return false
     }
 
-    // Date filter (allocation_date)
-    if (kitchenDateFilter.includes('custom')) {
-      if (kitchenDateFrom || kitchenDateTo) {
-        const recordDate = new Date(record.allocation_date)
-        if (kitchenDateFrom && recordDate < new Date(kitchenDateFrom)) return false
-        if (kitchenDateTo && recordDate > new Date(kitchenDateTo)) return false
-      }
-    } else if (kitchenDateFilter.includes('today')) {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const recordDate = new Date(record.allocation_date)
-      recordDate.setHours(0, 0, 0, 0)
-      if (recordDate.getTime() !== today.getTime()) return false
-    } else if (kitchenDateFilter.includes('this-week')) {
-      const today = new Date()
-      const weekAgo = new Date(today)
-      weekAgo.setDate(today.getDate() - 7)
-      const recordDate = new Date(record.allocation_date)
-      if (recordDate < weekAgo || recordDate > today) return false
-    } else if (kitchenDateFilter.includes('this-month')) {
-      const today = new Date()
-      const monthAgo = new Date(today)
-      monthAgo.setMonth(today.getMonth() - 1)
-      const recordDate = new Date(record.allocation_date)
-      if (recordDate < monthAgo || recordDate > today) return false
+    // Number-of-items filter (multi-select buckets)
+    if (!kitchenItemsFilter.includes('all')) {
+      const itemCount = record.stock_out_items?.length || 0
+      const inAnyBucket = kitchenItemsFilter.some((bucket) =>
+        matchesItemsBucket(itemCount, bucket)
+      )
+      if (!inAnyBucket) return false
     }
 
     return true
@@ -2336,7 +2550,7 @@ const StockOut = () => {
 
   useEffect(() => {
     setKitchenCurrentPage(1)
-  }, [kitchenSearchTerm, kitchenReasonFilter, kitchenDateFilter, kitchenDateFrom, kitchenDateTo])
+  }, [kitchenSearchTerm, kitchenReasonFilter, kitchenItemsFilter])
 
   const openStockOutDetailsModal = async (request) => {
     try {
@@ -2688,6 +2902,59 @@ const StockOut = () => {
               </button>
             </div>
 
+            {/* PDF Date Range + per-reason download */}
+            <div className="p-4 border-b border-border">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[140px]">
+                  <label className="block text-xs font-semibold text-foreground mb-1">
+                    PDF Date Range
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={kitchenPdfDateRange.from}
+                      onChange={(e) => setKitchenPdfDateRange({ ...kitchenPdfDateRange, from: e.target.value })}
+                      className="flex-1 bg-input border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                    <span className="text-muted-foreground self-center text-xs">to</span>
+                    <input
+                      type="date"
+                      value={kitchenPdfDateRange.to}
+                      onChange={(e) => setKitchenPdfDateRange({ ...kitchenPdfDateRange, to: e.target.value })}
+                      className="flex-1 bg-input border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                  Download PDF by reason
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {KITCHEN_REASON_OPTIONS.map((r) => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => downloadKitchenStockOutPDF(r.value)}
+                      disabled={downloadingKitchenPdf !== null}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-input hover:bg-accent/10 text-foreground transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {downloadingKitchenPdf === r.value ? (
+                        'Generating…'
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          {r.label}
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="p-4 border-b border-border">
               <div className="grid grid-cols-1 gap-3">
                 <div>
@@ -2714,71 +2981,31 @@ const StockOut = () => {
                       allLabel="All"
                       selectedValues={kitchenReasonFilter}
                       onChange={setKitchenReasonFilter}
-                      options={[
-                        { value: 'dispatch', label: 'Dispatch' },
-                        { value: 'wastage', label: 'Wastage' },
-                        { value: 'staff-food', label: 'Staff Food' },
-                        { value: 'internal-production', label: 'Internal Production' },
-                        { value: 'cullinary-rnd', label: 'Culinary R&D' }
-                      ]}
+                      options={KITCHEN_REASON_OPTIONS}
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground mb-1">
-                      Date Range
+                      Number of Items
                     </label>
                     <MultiSelectFilter
-                      label="Date Range"
+                      label="Number of Items"
                       group="kitchen-stock-out-filters"
-                      allLabel="All Dates"
-                      selectedValues={kitchenDateFilter}
-                      onChange={setKitchenDateFilter}
-                      options={[
-                        { value: 'today', label: 'Today' },
-                        { value: 'this-week', label: 'This Week' },
-                        { value: 'this-month', label: 'This Month' },
-                        { value: 'custom', label: 'Custom Range' }
-                      ]}
+                      allLabel="Any"
+                      selectedValues={kitchenItemsFilter}
+                      onChange={setKitchenItemsFilter}
+                      options={KITCHEN_ITEMS_OPTIONS}
                     />
                   </div>
                 </div>
 
-                {kitchenDateFilter.includes('custom') && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        From
-                      </label>
-                      <input
-                        type="date"
-                        value={kitchenDateFrom}
-                        onChange={(e) => setKitchenDateFrom(e.target.value)}
-                        className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground mb-1">
-                        To
-                      </label>
-                      <input
-                        type="date"
-                        value={kitchenDateTo}
-                        onChange={(e) => setKitchenDateTo(e.target.value)}
-                        className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {(!kitchenReasonFilter.includes('all') ||
-                  !kitchenDateFilter.includes('all')) && (
+                  !kitchenItemsFilter.includes('all')) && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => {
                         setKitchenReasonFilter(['all'])
-                        setKitchenDateFilter(['all'])
-                        setKitchenDateFrom('')
-                        setKitchenDateTo('')
+                        setKitchenItemsFilter(['all'])
                       }}
                       className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
                       title="Clear filters"
@@ -2856,8 +3083,10 @@ const StockOut = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-foreground text-sm">
-                            {record.stock_out_items?.length || 0}
+                          <td className="px-4 py-3 text-sm">
+                            <span className="inline-flex items-center justify-center min-w-[1.75rem] px-2 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-semibold">
+                              {record.stock_out_items?.length || 0}
+                            </span>
                           </td>
                           {layoutMode === 'kitchen-full' && (
                             <>
