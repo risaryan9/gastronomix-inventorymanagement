@@ -251,6 +251,12 @@ const StockOut = () => {
   const [materialDropdownSearchTerm, setMaterialDropdownSearchTerm] = useState('')
   const [materialDropdownPosition, setMaterialDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
   const materialDropdownSearchRef = useRef(null)
+  // "Add item" dropdown in the Allocate Stock modal (lets the PM add a material the
+  // supervisor forgot, before packing — see docs/AUDIT_TRAIL_REQUIREMENTS.md E1-adjacent note)
+  const [showAddItemDropdown, setShowAddItemDropdown] = useState(false)
+  const [addItemSearchTerm, setAddItemSearchTerm] = useState('')
+  const [addItemDropdownPosition, setAddItemDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const addItemSearchRef = useRef(null)
 
   const [selfStockOutLastDates, setSelfStockOutLastDates] = useState({})
   const [lastStockOutDatesLoading, setLastStockOutDatesLoading] = useState(false)
@@ -1992,6 +1998,31 @@ const StockOut = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMaterialDropdownRow])
 
+  // Focus search input and update position when the "add item" dropdown opens
+  useEffect(() => {
+    if (showAddItemDropdown && showAllocationModal) {
+      const trigger = document.querySelector('[data-add-item-trigger]')
+      if (trigger) {
+        const rect = trigger.getBoundingClientRect()
+        setAddItemDropdownPosition(getAnchoredDropdownStyle(rect))
+      }
+      const t = setTimeout(() => addItemSearchRef.current?.focus(), 50)
+      return () => clearTimeout(t)
+    }
+  }, [showAddItemDropdown, showAllocationModal])
+
+  // Close "add item" dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showAddItemDropdown && !e.target.closest('.add-item-dropdown-container')) {
+        setShowAddItemDropdown(false)
+        setAddItemSearchTerm('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAddItemDropdown])
+
   // Open allocation modal
   const openAllocationModal = async (request) => {
     setIsSelfStockOut(false)
@@ -2008,11 +2039,29 @@ const StockOut = () => {
       requested_quantity: parseFloat(item.quantity),
       allocated_quantity: parseFloat(item.quantity), // Start with requested amount
       current_inventory: 0,
-      today_total: 0
+      today_total: 0,
+      addedByPm: false
     }))
 
     setAllocationItems(items)
     setLastAllocationByMaterial({})
+    setShowAddItemDropdown(false)
+    setAddItemSearchTerm('')
+
+    // Full active materials catalog, for the "add item" dropdown (lets the PM add a
+    // material the supervisor forgot before packing)
+    supabase
+      .from('raw_materials')
+      .select('id, name, code, unit, category, material_type')
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error loading materials for add-item dropdown:', error)
+          return
+        }
+        setAllMaterials(data || [])
+      })
 
     // Fetch current inventory for all materials
     try {
@@ -2078,6 +2127,68 @@ const StockOut = () => {
       updated[index].allocated_quantity = value
       return updated
     })
+  }
+
+  // Materials available to add to the requisition: active, not already on the list
+  const getFilteredMaterialsForAddItem = () => {
+    const usedIds = new Set(allocationItems.map(item => item.raw_material_id))
+    const search = addItemSearchTerm.trim().toLowerCase()
+    return allMaterials.filter(material => {
+      if (usedIds.has(material.id)) return false
+      if (!search) return true
+      return material.name.toLowerCase().includes(search) ||
+        (material.code || '').toLowerCase().includes(search)
+    })
+  }
+
+  // PM adds a material the supervisor forgot to request. Appended with requested_quantity: 0
+  // and addedByPm: true so it's visually distinct and only persisted once a quantity is set.
+  const handleAddItemToAllocation = async (materialId) => {
+    const material = allMaterials.find(m => m.id === materialId)
+    if (!material) return
+
+    setShowAddItemDropdown(false)
+    setAddItemSearchTerm('')
+
+    setAllocationItems(prev => [
+      ...prev,
+      {
+        raw_material_id: material.id,
+        name: material.name,
+        code: material.code,
+        unit: material.unit,
+        requested_quantity: 0,
+        allocated_quantity: 0,
+        current_inventory: 0,
+        today_total: 0,
+        addedByPm: true
+      }
+    ])
+
+    const session = getSession()
+    try {
+      const { data: invData, error: invError } = await supabase
+        .from('inventory')
+        .select('quantity')
+        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        .eq('raw_material_id', materialId)
+        .maybeSingle()
+
+      if (invError) throw invError
+      setInventoryData(prev => ({ ...prev, [materialId]: parseFloat(invData?.quantity || 0) }))
+
+      if (selectedRequest?.outlet_id) {
+        const prevAlloc = await fetchLastOutletAllocationByMaterial(selectedRequest.outlet_id, [materialId])
+        setLastAllocationByMaterial(prev => ({ ...prev, ...prevAlloc }))
+      }
+    } catch (err) {
+      console.error('Error fetching inventory for added item:', err)
+    }
+  }
+
+  // Remove a PM-added item before submitting (original requested items aren't removable here)
+  const removeAddedAllocationItem = (index) => {
+    setAllocationItems(prev => prev.filter((item, i) => i !== index || !item.addedByPm))
   }
 
   // FIFO Allocation Logic (no-op when quantity <= 0). Returns { totalCost, totalQty } for inter-cloud transfer costing.
@@ -2207,9 +2318,19 @@ const StockOut = () => {
 
         const availableInventory = inventoryData[item.raw_material_id] || 0
         if (parseFloat(item.allocated_quantity) > availableInventory) {
-          setAlert({ 
-            type: 'error', 
-            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(2)} ${item.unit}` 
+          setAlert({
+            type: 'error',
+            message: `Insufficient stock for ${item.name}. Available: ${availableInventory.toFixed(2)} ${item.unit}`
+          })
+          allocatingRef.current = false
+          setAllocating(false)
+          return
+        }
+
+        if (item.addedByPm && parseFloat(item.allocated_quantity) <= 0) {
+          setAlert({
+            type: 'error',
+            message: `Enter a quantity for ${item.name}, or remove it — items you add need a quantity to be included.`
           })
           allocatingRef.current = false
           setAllocating(false)
@@ -2224,6 +2345,25 @@ const StockOut = () => {
       // in stock_out_batch_consumption), and marks the request packed — all in one
       // transaction, so it can be cleanly reversed by cancel_allocation_packing.
       if (!isSelfStockOut) {
+        // Persist any PM-added materials onto the requisition itself first, so the
+        // original ask stays reconstructable even though it was extended after the
+        // supervisor submitted it. TODO(audit): once server-side audit logging for
+        // requisition edits lands (see docs/AUDIT_TRAIL_REQUIREMENTS.md, "PM adds
+        // item to requisition"), this insert should move into a SECURITY DEFINER
+        // RPC that logs it, matching the pack_allocation_request pattern.
+        const pmAddedItems = allocationItems.filter(item => item.addedByPm)
+        if (pmAddedItems.length > 0) {
+          const { error: addItemsError } = await supabase
+            .from('allocation_request_items')
+            .insert(pmAddedItems.map(item => ({
+              allocation_request_id: selectedRequest.id,
+              raw_material_id: item.raw_material_id,
+              quantity: parseFloat(item.allocated_quantity)
+            })))
+
+          if (addItemsError) throw addItemsError
+        }
+
         const items = allocationItems.map((item) => ({
           raw_material_id: item.raw_material_id,
           quantity: parseFloat(item.allocated_quantity) || 0
@@ -3303,6 +3443,7 @@ const StockOut = () => {
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Today's Total</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Current Stock</th>
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Allocate Qty</th>
+                        <th className="px-2 py-3" />
                       </tr>
                     </thead>
                     <tbody>
@@ -3312,15 +3453,26 @@ const StockOut = () => {
                         const isLowStock = currentInventory < item.allocated_quantity
 
                         return (
-                          <tr key={item.raw_material_id} className="border-b border-border">
+                          <tr key={item.raw_material_id} className={`border-b border-border ${item.addedByPm ? 'bg-accent/5' : ''}`}>
                             <td className="px-4 py-3">
                               <div>
-                                <p className="font-semibold text-foreground">{item.name}</p>
+                                <p className="font-semibold text-foreground flex items-center gap-2">
+                                  {item.name}
+                                  {item.addedByPm && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wide text-accent bg-accent/15 px-1.5 py-0.5 rounded">
+                                      Added by you
+                                    </span>
+                                  )}
+                                </p>
                                 <p className="text-xs text-muted-foreground font-mono">{item.code}</p>
                               </div>
                             </td>
                             <td className="px-4 py-3 text-foreground">
-                              {item.requested_quantity.toFixed(2)} {item.unit}
+                              {item.addedByPm ? (
+                                <span className="text-muted-foreground italic">not requested</span>
+                              ) : (
+                                <>{item.requested_quantity.toFixed(2)} {item.unit}</>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               {lastAllocationByMaterial[item.raw_material_id] ? (
@@ -3356,11 +3508,80 @@ const StockOut = () => {
                                 className="w-32 bg-input border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all"
                               />
                             </td>
+                            <td className="px-2 py-3">
+                              {item.addedByPm && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeAddedAllocationItem(index)}
+                                  disabled={allocating}
+                                  title="Remove this item"
+                                  className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Add a material the supervisor forgot to request */}
+                <div className="relative add-item-dropdown-container mt-3">
+                  <button
+                    type="button"
+                    data-add-item-trigger
+                    onClick={() => {
+                      setShowAddItemDropdown(prev => !prev)
+                      setAddItemSearchTerm('')
+                    }}
+                    disabled={allocating}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add item the supervisor missed
+                  </button>
+                  {showAddItemDropdown && ReactDOM.createPortal(
+                    <div
+                      className="fixed z-[9999] flex flex-col bg-card border-2 border-accent rounded-xl shadow-2xl overflow-hidden add-item-dropdown-container"
+                      style={{ ...addItemDropdownPosition, minWidth: 280 }}
+                    >
+                      <input
+                        ref={addItemSearchRef}
+                        type="text"
+                        value={addItemSearchTerm}
+                        onChange={(e) => setAddItemSearchTerm(e.target.value)}
+                        placeholder="Search material..."
+                        className="w-full shrink-0 px-4 py-3 border-b-2 border-border focus:outline-none focus:ring-2 focus:ring-accent bg-background text-foreground"
+                      />
+                      <div className="flex-1 min-h-0 max-h-64 overflow-y-auto overscroll-contain bg-card">
+                        {getFilteredMaterialsForAddItem().length === 0 ? (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            No matching materials.
+                          </div>
+                        ) : (
+                          getFilteredMaterialsForAddItem().map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => handleAddItemToAllocation(m.id)}
+                              className="w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 last:border-0 font-medium text-foreground"
+                            >
+                              <div className="text-sm">{m.name}</div>
+                              <div className="text-xs text-muted-foreground">{m.code} • {m.unit}</div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>,
+                    document.body
+                  )}
                 </div>
               </div>
 
