@@ -2196,15 +2196,6 @@ const StockOut = () => {
         }
       }
     } else {
-      // At least one item must have quantity > 0 for regular stock out
-      const hasPositiveQty = itemsToProcess.some(item => parseFloat(item.allocated_quantity) > 0)
-      if (!hasPositiveQty) {
-        setAlert({ type: 'error', message: 'Please enter a quantity greater than 0 for at least one item' })
-        allocatingRef.current = false
-        setAllocating(false)
-        return
-      }
-
       // Validate allocated quantities for regular stock out (allow 0; reject negative; cap by inventory)
       for (const item of itemsToProcess) {
         if (parseFloat(item.allocated_quantity) < 0) {
