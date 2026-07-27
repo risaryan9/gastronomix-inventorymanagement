@@ -62,8 +62,6 @@ export async function adjustManualInventory(supabase, params) {
   let stockInId = null
   let stockOutId = null
   const today = new Date().toISOString().split('T')[0]
-  const userAgent =
-    typeof navigator !== 'undefined' ? navigator.userAgent : null
 
   if (adjustmentAmount > 0) {
     const { data: refBatch, error: refBatchError } = await supabase
@@ -182,32 +180,19 @@ export async function adjustManualInventory(supabase, params) {
 
   const actualNewQty = updatedInv ? parseFloat(updatedInv.quantity) : newQuantity
 
-  const { error: auditError } = await supabase.from('audit_logs').insert({
-    user_id: userId,
-    action: `inventory_${adjustmentType}`,
-    entity_type: 'inventory',
-    entity_id: currentInv?.id || null,
-    old_values: {
-      quantity: oldQuantity,
-      raw_material_id: rawMaterialId,
-      cloud_kitchen_id: cloudKitchenId,
-      reason,
-      details: details || null,
-      adjustment_type: adjustmentType,
-      adjustment_amount: Math.abs(adjustmentAmount),
-      stock_in_id: stockInId,
-      stock_out_id: stockOutId
-    },
-    new_values: {
-      quantity: newQuantity,
-      raw_material_id: rawMaterialId,
-      cloud_kitchen_id: cloudKitchenId,
-      actual_new_quantity: actualNewQty,
-      stock_in_id: stockInId,
-      stock_out_id: stockOutId
-    },
-    ip_address: null,
-    user_agent: userAgent
+  const { error: auditError } = await supabase.rpc('log_manual_inventory_adjustment', {
+    p_acting_user_id: userId,
+    p_raw_material_id: rawMaterialId,
+    p_cloud_kitchen_id: cloudKitchenId,
+    p_inventory_id: currentInv?.id || null,
+    p_adjustment_type: adjustmentType,
+    p_old_quantity: oldQuantity,
+    p_new_quantity: newQuantity,
+    p_actual_new_quantity: actualNewQty,
+    p_reason: reason,
+    p_details: details || null,
+    p_stock_in_id: stockInId,
+    p_stock_out_id: stockOutId
   })
 
   if (auditError) {

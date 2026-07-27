@@ -566,12 +566,10 @@ const Materials = ({ isAdminMode = false }) => {
         if (updateError) throw updateError
 
         // Create audit log entry for material update
-        const auditLogData = {
-          user_id: session.id,
-          action: 'update',
-          entity_type: 'raw_material',
-          entity_id: editingMaterial.id,
-          old_values: {
+        const { error: auditError } = await supabase.rpc('log_raw_material_updated', {
+          p_acting_user_id: session.id,
+          p_raw_material_id: editingMaterial.id,
+          p_old_values: {
             name: editingMaterial.name,
             code: editingMaterial.code,
             unit: editingMaterial.unit,
@@ -581,7 +579,7 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: editingMaterial.low_stock_threshold,
             brand_codes: editingMaterial.brand_codes || null
           },
-          new_values: {
+          p_new_values: {
             name: updateData.name,
             code: updateData.code,
             unit: updateData.unit,
@@ -590,14 +588,8 @@ const Materials = ({ isAdminMode = false }) => {
             description: updateData.description,
             low_stock_threshold: updateData.low_stock_threshold,
             brand_codes: updateData.brand_codes
-          },
-          ip_address: null,
-          user_agent: navigator.userAgent || null
-        }
-
-        const { error: auditError } = await supabase
-          .from('audit_logs')
-          .insert(auditLogData)
+          }
+        })
 
         if (auditError) {
           console.error('Error creating audit log:', auditError)
@@ -637,13 +629,10 @@ const Materials = ({ isAdminMode = false }) => {
         if (insertError) throw insertError
 
         // Create audit log entry for new material
-        const auditLogData = {
-          user_id: session.id,
-          action: 'create',
-          entity_type: 'raw_material',
-          entity_id: newMaterial.id,
-          old_values: null,
-          new_values: {
+        const { error: auditError } = await supabase.rpc('log_raw_material_created', {
+          p_acting_user_id: session.id,
+          p_raw_material_id: newMaterial.id,
+          p_new_values: {
             name: newMaterial.name,
             code: newMaterial.code,
             unit: newMaterial.unit,
@@ -652,14 +641,8 @@ const Materials = ({ isAdminMode = false }) => {
             description: newMaterial.description,
             low_stock_threshold: newMaterial.low_stock_threshold,
             brand_codes: newMaterial.brand_codes || null
-          },
-          ip_address: null,
-          user_agent: navigator.userAgent || null
-        }
-
-        const { error: auditError } = await supabase
-          .from('audit_logs')
-          .insert(auditLogData)
+          }
+        })
 
         if (auditError) {
           console.error('Error creating audit log:', auditError)

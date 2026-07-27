@@ -2549,27 +2549,19 @@ const StockOut = () => {
 
       // Audit log only for self stock outs
       if (isSelfStockOut) {
-        const { error: auditError } = await supabase
-          .from('audit_logs')
-          .insert({
-            user_id: session.id,
-            action: 'stock_out',
-            entity_type: 'stock_out',
-            entity_id: stockOutData.id,
-            new_values: {
-              self_stock_out: true,
-              reason: selfStockOutReason,
-              notes: selfStockOutNotes.trim() || null,
-              allocation_request_id: null,
-              outlet_id: null,
-              items: itemsToProcess.map(item => ({
-                raw_material_id: item.raw_material_id,
-                name: item.name,
-                quantity: item.allocated_quantity,
-                unit: item.unit
-              }))
-            }
-          })
+        const { error: auditError } = await supabase.rpc('log_self_stock_out', {
+          p_acting_user_id: session.id,
+          p_stock_out_id: stockOutData.id,
+          p_cloud_kitchen_id: session.cloud_kitchen_id,
+          p_reason: selfStockOutReason,
+          p_notes: selfStockOutNotes.trim() || null,
+          p_items: itemsToProcess.map(item => ({
+            raw_material_id: item.raw_material_id,
+            name: item.name,
+            quantity: item.allocated_quantity,
+            unit: item.unit
+          }))
+        })
 
         if (auditError) {
           console.error('Error creating audit log:', auditError)
