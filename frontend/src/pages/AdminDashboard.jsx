@@ -22,25 +22,31 @@ const NAV_STRUCTURE = [
     ],
   },
   {
-    id: 'analytics',
-    label: 'Analytics',
-    children: [
-      { id: 'sales', label: 'Sales' },
-      { id: 'performance', label: 'Performance' },
-      { id: 'trends', label: 'Trends' },
-    ],
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
+    id: 'operations',
+    label: 'Operations',
     children: [
       { id: 'materials', label: 'Materials' },
       { id: 'vendors', label: 'Vendors' },
       { id: 'recipes', label: 'Recipes' },
+      { id: 'dispatch-brands', label: 'Dispatch Brands' },
+    ],
+  },
+  {
+    id: 'people',
+    label: 'People',
+    children: [
       { id: 'users', label: 'Users' },
       { id: 'operators', label: 'Operators' },
-      { id: 'dispatch-brands', label: 'Dispatch Brands' },
-      { id: 'preferences', label: 'Preferences' },
+    ],
+  },
+  {
+    id: 'reports-analytics',
+    label: 'Reports & Analytics',
+    children: [
+      { id: 'requisitions-reports', label: 'Requisitions Reports' },
+      { id: 'sales', label: 'Sales' },
+      { id: 'performance', label: 'Performance' },
+      { id: 'trends', label: 'Trends' },
     ],
   },
   {
@@ -50,13 +56,6 @@ const NAV_STRUCTURE = [
       { id: 'user-audit-logs', label: 'User Audit Logs' },
       { id: 'cloud-kitchen-audit-logs', label: 'Cloud Kitchen Audit Logs' },
       { id: 'alerts', label: 'Alerts' },
-    ],
-  },
-  {
-    id: 'reports',
-    label: 'Reports',
-    children: [
-      { id: 'requisitions-reports', label: 'Requisitions Reports' },
     ],
   },
   {
@@ -97,19 +96,19 @@ const AdminDashboard = () => {
   const isOutletsSection =
     activeParentId === 'overview' && activeChildId === 'outlets'
   const isMaterialsSection =
-    activeParentId === 'settings' && activeChildId === 'materials'
+    activeParentId === 'operations' && activeChildId === 'materials'
   const isRecipesSection =
-    activeParentId === 'settings' && activeChildId === 'recipes'
+    activeParentId === 'operations' && activeChildId === 'recipes'
   const isUsersSection =
-    activeParentId === 'settings' && activeChildId === 'users'
+    activeParentId === 'people' && activeChildId === 'users'
   const isOperatorsSection =
-    activeParentId === 'settings' && activeChildId === 'operators'
+    activeParentId === 'people' && activeChildId === 'operators'
   const isVendorsSection =
-    activeParentId === 'settings' && activeChildId === 'vendors'
+    activeParentId === 'operations' && activeChildId === 'vendors'
   const isDispatchBrandsSection =
-    activeParentId === 'settings' && activeChildId === 'dispatch-brands'
+    activeParentId === 'operations' && activeChildId === 'dispatch-brands'
   const isRequisitionsReportsSection =
-    activeParentId === 'reports' && activeChildId === 'requisitions-reports'
+    activeParentId === 'reports-analytics' && activeChildId === 'requisitions-reports'
   const isFranchiseCloningSection =
     activeParentId === 'franchise' && activeChildId === 'data-cloning'
 

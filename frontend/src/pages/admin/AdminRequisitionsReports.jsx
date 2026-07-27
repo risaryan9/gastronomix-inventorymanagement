@@ -1,14 +1,41 @@
 import { useEffect, useState, useMemo } from 'react'
-import { fetchReportOutlets, fetchOutletRequisitionReportRows, fetchRequisitionVarianceDetails } from '../../lib/allocationRequests'
+import { fetchReportCloudKitchens, fetchReportOutlets, fetchOutletVarianceCounts, fetchOutletRequisitionReportRows, fetchRequisitionVarianceDetails } from '../../lib/allocationRequests'
 import PaginationControls from '../../components/PaginationControls'
 
+const summarizeRequisitionVariance = (requisition) => {
+  const requestedMap = new Map()
+  requisition.allocation_request_items?.forEach((item) => {
+    requestedMap.set(item.raw_material_id, parseFloat(item.quantity))
+  })
+
+  const stockOutItems = requisition.stock_out?.[0]?.stock_out_items || []
+  const actualMap = new Map()
+  stockOutItems.forEach((item) => {
+    actualMap.set(item.raw_material_id, parseFloat(item.quantity))
+  })
+
+  const allMaterialIds = new Set([...requestedMap.keys(), ...actualMap.keys()])
+
+  let increased = 0
+  let decreased = 0
+  allMaterialIds.forEach((materialId) => {
+    const requested = requestedMap.get(materialId) || 0
+    const actual = actualMap.get(materialId) || 0
+    if (actual > requested) increased += 1
+    else if (actual < requested) decreased += 1
+  })
+
+  return { increased, decreased }
+}
+
 const AdminRequisitionsReports = () => {
+  const [cloudKitchens, setCloudKitchens] = useState([])
+  const [selectedCloudKitchenId, setSelectedCloudKitchenId] = useState('')
   const [outlets, setOutlets] = useState([])
+  const [varianceCounts, setVarianceCounts] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 10
 
   const [selectedOutlet, setSelectedOutlet] = useState(null)
   const [requisitionsModalOpen, setRequisitionsModalOpen] = useState(false)
@@ -26,20 +53,50 @@ const AdminRequisitionsReports = () => {
   const [varianceError, setVarianceError] = useState('')
 
   useEffect(() => {
-    loadOutlets()
+    loadCloudKitchens()
   }, [])
 
-  const loadOutlets = async () => {
+  useEffect(() => {
+    loadOutlets(selectedCloudKitchenId)
+  }, [selectedCloudKitchenId])
+
+  const loadCloudKitchens = async () => {
+    try {
+      const data = await fetchReportCloudKitchens()
+      setCloudKitchens(data)
+    } catch (err) {
+      console.error('Error loading cloud kitchens:', err)
+    }
+  }
+
+  const loadOutlets = async (cloudKitchenId) => {
     try {
       setLoading(true)
       setError('')
-      const data = await fetchReportOutlets()
+      const data = await fetchReportOutlets(cloudKitchenId || null)
       setOutlets(data)
+      loadVarianceCounts(data.map((outlet) => outlet.id))
     } catch (err) {
       console.error('Error loading outlets:', err)
       setError('Failed to load outlets. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadVarianceCounts = async (outletIds) => {
+    try {
+      const rows = await fetchOutletVarianceCounts(outletIds)
+      const counts = {}
+      rows.forEach((req) => {
+        const { increased, decreased } = summarizeRequisitionVariance(req)
+        if (increased > 0 || decreased > 0) {
+          counts[req.outlet_id] = (counts[req.outlet_id] || 0) + 1
+        }
+      })
+      setVarianceCounts(counts)
+    } catch (err) {
+      console.error('Error loading variance counts:', err)
     }
   }
 
@@ -50,25 +107,13 @@ const AdminRequisitionsReports = () => {
     return outlets.filter((outlet) => {
       const outletName = outlet.name?.toLowerCase() || ''
       const kitchenName = outlet.cloud_kitchens?.name?.toLowerCase() || ''
-      
+
       return (
         outletName.includes(searchLower) ||
         kitchenName.includes(searchLower)
       )
     })
   }, [outlets, search])
-
-  const paginatedOutlets = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    return filteredOutlets.slice(startIndex, endIndex)
-  }, [filteredOutlets, currentPage, pageSize])
-
-  const totalPages = Math.ceil(filteredOutlets.length / pageSize)
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [search])
 
   const handleOutletClick = async (outlet) => {
     setSelectedOutlet(outlet)
@@ -200,13 +245,25 @@ const AdminRequisitionsReports = () => {
           View and analyze changes made by purchase managers to requisitions. Click on any outlet to see its requisitions, then click on a requisition to view detailed variance.
         </p>
 
-        <div className="mb-4">
+        <div className="mb-4 flex flex-col sm:flex-row gap-3">
+          <select
+            value={selectedCloudKitchenId}
+            onChange={(e) => setSelectedCloudKitchenId(e.target.value)}
+            className="sm:w-64 shrink-0 px-4 py-2 border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">All Cloud Kitchens</option>
+            {cloudKitchens.map((kitchen) => (
+              <option key={kitchen.id} value={kitchen.id}>
+                {kitchen.name}
+              </option>
+            ))}
+          </select>
           <input
             type="text"
             placeholder="Search outlets by name or cloud kitchen..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-4 py-2 border border-border rounded-lg bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex-1 px-4 py-2 border border-border rounded-lg bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -219,40 +276,46 @@ const AdminRequisitionsReports = () => {
             {search ? 'No outlets found matching your search.' : 'No outlets available.'}
           </div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 font-semibold text-foreground">Outlet Name</th>
-                    <th className="text-left py-3 px-4 font-semibold text-foreground">Cloud Kitchen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedOutlets.map((outlet) => (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Outlet Name</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Cloud Kitchen</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Variance Requests</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOutlets.map((outlet) => {
+                  const varianceCount = varianceCounts[outlet.id] || 0
+                  const isInactive = !outlet.is_active || !!outlet.deleted_at
+                  return (
                     <tr
                       key={outlet.id}
                       onClick={() => handleOutletClick(outlet)}
-                      className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
+                      className={`border-b border-border hover:bg-muted/50 cursor-pointer transition-colors ${
+                        isInactive ? 'opacity-50' : ''
+                      }`}
                     >
                       <td className="py-3 px-4 text-foreground font-medium">{outlet.name}</td>
                       <td className="py-3 px-4 text-foreground">{outlet.cloud_kitchens?.name || '-'}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center justify-center min-w-[1.75rem] px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            varianceCount > 0
+                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {varianceCount}
+                        </span>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="mt-4">
-                <PaginationControls
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={setCurrentPage}
-                />
-              </div>
-            )}
-          </>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -306,39 +369,62 @@ const AdminRequisitionsReports = () => {
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Supervisor</th>
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Stock Out Date</th>
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Status</th>
+                          <th className="text-left py-3 px-4 font-semibold text-foreground">Variance</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {paginatedRequisitions.map((req) => (
-                          <tr
-                            key={req.id}
-                            onClick={() => handleRequisitionClick(req)}
-                            className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
-                          >
-                            <td className="py-3 px-4 text-foreground font-medium">
-                              {new Date(req.request_date).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 px-4 text-muted-foreground">
-                              {req.supervisor_name || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-foreground">
-                              {req.stock_out?.[0]?.allocation_date
-                                ? new Date(req.stock_out[0].allocation_date).toLocaleDateString()
-                                : '-'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span
-                                className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                                  req.is_packed
-                                    ? 'bg-green-500/20 text-green-700 dark:text-green-300'
-                                    : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300'
-                                }`}
-                              >
-                                {req.is_packed ? 'Packed' : 'Pending'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {paginatedRequisitions.map((req) => {
+                          const variance = summarizeRequisitionVariance(req)
+                          const hasVariance = variance.increased > 0 || variance.decreased > 0
+                          return (
+                            <tr
+                              key={req.id}
+                              onClick={() => handleRequisitionClick(req)}
+                              className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
+                            >
+                              <td className="py-3 px-4 text-foreground font-medium">
+                                {new Date(req.request_date).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 px-4 text-muted-foreground">
+                                {req.supervisor_name || '-'}
+                              </td>
+                              <td className="py-3 px-4 text-foreground">
+                                {req.stock_out?.[0]?.allocation_date
+                                  ? new Date(req.stock_out[0].allocation_date).toLocaleDateString()
+                                  : '-'}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                                    req.is_packed
+                                      ? 'bg-green-500/20 text-green-700 dark:text-green-300'
+                                      : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300'
+                                  }`}
+                                >
+                                  {req.is_packed ? 'Packed' : 'Pending'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                {hasVariance ? (
+                                  <span className="inline-flex items-center gap-2 text-xs font-semibold">
+                                    {variance.increased > 0 && (
+                                      <span className="text-green-600 dark:text-green-400">
+                                        ▲ {variance.increased}
+                                      </span>
+                                    )}
+                                    {variance.decreased > 0 && (
+                                      <span className="text-red-600 dark:text-red-400">
+                                        ▼ {variance.decreased}
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium text-muted-foreground">Matched</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

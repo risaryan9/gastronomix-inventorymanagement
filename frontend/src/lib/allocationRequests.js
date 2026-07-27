@@ -75,19 +75,63 @@ export const fetchTodayAllocationStatus = async ({ cloudKitchenId, outletIds }) 
   return statusMap
 }
 
-export const fetchReportOutlets = async () => {
+export const fetchReportCloudKitchens = async () => {
   const { data, error } = await supabase
+    .from('cloud_kitchens')
+    .select('id, name, code')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+export const fetchReportOutlets = async (cloudKitchenId = null) => {
+  let query = supabase
     .from('outlets')
     .select(`
       id,
       name,
       cloud_kitchen_id,
+      is_active,
+      deleted_at,
       cloud_kitchens (
         id,
         name
       )
     `)
     .order('name', { ascending: true })
+
+  if (cloudKitchenId) {
+    query = query.eq('cloud_kitchen_id', cloudKitchenId)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export const fetchOutletVarianceCounts = async (outletIds) => {
+  if (!outletIds?.length) return []
+
+  const { data, error } = await supabase
+    .from('allocation_requests')
+    .select(`
+      id,
+      outlet_id,
+      allocation_request_items (
+        raw_material_id,
+        quantity
+      ),
+      stock_out!inner (
+        stock_out_items (
+          raw_material_id,
+          quantity
+        )
+      )
+    `)
+    .in('outlet_id', outletIds)
 
   if (error) throw error
   return data || []
@@ -105,10 +149,20 @@ export const fetchOutletRequisitionReportRows = async (outletId) => {
       is_packed,
       notes,
       supervisor_name,
+      allocation_request_items (
+        id,
+        raw_material_id,
+        quantity
+      ),
       stock_out!inner (
         id,
         allocation_date,
-        created_at
+        created_at,
+        stock_out_items (
+          id,
+          raw_material_id,
+          quantity
+        )
       )
     `)
     .eq('outlet_id', outletId)
