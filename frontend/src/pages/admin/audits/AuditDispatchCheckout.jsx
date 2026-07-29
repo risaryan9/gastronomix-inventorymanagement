@@ -15,7 +15,6 @@ import AuditSubsectionPage from '../../../components/audits/AuditSubsectionPage'
 import {
   FAMILY,
   fetchDispatchCheckoutEvents,
-  summarizeDispatchCheckoutEvents,
 } from '../../../lib/auditEvents'
 
 const ACTION_KEYS = [
@@ -34,44 +33,11 @@ const FAMILY_OPTIONS = [
   { value: FAMILY.CHECKOUT, label: 'Outlet closings' },
 ]
 
-const buildTiles = (summary) => [
-  { id: 'total', label: 'Total events', value: String(summary.total), sub: 'all recorded' },
-  {
-    id: 'plans',
-    label: 'Plans created',
-    value: String(summary.plansCreated),
-    sub: summary.plansRevised ? `${summary.plansRevised} revised afterwards` : 'none revised afterwards',
-  },
-  {
-    id: 'locked',
-    label: 'Plans locked',
-    value: String(summary.plansLocked),
-    sub: `${summary.lockedWithChanges} with quantities changed`,
-    tone: summary.lockedWithChanges ? 'negative' : 'default',
-  },
-  {
-    id: 'closings',
-    label: 'Closings confirmed',
-    value: String(summary.confirmed),
-    sub: `${summary.draftSaves} sheet save${summary.draftSaves === 1 ? '' : 's'}`,
-    tone: 'accent',
-  },
-  {
-    id: 'critical',
-    label: 'Critical',
-    value: String(summary.critical),
-    sub: 'discarded plan versions',
-    tone: summary.critical ? 'critical' : 'default',
-  },
-]
-
 const AuditDispatchCheckout = () => (
   <AuditSubsectionPage
     fetchEvents={fetchDispatchCheckoutEvents}
     actionKeys={ACTION_KEYS}
     familyOptions={FAMILY_OPTIONS}
-    summarize={summarizeDispatchCheckoutEvents}
-    buildTiles={buildTiles}
     searchPlaceholder="Search outlet, brand, material, or person…"
     showOutletFilter
   />

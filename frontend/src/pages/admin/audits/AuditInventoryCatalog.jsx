@@ -14,9 +14,6 @@ import AuditSubsectionPage from '../../../components/audits/AuditSubsectionPage'
 import {
   FAMILY,
   fetchInventoryCatalogEvents,
-  formatCurrency,
-  formatQty,
-  summarizeEvents,
 } from '../../../lib/auditEvents'
 
 const ACTION_KEYS = [
@@ -36,46 +33,11 @@ const FAMILY_OPTIONS = [
   { value: FAMILY.CATALOG, label: 'Catalog changes' },
 ]
 
-const buildTiles = (summary) => [
-  { id: 'total', label: 'Total events', value: String(summary.total), sub: 'all recorded' },
-  {
-    id: 'received',
-    label: 'Value received',
-    value: formatCurrency(summary.received),
-    sub: `${summary.receipts} receipt${summary.receipts === 1 ? '' : 's'}`,
-    tone: 'accent',
-  },
-  {
-    id: 'adjustments',
-    label: 'Manual adjustments',
-    value: String(summary.adjustments),
-    sub: summary.adjustments
-      ? `net ${summary.adjustmentNet > 0 ? '+' : ''}${formatQty(summary.adjustmentNet)} across units`
-      : 'no overrides',
-    tone: summary.adjustmentNet < 0 ? 'negative' : 'default',
-  },
-  {
-    id: 'catalog',
-    label: 'Catalog changes',
-    value: String(summary.catalogChanges),
-    sub: 'creates, edits, status flips',
-  },
-  {
-    id: 'critical',
-    label: 'Critical',
-    value: String(summary.critical),
-    sub: 'reversals & overrides',
-    tone: summary.critical ? 'critical' : 'default',
-  },
-]
-
 const AuditInventoryCatalog = () => (
   <AuditSubsectionPage
     fetchEvents={fetchInventoryCatalogEvents}
     actionKeys={ACTION_KEYS}
     familyOptions={FAMILY_OPTIONS}
-    summarize={summarizeEvents}
-    buildTiles={buildTiles}
     searchPlaceholder="Search material, supplier, invoice, reason, or person…"
     showCostToggle
     keepCatalogOnKitchenFilter

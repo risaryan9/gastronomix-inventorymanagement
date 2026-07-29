@@ -1,14 +1,12 @@
 // The shared shell every audit subsection renders: load, filter, group by day,
 // paginate, and open the detail drawer. A subsection supplies what is different
-// — which events it covers, what its headline numbers are, and which filters
-// make sense for it.
+// — which events it covers and which filters make sense for it.
 
 import { useEffect, useMemo, useState } from 'react'
 import PaginationControls from '../PaginationControls'
 import AuditFilterBar from './AuditFilterBar'
 import AuditEventCard from './AuditEventCard'
 import AuditDetailDrawer from './AuditDetailDrawer'
-import AuditSummaryStrip from './AuditSummaryStrip'
 import {
   ACTION_META,
   actorName,
@@ -80,8 +78,6 @@ const AuditSubsectionPage = ({
   fetchEvents,
   actionKeys,
   familyOptions,
-  summarize,
-  buildTiles,
   searchPlaceholder,
   showCostToggle = false,
   showOutletFilter = false,
@@ -261,10 +257,6 @@ const AuditSubsectionPage = ({
     })
   }, [decorated, filters, dateBounds, keepCatalogOnKitchenFilter, showCostToggle])
 
-  // Over every event, not the filtered set: these are the subsection's standing
-  // totals, and a number that moves when you narrow the list stops being one.
-  const summary = useMemo(() => summarize(events), [events, summarize])
-
   useEffect(() => {
     setPage(1)
   }, [filters])
@@ -297,8 +289,6 @@ const AuditSubsectionPage = ({
           </p>
         </div>
       )}
-
-      <AuditSummaryStrip tiles={buildTiles(summary)} />
 
       <AuditFilterBar
         filters={filters}

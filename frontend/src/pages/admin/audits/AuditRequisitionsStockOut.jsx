@@ -9,8 +9,6 @@ import AuditSubsectionPage from '../../../components/audits/AuditSubsectionPage'
 import {
   FAMILY,
   fetchRequisitionStockOutEvents,
-  formatCurrency,
-  summarizeRequisitionEvents,
 } from '../../../lib/auditEvents'
 
 const ACTION_KEYS = [
@@ -29,43 +27,11 @@ const FAMILY_OPTIONS = [
   { value: FAMILY.STOCK_OUT, label: 'Stock out' },
 ]
 
-const buildTiles = (summary) => [
-  { id: 'total', label: 'Total events', value: String(summary.total), sub: 'all recorded' },
-  {
-    id: 'raised',
-    label: 'Requisitions raised',
-    value: String(summary.raised),
-    sub: summary.edited ? `${summary.edited} edited afterwards` : 'none edited afterwards',
-  },
-  {
-    id: 'packed',
-    label: 'Value packed out',
-    value: formatCurrency(summary.packedValue),
-    sub: `${summary.packed} pack${summary.packed === 1 ? '' : 's'}`,
-    tone: 'accent',
-  },
-  {
-    id: 'stockouts',
-    label: 'Booked out, no outlet',
-    value: String(summary.selfStockOuts),
-    sub: 'wastage, staff food, transfers',
-  },
-  {
-    id: 'critical',
-    label: 'Critical',
-    value: String(summary.critical),
-    sub: 'cancellations & removed lines',
-    tone: summary.critical ? 'critical' : 'default',
-  },
-]
-
 const AuditRequisitionsStockOut = () => (
   <AuditSubsectionPage
     fetchEvents={fetchRequisitionStockOutEvents}
     actionKeys={ACTION_KEYS}
     familyOptions={FAMILY_OPTIONS}
-    summarize={summarizeRequisitionEvents}
-    buildTiles={buildTiles}
     searchPlaceholder="Search outlet, material, reason, or person…"
     showOutletFilter
   />
