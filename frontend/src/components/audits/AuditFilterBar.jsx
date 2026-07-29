@@ -1,8 +1,8 @@
 // Filter bar for an audit subsection.
 //
-// The filters are the subsection's point of view: which action, whose action,
-// which kitchen, how severe, and — because these events are the financial
-// record — whether the event carries cost data at all.
+// The controls a subsection needs are mostly the same — who, where, when, how
+// severe — so the bar is shared and the subsection-specific ones (outlet,
+// cost) are opted into.
 
 import MultiSelectFilter from '../MultiSelectFilter'
 
@@ -44,6 +44,10 @@ const AuditFilterBar = ({
   actionOptions,
   kitchens,
   actors,
+  outlets = null,
+  showCostToggle = true,
+  showCatalogNote = false,
+  searchPlaceholder = 'Search…',
   isFiltered,
   resultCount,
   totalCount,
@@ -57,7 +61,7 @@ const AuditFilterBar = ({
           type="text"
           value={filters.search}
           onChange={(e) => set({ search: e.target.value })}
-          placeholder="Search material, supplier, invoice, reason, or person…"
+          placeholder={searchPlaceholder}
           className="flex-1 px-4 py-2 border border-border rounded-lg bg-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <SegmentedControl
@@ -145,15 +149,33 @@ const AuditFilterBar = ({
           ))}
         </select>
 
-        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={filters.withCost}
-            onChange={(e) => set({ withCost: e.target.checked })}
-            className="w-4 h-4 accent-[#E1BB07]"
-          />
-          With cost data
-        </label>
+        {outlets && (
+          <select
+            value={filters.outletId}
+            onChange={(e) => set({ outletId: e.target.value })}
+            className={selectClass}
+          >
+            <option value="all">All outlets</option>
+            <option value="none">No outlet</option>
+            {outlets.map((outlet) => (
+              <option key={outlet.id} value={outlet.id}>
+                {outlet.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {showCostToggle && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={filters.withCost}
+              onChange={(e) => set({ withCost: e.target.checked })}
+              className="w-4 h-4 accent-[#E1BB07]"
+            />
+            With cost data
+          </label>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-muted-foreground">
@@ -171,10 +193,9 @@ const AuditFilterBar = ({
         </div>
       </div>
 
-      {filters.kitchenId !== 'all' && (
+      {showCatalogNote && filters.kitchenId !== 'all' && (
         <p className="text-xs text-muted-foreground">
-          Catalog changes are global — <span className="font-mono">raw_materials</span> has no cloud kitchen — so
-          they stay visible under every kitchen, tagged <span className="text-accent font-semibold">Global</span>.
+          Catalog changes apply to every kitchen, so they stay in the list whichever kitchen you pick.
         </p>
       )}
     </div>

@@ -54,7 +54,9 @@ const AuditEventCard = ({ event, description, onSelect, isSelected }) => (
           <span className="truncate">{roleLabel(event.actor_role)}</span>
           <Dot />
           <span className="truncate">
-            {event.category === 'catalog' ? 'Global catalog' : description.kitchen || 'No kitchen'}
+            {event.category === 'catalog'
+              ? 'All kitchens'
+              : description.outlet || description.kitchen || 'No kitchen'}
           </span>
           {description.detail && (
             <>

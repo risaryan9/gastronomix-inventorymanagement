@@ -120,6 +120,74 @@ export const ItemsTable = ({ rows = [], showCost = true }) => {
   )
 }
 
+/**
+ * Before/after quantities for a list of materials — an edited requisition,
+ * where lines can be added, changed or dropped between the two versions.
+ */
+export const QuantityDiffTable = ({ before = [], after = [] }) => {
+  const byId = new Map()
+  before.forEach((row) => byId.set(row.material.id, { material: row.material, before: row.quantity }))
+  after.forEach((row) => {
+    const existing = byId.get(row.material.id)
+    if (existing) existing.after = row.quantity
+    else byId.set(row.material.id, { material: row.material, after: row.quantity })
+  })
+
+  const rows = [...byId.values()].sort((a, b) => a.material.name.localeCompare(b.material.name))
+  if (!rows.length) return <p className="text-sm text-muted-foreground">No items recorded.</p>
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm min-w-[30rem]">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left py-2 px-3 font-semibold text-foreground">Material</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">Before</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">After</th>
+            <th className="text-left py-2 px-3 font-semibold text-foreground">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const added = row.before === undefined
+            const removed = row.after === undefined
+            const changed = !added && !removed && Number(row.before) !== Number(row.after)
+            const label = added ? 'Added' : removed ? 'Removed' : changed ? 'Quantity changed' : 'Unchanged'
+            const tone = added
+              ? 'text-emerald-300'
+              : removed
+                ? 'text-red-300'
+                : changed
+                  ? 'text-accent'
+                  : 'text-muted-foreground'
+            return (
+              <tr
+                key={row.material.id}
+                className={`border-t border-border ${added || removed || changed ? 'bg-accent/[0.06]' : ''}`}
+              >
+                <td className="py-2 px-3">
+                  <div className="font-medium text-foreground">{row.material.name}</div>
+                  <div className="text-xs text-muted-foreground">{row.material.code}</div>
+                </td>
+                <td className="py-2 px-3 text-right whitespace-nowrap text-muted-foreground">
+                  {row.before === undefined ? '—' : formatQty(row.before)}
+                </td>
+                <td className="py-2 px-3 text-right whitespace-nowrap text-foreground font-semibold">
+                  {row.after === undefined ? '—' : formatQty(row.after)}
+                  {row.material.unit ? (
+                    <span className="text-muted-foreground font-normal"> {row.material.unit}</span>
+                  ) : null}
+                </td>
+                <td className={`py-2 px-3 whitespace-nowrap ${tone}`}>{label}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export const DiffTable = ({ rows = [] }) => {
   if (!rows.length) {
     return <p className="text-sm text-muted-foreground">No field-level changes recorded.</p>

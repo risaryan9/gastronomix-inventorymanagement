@@ -255,9 +255,13 @@ export const DEMO_AUDIT_EVENTS = [
     new_values: {
       self_stock_out: true,
       reason: 'inter-cloud-kitchen',
-      destination_cloud_kitchen_id: KITCHEN.CK2.id,
-      item_count: transferItems.length,
-      items: transferItems,
+      notes: 'Sent to Central Store CK2',
+      outlet_id: null,
+      allocation_request_id: null,
+      items: [
+        { name: 'Whole Chicken Without Skin', unit: 'kg', quantity: '22', raw_material_id: MATERIAL.CHICKEN },
+        { name: 'Eggs', unit: 'nos', quantity: '360', raw_material_id: MATERIAL.EGGS },
+      ],
     },
     ip_address: '103.21.244.17',
     user_agent: UA_CHROME,
@@ -562,6 +566,219 @@ export const DEMO_AUDIT_EVENTS = [
     created_at: hoursAgo(126),
   },
 ]
+
+/* ================================================================== *
+ * Requisitions & Stock Out
+ *
+ * Packing (`requisition_packed`) and self stock-outs (`stock_out`) have real
+ * events already, so nothing is invented for them. These cover the five types
+ * that have never fired.
+ * ================================================================== */
+
+const OUTLET = {
+  INDIRANAGAR: { id: '55ac3afb-7df3-4c4d-a498-c405ae94e2dd', name: 'Boom Pizza - Indiranagar' },
+  HSR: { id: '480ce943-4812-4a36-8552-a9138f982d68', name: 'Boom Pizza - HSR' },
+  JAYANAGAR: { id: 'daff0dfe-fc1d-4d4e-b8d7-f3f3a7864987', name: 'Boom Pizza - Jayanagar' },
+  BTM: { id: '16ab2d15-7a0e-4569-ac1f-dc53d5ad1a49', name: 'Boom Pizza - BTM Layout' },
+}
+
+const SUPERVISOR_CK2 = {
+  id: '5f8c3a9d-1e24-4c7b-bd0e-6a2f1c9e4b54',
+  full_name: 'Supervisor (CK2)',
+  role: 'supervisor',
+  email: null,
+}
+
+const req = (rawMaterialId, quantity) => ({ raw_material_id: rawMaterialId, quantity })
+
+// An edit and the line it dropped are one action by the user, so they share a
+// correlation id exactly as the real flow does.
+const EDIT_CORRELATION = 'demo-corr-9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d'
+
+const hsrBefore = [
+  req(MATERIAL.ONION, 25),
+  req(MATERIAL.TOMATO, 18),
+  req(MATERIAL.CHICKEN, 12),
+  req(MATERIAL.GELATO_CUP, 300),
+]
+const hsrAfter = [
+  req(MATERIAL.ONION, 25),
+  req(MATERIAL.TOMATO, 30),
+  req(MATERIAL.CHICKEN, 9),
+  req(MATERIAL.CHILLI, 2),
+]
+
+const cancelledItems = [
+  { raw_material_id: MATERIAL.ONION, quantity: 40 },
+  { raw_material_id: MATERIAL.SPINACH, quantity: 12 },
+  { raw_material_id: MATERIAL.CELLO_TAPE, quantity: 25 },
+]
+
+DEMO_AUDIT_EVENTS.push(
+  /* ---------------- E1 — requisition raised ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0101',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: OUTLET.INDIRANAGAR.id,
+    outlet: OUTLET.INDIRANAGAR,
+    category: 'requisition',
+    action: 'requisition_created',
+    entity_type: 'allocation_request',
+    entity_id: 'demo-req-0101',
+    correlation_id: null,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: null,
+    new_values: {
+      request_date: new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10),
+      supervisor_name: 'Ravi Kumar',
+      item_count: 5,
+      items: [
+        req(MATERIAL.ONION, 30),
+        req(MATERIAL.TOMATO, 22),
+        req(MATERIAL.CHICKEN, 15),
+        req(MATERIAL.GELATO_CUP, 400),
+        req(MATERIAL.WATER, 96),
+      ],
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(5),
+  },
+
+  /* ---------------- E2 — requisition edited ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0102',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: OUTLET.HSR.id,
+    outlet: OUTLET.HSR,
+    category: 'requisition',
+    action: 'requisition_updated',
+    entity_type: 'allocation_request',
+    entity_id: 'demo-req-0102',
+    correlation_id: EDIT_CORRELATION,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: { supervisor_name: 'Meera Nair', items: hsrBefore },
+    new_values: {
+      supervisor_name: 'Meera Nair',
+      items: hsrAfter,
+      items_deleted: 1,
+      items_updated: 2,
+      items_inserted: 1,
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(11),
+  },
+
+  /* ---------------- E3 — lines removed (critical) ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0103',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: OUTLET.HSR.id,
+    outlet: OUTLET.HSR,
+    category: 'reversal',
+    action: 'requisition_items_deleted',
+    entity_type: 'allocation_request',
+    entity_id: 'demo-req-0102',
+    correlation_id: EDIT_CORRELATION,
+    reversed_event_id: null,
+    severity: 'critical',
+    old_values: {
+      deleted_items: [req(MATERIAL.GELATO_CUP, 300)],
+      items_before: hsrBefore,
+    },
+    new_values: { deleted_count: 1, items_after: hsrAfter },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(11),
+  },
+
+  /* ---------------- E4 — purchase manager adds lines ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0104',
+    actor_user_id: ACTOR.PM2.id,
+    actor_role: 'purchase_manager',
+    actor: ACTOR.PM2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: OUTLET.JAYANAGAR.id,
+    outlet: OUTLET.JAYANAGAR,
+    category: 'requisition',
+    action: 'requisition_items_added_by_pm',
+    entity_type: 'allocation_request',
+    entity_id: 'demo-req-0104',
+    correlation_id: null,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: null,
+    new_values: {
+      added_by_purchase_manager: true,
+      requested_by: SUPERVISOR_CK2.id,
+      supervisor_name: 'Arun Prasad',
+      added_count: 2,
+      added_items: [req(MATERIAL.CELLO_TAPE, 20), req(MATERIAL.SPRING_CAP, 6)],
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(28),
+  },
+
+  /* ---------------- D4 — packing cancelled (critical) ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0105',
+    actor_user_id: ACTOR.PM2.id,
+    actor_role: 'purchase_manager',
+    actor: ACTOR.PM2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: OUTLET.BTM.id,
+    outlet: OUTLET.BTM,
+    category: 'reversal',
+    action: 'requisition_packing_cancelled',
+    entity_type: 'stock_out',
+    entity_id: 'demo-stockout-0105',
+    correlation_id: null,
+    reversed_event_id: null,
+    severity: 'critical',
+    old_values: {
+      stock_out: { id: 'demo-stockout-0105', outlet_id: OUTLET.BTM.id },
+      items: cancelledItems,
+      consumption: [],
+    },
+    new_values: {
+      allocation_request_id: 'demo-req-0105',
+      restored_batch_rows: 4,
+      restored_qty: 77,
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(47),
+  }
+)
 
 /** Events this subsection lists. Excludes rows that exist only for linkage. */
 export const demoSubsectionEvents = () => DEMO_AUDIT_EVENTS.filter((event) => !event.__demoOutOfScope)
