@@ -1407,13 +1407,16 @@ const Materials = ({ isAdminMode = false }) => {
                           throw new Error('Session expired. Please login again.')
                         }
 
-                        const { error: deactivateError } = await supabase
-                          .from('raw_materials')
-                          .update({
-                            is_active: false,
-                            updated_at: new Date().toISOString()
-                          })
-                          .eq('id', editingMaterial.id)
+                        // Routed through an RPC rather than a direct update so
+                        // the change cannot happen without an audit entry (C3).
+                        const { error: deactivateError } = await supabase.rpc(
+                          'set_raw_material_active',
+                          {
+                            p_acting_user_id: session.id,
+                            p_raw_material_id: editingMaterial.id,
+                            p_is_active: false
+                          }
+                        )
 
                         if (deactivateError) throw deactivateError
 
@@ -1498,13 +1501,16 @@ const Materials = ({ isAdminMode = false }) => {
                           throw new Error('Session expired. Please login again.')
                         }
 
-                        const { error: activateError } = await supabase
-                          .from('raw_materials')
-                          .update({
-                            is_active: true,
-                            updated_at: new Date().toISOString()
-                          })
-                          .eq('id', editingMaterial.id)
+                        // Routed through an RPC rather than a direct update so
+                        // the change cannot happen without an audit entry (C3).
+                        const { error: activateError } = await supabase.rpc(
+                          'set_raw_material_active',
+                          {
+                            p_acting_user_id: session.id,
+                            p_raw_material_id: editingMaterial.id,
+                            p_is_active: true
+                          }
+                        )
 
                         if (activateError) throw activateError
 

@@ -49,8 +49,14 @@
 
 - **What already exists.** `audit_logs` has been replaced by `audit_events` +
   `audit_auth_events` (see §6 for the schema, `migrations/replace-audit-logs-with-audit-events.sql`
-  for the table/RLS/helper-function migration). **Nine** flows now write to
+  for the table/RLS/helper-function migration). **Eleven** flows now write to
   `audit_events`:
+  - **B1/C3** — `finalize_stock_in()` and `set_raw_material_active()`
+    (`migrations/wire-stock-in-and-catalog-status-to-audit-events.sql`) own
+    their write paths outright: the stock-in header/inventory/batches, and the
+    `is_active` flip, happen *inside* the function that logs them. Unlike the
+    log-only RPCs below, the audit row cannot be skipped by a client that
+    declines to ask for it.
   - **A1/A2 (auth)** — `authenticate_user_by_key` calls `log_auth_event()` on
     both the success and failure branch, writing an `audit_events` row plus its
     `audit_auth_events` satellite
@@ -98,11 +104,11 @@
 |---|--------|---------|------|--------|
 | A1 | Key-based login (success) | supervisor, PM, bp_operator, executives | Auth | ✅ |
 | A2 | Key-based login (failure / invalid key) | any non-admin | Auth | ✅ |
-| B1 | Stock-In finalize (receive stock) | purchase_manager | Inventory In | ❌ |
+| B1 | Stock-In finalize (receive stock) | purchase_manager | Inventory In | ✅ |
 | B2 | Manual inventory adjustment (increment/decrement) | purchase_manager | Inventory In | ✅ |
 | C1 | Create raw material | purchase_manager | Catalog | ✅ |
 | C2 | Edit raw material (incl. cost) | purchase_manager | Catalog | ✅ |
-| C3 | Deactivate / reactivate raw material | purchase_manager | Catalog | ❌ |
+| C3 | Deactivate / reactivate raw material | admin in UI (see §3.C) | Catalog | ✅ |
 | D1 | Regular stock-out / pack requisition (deduct inventory) | purchase_manager | Stock Out | ✅ |
 | D2 | Self stock-out (wastage / adjust / dispatch / R&D) | purchase_manager | Stock Out | ✅ |
 | D3 | Inter-cloud-kitchen transfer — destination leg | purchase_manager | Stock Out | ⚠️ |
@@ -117,7 +123,7 @@
 | G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ❌ |
 | H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ❌ |
 
-**9 audited, 1 partial, 10 gaps** across 20 action points.
+**11 audited, 1 partial, 8 gaps** across 20 action points.
 
 ---
 
@@ -194,16 +200,40 @@
   more `stock_in_batches` (each with **unit cost + GST**), and increments
   `inventory`. Optionally uploads an invoice image.
 - **Where:** `frontend/src/pages/purchase-manager/StockIn.jsx` → `handleFinalize`
-  (~line 866; inserts at 978 `stock_in`, 1009 `inventory`, 1040 `stock_in_batches`).
+  now makes a single `finalize_stock_in` RPC call
+  (`migrations/wire-stock-in-and-catalog-status-to-audit-events.sql`) in place
+  of the three separate client inserts it used to run. The RPC creates the
+  `stock_in` header, the `inventory` rows and the `stock_in_batches`, and logs —
+  `action: 'stock_in_received'`, `category: 'inventory_in'`, `severity:
+  'review'`, with supplier, invoice number, per-item unit cost and GST in
+  `new_values`, not just a total.
 - **Why audit:** This is the single largest *inbound* value event. It raises
   physical stock **and** sets the cost basis (unit cost, GST, supplier, invoice
   number) that later drives every FIFO cost calculation and outlet cost report.
   Inflated quantities, wrong costs, or fake suppliers are classic procurement
   fraud vectors. Management must be able to see who received what, at what cost,
-  against which invoice. Per decision #2, closing this gap means wrapping
-  stock-in finalization in a new Postgres function (mirroring
-  `pack_allocation_request`) rather than adding a client-side insert.
-- **Status:** ❌ GAP.
+  against which invoice. **Now logged**, at the granularity that reason
+  demands.
+- **Status:** ✅ Audited, DB-side.
+- **Two bugs closed on the way in**, both consequences of the flow having been
+  three unrelated client calls:
+  1. **It was not atomic.** A failure on the batches insert left an orphaned
+     `stock_in` header — a receipt carrying a cost, a supplier and an invoice
+     number, but no stock and no batches — and the code simply threw. All three
+     writes now commit or roll back together.
+  2. **The header total could disagree with the batches.** `total_cost` was
+     computed from the GST typed into the form, but the batch was written with
+     `gst_percent = 0` whenever `stock_in_type = 'kitchen'`. GST is now
+     normalized once, server-side, and both the stored batch and the total are
+     derived from that same value. `calculateTotalCost()` survives in the
+     frontend as the live form preview only — it is no longer what gets stored.
+- **Note:** the RPC accepts only `stock_in_type` `purchase` or `kitchen`. The
+  other two valid values — `inter_cloud` (D3's destination leg) and
+  `manual_inventory` (B2) — are minted by their own flows with their own audit
+  entries, and this function must not become a second way to produce them.
+- **Note:** the invoice image is still uploaded to storage by the client
+  *before* the RPC runs, so a failure can leave an unreferenced file in the
+  bucket. That was already true and is unchanged.
 
 #### B2 — Manual inventory adjustment (increment / decrement)
 - **What happens:** PM overrides an item's on-hand quantity; the system creates a
@@ -247,18 +277,45 @@
 - **Status:** ✅ Audited, DB-side.
 
 #### C3 — Deactivate / reactivate raw material
-- **What happens:** PM soft-deletes (`is_active = false`) or restores
-  (`is_active = true`) a material from the edit modal.
-- **Where:** `Materials.jsx` inline modal buttons (deactivate update ~line 1428;
-  reactivate update ~line 1519). **No `audit_logs` write in these handlers.**
+- **What happens:** a material is soft-deleted (`is_active = false`) or restored
+  (`is_active = true`) from the edit modal.
+- **Where:** `Materials.jsx` inline modal buttons, both of which now call the
+  `set_raw_material_active` RPC
+  (`migrations/wire-stock-in-and-catalog-status-to-audit-events.sql`) instead of
+  updating `raw_materials` directly — `category: 'catalog'`, `action:
+  'deactivate'` / `'reactivate'`, `severity: 'critical'`, with the before/after
+  `is_active` plus the material's name/code/unit.
 - **Why audit:** Deactivating a material hides it from allocation and reporting —
-  a way to make an item "disappear" without deleting its history. The
-  activate/deactivate toggle should be logged the same way create/edit already
-  are; leaving it unlogged is an inconsistency in an otherwise-audited flow.
-- **Status:** ❌ GAP.
-- **Note:** unlike C1/C2, closing this one server-side would need `raw_materials`
-  updates to route through a Postgres function/trigger instead of the current
-  direct client `.update()`, per decision #2.
+  a way to make an item "disappear" without deleting its history.
+- **Status:** ✅ Audited, DB-side.
+- **Unlike C1/C2, the write path itself moved server-side.** C1/C2 kept their
+  client-side insert/update and call a log-only RPC afterwards, which a client
+  can simply decline to call. `set_raw_material_active` owns the `is_active`
+  flip, so there is no way to perform the action without producing the audit
+  row. C1/C2 are candidates for the same treatment later.
+- **Idempotent by design:** if the material is already in the requested state
+  the RPC returns `changed: false` and writes nothing, so a double-clicked
+  confirm button can't produce two identical "deactivated" rows that read as two
+  separate decisions.
+- **Severity is `critical`, not `review`.** §1's criterion 3 names
+  "re-activations" outright as a reverse/override, and §6.3 maps criterion 3 to
+  critical. Both directions are rare, so neither crowds the review queue.
+
+> **⚠️ Scope correction for all of section C.** This document lists C1/C2/C3 as
+> `purchase_manager` actions. **They are not.** In `Materials.jsx`, `handleAddNew`
+> (C1), `handleEdit` (C2) and both the deactivate and reactivate modals are all
+> gated on `isAdminMode`, and the PM route (`App.jsx` → `<Materials />`) leaves
+> `isAdminMode` at its default of `false`. A purchase manager sees the Materials
+> screen **read-only**; every catalog write in the UI today is an Admin action,
+> which §1 would otherwise put out of scope.
+>
+> C3 was still worth closing, because **that gate is cosmetic**. The UPDATE
+> policy on `raw_materials` is `is_purchase_manager_or_admin()`, and that
+> function ends in `RETURN true` for anon — and *every* key-based login is anon.
+> So any key holder, of any role, can flip `is_active` with a direct API call
+> regardless of what the UI shows them. That is exactly the "the application is
+> the only gate" exposure §1 gives as the reason to audit key-based roles at
+> all. See §4 for the general form of this problem.
 
 ---
 
@@ -526,8 +583,9 @@
   3. **Checkout draft save (F1)** — the actual wastage/return/extra-consumption
      figures are set here, potentially over several saves; only the final
      confirm (F2) is logged, and only as an aggregate.
-  4. **Stock-in receiving (B1)** — the largest inbound financial event
-     (quantity + cost + supplier + invoice) has no audit trail.
+  4. ~~**Stock-in receiving (B1)**~~ — **closed.** The largest inbound financial
+     event (quantity + cost + supplier + invoice) is now logged in full by
+     `finalize_stock_in()`.
   5. **Dispatch planning (G1/G2) and kitchen lock (H1)** — the plan → lock →
      checkout chain is audited only at its very last step (F2); the
      plan-authoring and kitchen-confirmation steps that precede it aren't.
@@ -538,6 +596,23 @@
 - **D3's destination leg is the one remaining "partial."** The source side of
   an inter-cloud transfer is covered by D2's audit entry; the new inventory
   minted at the destination kitchen is not separately logged.
+- **⚠️ Role gates in the UI are not role gates in the database — found while
+  closing C3, but general.** Several RLS policies are written in terms of
+  `is_purchase_manager_or_admin()`, and that function's final statement is
+  `RETURN true` for anon sessions. Every key-based login *is* anon. The comment
+  in the function is explicit that this is intentional — "application-level
+  validation ensures only authorized users can access" — so the app's role
+  checks are the only thing standing between any key holder and these tables.
+  Concretely: the Materials screen hides catalog editing behind `isAdminMode`,
+  but a supervisor's or bp_operator's key can still update `raw_materials`
+  directly through the API. This is the same exposure §1 cites as the reason to
+  audit key-based roles at all, and it is *why* auditing them is load-bearing
+  rather than merely nice to have — the audit trail is currently the only
+  after-the-fact control on these paths.
+  **Not changed here.** `is_purchase_manager_or_admin()` guards `inventory`,
+  `stock_in`, `raw_materials` and more, so tightening it is a systemic security
+  change that deserves its own scoped pass, not a side effect of an audit
+  ticket.
 - **Out of scope by design:** all Admin pages
   (`AdminUsers`, `AdminOutlets`, `AdminVendors`, `AdminOperators`,
   `AdminRecipes`, `AdminBrandDispatch`, `AdminFranchiseCloning`,
@@ -561,10 +636,12 @@ are now settled and have been folded into the relevant sections above.
    written from Postgres functions/triggers, not client-side inserts —
    matching the existing pattern in `pack_allocation_request`,
    `cancel_allocation_packing`, and `confirm_checkout_form`. Every ❌ gap above
-   that is currently plain client-side table access (B1, C3, D3's destination
-   leg, E1–E4, F1, G1–G2, H1) will need its write path moved into (or wrapped
-   by) a Postgres function as part of closing it. Table/column schemas for the
-   audit entries themselves are intentionally deferred to a later pass.
+   that is currently plain client-side table access (D3's destination leg,
+   E1–E4, F1, G1–G2, H1) will need its write path moved into (or wrapped
+   by) a Postgres function as part of closing it. B1 and C3 have since been
+   closed exactly this way (`finalize_stock_in`, `set_raw_material_active`).
+   Table/column schemas for the audit entries themselves are intentionally
+   deferred to a later pass.
 3. **Read/report access — not needed.** This document covers state-changing
    actions only; viewing or exporting reports is out of scope.
 4. **Edit granularity — record-level is enough.** For edits (C3, E2, F1),
@@ -583,8 +660,11 @@ are now settled and have been folded into the relevant sections above.
 > narrow RPCs that wire B2/C1/C2/D2 to the same schema;
 > `migrations/wire-auth-events-to-authenticate-user-by-key.sql` wires A1/A2
 > into `authenticate_user_by_key` and adds the request-context helpers that
-> populate `ip_address`/`user_agent`. Still a v1 — expect further iteration
-> as B1, C3, E1–E4, F1, G1–G2, H1 get closed.
+> populate `ip_address`/`user_agent`;
+> `migrations/wire-stock-in-and-catalog-status-to-audit-events.sql` adds
+> `finalize_stock_in` (B1) and `set_raw_material_active` (C3), the first two
+> functions to own their write path rather than just log alongside it. Still a
+> v1 — expect further iteration as E1–E4, F1, G1–G2, H1 get closed.
 
 ### 6.1 Why the current `audit_logs` table won't carry this
 
@@ -743,7 +823,10 @@ reporting can group by it without re-deriving anything:
 judgment call — just making the existing reasoning queryable:
 
 - `critical` — criterion 3 (reversal/override) or 6 (auth failure): D4, E3,
-  F1 deletes, G2, A2.
+  F1 deletes, G2, A2, **and C3** — criterion 3 names "re-activations"
+  explicitly, and a deactivation is the doc's own "make an item disappear
+  without deleting its history". C3 was missing from this list only because it
+  was still a gap when the list was written.
 - `review` — criterion 1, 2, 4, or 5 (inventory/financial/reconciliation/lock):
   everything else that's a ❌ or ✅ in §2.
 - `info` — anything purely additive with no financial or physical-stock
@@ -758,7 +841,9 @@ judgment call — just making the existing reasoning queryable:
   through `entity_id NOT NULL`.
 - **RLS** collapses from "one `EXISTS` subquery per `entity_type`" to one
   check: `audit_events.cloud_kitchen_id = <acting PM's kitchen>` — no new
-  branch needed as B1, C3, E1-E4, F1, G1-G2, H1 get wired up.
+  branch needed as E1-E4, F1, G1-G2, H1 get wired up. Borne out in practice:
+  A1/A2, B1 and C3 each introduced a new `entity_type` (or none at all, for
+  auth) and none of them required an RLS change.
 - **D3** (today's one "partial") becomes two rows sharing one
   `correlation_id` — reviewable as a matched pair instead of only the source
   leg being visible.

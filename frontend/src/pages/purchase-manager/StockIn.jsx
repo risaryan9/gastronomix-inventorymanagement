@@ -971,75 +971,33 @@ const StockIn = () => {
         }
       }
 
-      const totalCost = calculateTotalCost()
-
-      // Create stock_in record
-      const { data: stockInData, error: stockInError } = await supabase
-        .from('stock_in')
-        .insert({
-          cloud_kitchen_id: session.cloud_kitchen_id,
-          received_by: session.id,
-          receipt_date: purchaseSlip.receipt_date,
-          supplier_name: stockInType === 'purchase' ? (purchaseSlip.supplier_name.trim() || null) : null,
-          invoice_number: stockInType === 'purchase' ? (purchaseSlip.invoice_number.trim() || null) : null,
-          total_cost: totalCost,
-          notes: purchaseSlip.notes.trim() || null,
-          stock_in_type: stockInType,
-          invoice_image_url: invoiceImageUrl
-        })
-        .select()
-        .single()
-
-      if (stockInError) throw stockInError
-
-      // Ensure inventory entries exist for all materials
-      // The trigger will automatically set quantity from batches
-      for (const item of validPurchaseItems) {
-        const { data: existingInventory } = await supabase
-          .from('inventory')
-          .select('id')
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .eq('raw_material_id', item.raw_material_id)
-          .maybeSingle()
-
-        // Create inventory entry if it doesn't exist (quantity will be set by trigger)
-        if (!existingInventory) {
-          const { error: inventoryError } = await supabase
-            .from('inventory')
-            .insert({
-              cloud_kitchen_id: session.cloud_kitchen_id,
-              raw_material_id: item.raw_material_id,
-              quantity: 0, // Trigger will update this from batches
-              updated_by: session.id
-            })
-
-          if (inventoryError) {
-            console.error('Error creating inventory entry:', inventoryError)
-          }
-        }
-      }
-
-      // Create stock_in_batches (FIFO tracking)
-      // Kitchen stock-in: GST auto-filled to 0%; Purchase: use entered GST (required)
-      const stockInBatches = validPurchaseItems.map(item => {
-        const quantity = parseFloat(item.quantity)
-        const gstPercent = stockInType === 'kitchen' ? 0 : (parseFloat(item.gst_percent) || 0)
-        return {
-          stock_in_id: stockInData.id,
+      // One transactional RPC creates the stock_in header, the inventory
+      // rows and the stock_in_batches, and writes the audit entry — all or
+      // nothing. Previously these were three separate client calls with no
+      // transaction, so a failure partway left an orphaned stock_in header.
+      //
+      // total_cost and the per-item GST are derived server-side rather than
+      // sent from here, so the stored total can't drift from the GST that
+      // actually lands on each batch. calculateTotalCost() below is still
+      // the live preview in the form; it is no longer the stored value.
+      const { error: finalizeError } = await supabase.rpc('finalize_stock_in', {
+        p_acting_user_id: session.id,
+        p_cloud_kitchen_id: session.cloud_kitchen_id,
+        p_receipt_date: purchaseSlip.receipt_date,
+        p_stock_in_type: stockInType,
+        p_items: validPurchaseItems.map(item => ({
           raw_material_id: item.raw_material_id,
-          cloud_kitchen_id: session.cloud_kitchen_id,
-          quantity_purchased: quantity,
-          quantity_remaining: quantity, // Initially, all purchased quantity is remaining
+          quantity: parseFloat(item.quantity),
           unit_cost: parseFloat(item.unit_cost),
-          gst_percent: gstPercent
-        }
+          gst_percent: parseFloat(item.gst_percent) || 0
+        })),
+        p_supplier_name: purchaseSlip.supplier_name || null,
+        p_invoice_number: purchaseSlip.invoice_number || null,
+        p_notes: purchaseSlip.notes || null,
+        p_invoice_image_url: invoiceImageUrl
       })
 
-      const { error: batchesError } = await supabase
-        .from('stock_in_batches')
-        .insert(stockInBatches)
-
-      if (batchesError) throw batchesError
+      if (finalizeError) throw finalizeError
 
       // Note: inventory.quantity is automatically updated by the trigger
       // sync_inventory_quantity_from_batches when batches are inserted
