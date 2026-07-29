@@ -489,114 +489,34 @@ const OutletsPageBase = ({ role }) => {
         throw new Error('Duplicate materials detected. Please remove duplicates.')
       }
 
-      const today = getLocalDateString()
-      const { data: packedRequest, error: packedError } = await supabase
-        .from('allocation_requests')
-        .select('id')
-        .eq('outlet_id', activeOutlet.id)
-        .eq('request_date', today)
-        .eq('is_packed', true)
-        .maybeSingle()
-      if (packedError) throw packedError
-      if (packedRequest) throw new Error('Today\'s allocation request for this outlet has already been packed and cannot be edited.')
-
-      if (editingRequest) {
-        const requestPatch = isSupervisor
-          ? { notes: editingRequest.notes, supervisor_name: supervisorName.trim() || null }
-          : { notes: editingRequest.notes }
-
-        const { error: updateError } = await supabase
-          .from('allocation_requests')
-          .update(requestPatch)
-          .eq('id', editingRequest.id)
-        if (updateError) throw updateError
-
-        const existingItems = editingRequest.allocation_request_items || []
-        const existingItemsMap = new Map(existingItems.map(item => [item.raw_materials.id, item]))
-        const newItemsMap = new Map(selectedItems.map(item => [item.raw_material_id, item]))
-
-        const itemsToUpdate = []
-        const itemsToInsert = []
-        const itemsToDelete = []
-
-        existingItems.forEach(existingItem => {
-          const materialId = existingItem.raw_materials.id
-          const newItem = newItemsMap.get(materialId)
-          if (newItem) {
-            const existingQty = parseFloat(existingItem.quantity)
-            const newQty = parseFloat(newItem.requested_quantity)
-            if (Math.abs(existingQty - newQty) > 0.0001) {
-              itemsToUpdate.push({ id: existingItem.id, quantity: newQty })
-            }
-          } else {
-            itemsToDelete.push(existingItem.id)
-          }
-        })
-
-        selectedItems.forEach(newItem => {
-          if (!existingItemsMap.has(newItem.raw_material_id)) {
-            itemsToInsert.push({
-              allocation_request_id: editingRequest.id,
-              raw_material_id: newItem.raw_material_id,
-              quantity: parseFloat(newItem.requested_quantity)
-            })
-          }
-        })
-
-        for (const item of itemsToUpdate) {
-          const { error } = await supabase
-            .from('allocation_request_items')
-            .update({ quantity: item.quantity })
-            .eq('id', item.id)
-          if (error) throw error
-        }
-
-        if (itemsToDelete.length > 0) {
-          const { error } = await supabase
-            .from('allocation_request_items')
-            .delete()
-            .in('id', itemsToDelete)
-          if (error) throw error
-        }
-
-        if (itemsToInsert.length > 0) {
-          const { error } = await supabase
-            .from('allocation_request_items')
-            .insert(itemsToInsert)
-          if (error) throw error
-        }
-
-        setAlert({ type: 'success', message: 'Allocation request updated successfully.' })
-      } else {
-        const payload = {
-          outlet_id: activeOutlet.id,
-          cloud_kitchen_id: session.cloud_kitchen_id,
-          requested_by: session.id,
-          request_date: today,
-          is_packed: false
-        }
-        if (treatsAsSupervisor) payload.supervisor_name = supervisorName.trim() || null
-
-        const { data: allocationRequest, error: allocationError } = await supabase
-          .from('allocation_requests')
-          .insert(payload)
-          .select()
-          .single()
-        if (allocationError) throw allocationError
-
-        const allocationRequestItems = selectedItems.map(item => ({
-          allocation_request_id: allocationRequest.id,
+      // One transactional RPC handles both create and edit: header, item
+      // diff (update/insert/delete) and the audit entry, all or nothing.
+      // It also owns request_date — previously computed on the client, and
+      // inconsistently across the three pages that ran this same flow.
+      // The packed-request guard now lives inside the RPC too, since a
+      // SECURITY DEFINER function bypasses the RLS policies that enforced it.
+      const { error: saveError } = await supabase.rpc('save_allocation_request', {
+        p_acting_user_id: session.id,
+        p_outlet_id: activeOutlet.id,
+        p_cloud_kitchen_id: session.cloud_kitchen_id,
+        p_items: selectedItems.map(item => ({
           raw_material_id: item.raw_material_id,
           quantity: parseFloat(item.requested_quantity)
-        }))
+        })),
+        p_allocation_request_id: editingRequest ? editingRequest.id : null,
+        p_supervisor_name: supervisorName.trim() || null,
+        // The PM view of this page must not touch supervisor_name.
+        p_set_supervisor_name: editingRequest ? isSupervisor : treatsAsSupervisor
+      })
 
-        const { error: itemsError } = await supabase
-          .from('allocation_request_items')
-          .insert(allocationRequestItems)
-        if (itemsError) throw itemsError
+      if (saveError) throw saveError
 
-        setAlert({ type: 'success', message: 'Allocation request created successfully.' })
-      }
+      setAlert({
+        type: 'success',
+        message: editingRequest
+          ? 'Allocation request updated successfully.'
+          : 'Allocation request created successfully.'
+      })
 
       setShowAllocateModal(false)
       setEditingRequest(null)

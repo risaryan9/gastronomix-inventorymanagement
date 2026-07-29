@@ -290,187 +290,34 @@ const OutletDetails = () => {
     const selectedItems = getSelectedItemsForSubmit()
     setShowConfirmModal(false)
     try {
-      if (editingRequest) {
-        // Validate no duplicate materials before proceeding
-        const materialIds = selectedItems.map(item => item.raw_material_id)
-        const uniqueMaterialIds = new Set(materialIds)
-        if (materialIds.length !== uniqueMaterialIds.size) {
-          throw new Error('Duplicate materials detected. Please remove duplicates.')
-        }
-
-        // Update existing allocation request
-        const { error: updateError } = await supabase
-          .from('allocation_requests')
-          .update({
-            notes: editingRequest.notes // Preserve notes if any
-          })
-          .eq('id', editingRequest.id)
-
-        if (updateError) throw updateError
-
-        // Get existing items from the request
-        const existingItems = editingRequest.allocation_request_items || []
-        const existingItemsMap = new Map(
-          existingItems.map(item => [item.raw_materials.id, item])
-        )
-
-        // Create maps for efficient lookup
-        const newItemsMap = new Map(
-          selectedItems.map(item => [item.raw_material_id, item])
-        )
-
-        // Separate items into: update, insert, and delete
-        const itemsToUpdate = []
-        const itemsToInsert = []
-        const itemsToDelete = []
-
-        // Check each existing item
-        existingItems.forEach(existingItem => {
-          const materialId = existingItem.raw_materials.id
-          const newItem = newItemsMap.get(materialId)
-
-          if (newItem) {
-            // Item exists in both - check if quantity changed (use tolerance for floating point)
-            const existingQty = parseFloat(existingItem.quantity)
-            const newQty = parseFloat(newItem.requested_quantity)
-            // Compare with small tolerance for floating point precision
-            if (Math.abs(existingQty - newQty) > 0.0001) {
-              itemsToUpdate.push({
-                id: existingItem.id,
-                quantity: newQty
-              })
-            }
-            // If quantity is same, no update needed
-          } else {
-            // Item exists in old but not in new - delete it
-            itemsToDelete.push(existingItem.id)
-          }
-        })
-
-        // Check for new items that don't exist in old
-        selectedItems.forEach(newItem => {
-          if (!existingItemsMap.has(newItem.raw_material_id)) {
-            itemsToInsert.push({
-              allocation_request_id: editingRequest.id,
-              raw_material_id: newItem.raw_material_id,
-              quantity: parseFloat(newItem.requested_quantity)
-            })
-          }
-        })
-
-        console.log('Update operations:', {
-          itemsToUpdate,
-          itemsToInsert,
-          itemsToDelete,
-          existingItems: existingItems.map(i => ({ id: i.id, material: i.raw_materials.id, qty: i.quantity })),
-          selectedItems: selectedItems.map(i => ({ material: i.raw_material_id, qty: i.requested_quantity }))
-        })
-
-        // Perform updates, deletes, and inserts
-        // Update existing items
-        if (itemsToUpdate.length > 0) {
-          for (const item of itemsToUpdate) {
-            console.log('Updating item:', item.id, 'with quantity:', item.quantity)
-            const { data, error } = await supabase
-              .from('allocation_request_items')
-              .update({ quantity: item.quantity })
-              .eq('id', item.id)
-              .select()
-            
-            console.log('Update result:', { data, error })
-            if (error) throw error
-            if (!data || data.length === 0) {
-              console.warn('Update returned no rows for item:', item.id)
-            }
-          }
-        }
-
-        // Delete removed items
-        if (itemsToDelete.length > 0) {
-          console.log('Deleting items:', itemsToDelete)
-          const { data, error: deleteError } = await supabase
-            .from('allocation_request_items')
-            .delete()
-            .in('id', itemsToDelete)
-            .select()
-          
-          console.log('Delete result:', { data, error: deleteError })
-          if (deleteError) throw deleteError
-        }
-
-        // Insert new items
-        if (itemsToInsert.length > 0) {
-          console.log('Inserting items:', itemsToInsert)
-          const { data, error: insertError } = await supabase
-            .from('allocation_request_items')
-            .insert(itemsToInsert)
-            .select()
-          
-          console.log('Insert result:', { data, error: insertError })
-          if (insertError) throw insertError
-        }
-
-        setAlert({ type: 'success', message: 'Allocation request updated successfully!' })
-        // Refresh the allocation requests to show updated data
-        await fetchAllocationRequests()
-      } else {
-        // Before creating a new request, ensure there is no packed request for today
-        const today = new Date().toISOString().split('T')[0]
-        const { data: existingPacked, error: existingPackedError } = await supabase
-          .from('allocation_requests')
-          .select('id')
-          .eq('outlet_id', outletId)
-          .eq('request_date', today)
-          .eq('is_packed', true)
-          .maybeSingle()
-
-        if (existingPackedError) throw existingPackedError
-        if (existingPacked) {
-          throw new Error('Today\'s allocation request for this outlet has already been packed. You cannot create another request for today.')
-        }
-
-        // Validate no duplicate materials before proceeding
-        const materialIds = selectedItems.map(item => item.raw_material_id)
-        const uniqueMaterialIds = new Set(materialIds)
-        if (materialIds.length !== uniqueMaterialIds.size) {
-          throw new Error('Duplicate materials detected. Please remove duplicates.')
-        }
-
-        // Create new allocation request
-        const { data: allocationRequest, error: allocationError } = await supabase
-          .from('allocation_requests')
-          .insert({
-            outlet_id: outletId,
-            cloud_kitchen_id: session.cloud_kitchen_id,
-            requested_by: session.id,
-            request_date: new Date().toISOString().split('T')[0],
-            is_packed: false
-          })
-          .select()
-          .single()
-
-        if (allocationError) throw allocationError
-
-        // Remove any duplicate materials from selectedItems before inserting
-        const uniqueItems = selectedItems.filter((item, index, self) =>
-          index === self.findIndex(t => t.raw_material_id === item.raw_material_id)
-        )
-
-        // Create allocation request items
-        const allocationRequestItems = uniqueItems.map(item => ({
-          allocation_request_id: allocationRequest.id,
+      // One transactional RPC handles both create and edit: header, item
+      // diff (update/insert/delete) and the audit entry, all or nothing.
+      // It also owns request_date, which this page previously derived from
+      // toISOString() -- i.e. UTC, which filed requisitions under the wrong
+      // day between midnight and 05:30 IST. The packed-request guard now
+      // lives inside the RPC too, since a SECURITY DEFINER function bypasses
+      // the RLS policies that used to enforce it.
+      const { error: saveError } = await supabase.rpc('save_allocation_request', {
+        p_acting_user_id: session.id,
+        p_outlet_id: outletId,
+        p_cloud_kitchen_id: session.cloud_kitchen_id,
+        p_items: selectedItems.map(item => ({
           raw_material_id: item.raw_material_id,
           quantity: parseFloat(item.requested_quantity)
-        }))
+        })),
+        p_allocation_request_id: editingRequest ? editingRequest.id : null,
+        p_supervisor_name: null,
+        p_set_supervisor_name: false
+      })
 
-        const { error: itemsError } = await supabase
-          .from('allocation_request_items')
-          .insert(allocationRequestItems)
+      if (saveError) throw saveError
 
-        if (itemsError) throw itemsError
-
-        setAlert({ type: 'success', message: 'Allocation request created successfully!' })
-      }
+      setAlert({
+        type: 'success',
+        message: editingRequest
+          ? 'Allocation request updated successfully!'
+          : 'Allocation request created successfully!'
+      })
 
       setShowAllocateModal(false)
       setAllocationRows([])

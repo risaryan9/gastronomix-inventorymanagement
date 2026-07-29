@@ -2347,19 +2347,22 @@ const StockOut = () => {
       if (!isSelfStockOut) {
         // Persist any PM-added materials onto the requisition itself first, so the
         // original ask stays reconstructable even though it was extended after the
-        // supervisor submitted it. TODO(audit): once server-side audit logging for
-        // requisition edits lands (see docs/AUDIT_TRAIL_REQUIREMENTS.md, "PM adds
-        // item to requisition"), this insert should move into a SECURITY DEFINER
-        // RPC that logs it, matching the pack_allocation_request pattern.
+        // supervisor submitted it. Goes through a SECURITY DEFINER RPC that logs
+        // the addition under its own action, keeping "the PM widened someone
+        // else's request" distinguishable from the supervisor editing their own.
         const pmAddedItems = allocationItems.filter(item => item.addedByPm)
         if (pmAddedItems.length > 0) {
-          const { error: addItemsError } = await supabase
-            .from('allocation_request_items')
-            .insert(pmAddedItems.map(item => ({
-              allocation_request_id: selectedRequest.id,
-              raw_material_id: item.raw_material_id,
-              quantity: parseFloat(item.allocated_quantity)
-            })))
+          const { error: addItemsError } = await supabase.rpc(
+            'add_items_to_allocation_request',
+            {
+              p_acting_user_id: session.id,
+              p_allocation_request_id: selectedRequest.id,
+              p_items: pmAddedItems.map(item => ({
+                raw_material_id: item.raw_material_id,
+                quantity: parseFloat(item.allocated_quantity)
+              }))
+            }
+          )
 
           if (addItemsError) throw addItemsError
         }

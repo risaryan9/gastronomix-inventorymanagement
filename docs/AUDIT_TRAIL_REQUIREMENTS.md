@@ -49,8 +49,13 @@
 
 - **What already exists.** `audit_logs` has been replaced by `audit_events` +
   `audit_auth_events` (see §6 for the schema, `migrations/replace-audit-logs-with-audit-events.sql`
-  for the table/RLS/helper-function migration). **Twelve** flows now write to
+  for the table/RLS/helper-function migration). **Sixteen** flows now write to
   `audit_events`:
+  - **E1–E4** — `save_allocation_request()` (create/edit/delete-lines) and
+    `add_items_to_allocation_request()` (the PM's pre-pack additions), in
+    `migrations/wire-requisitions-to-audit-events.sql`. The first replaces three
+    near-identical client-side `confirmAllocation` implementations with one
+    function, and fixes a timezone bug in two of them along the way (see §3.E1).
   - **D3** — `receive_inter_cloud_transfer()`
     (`migrations/wire-inter-cloud-destination-leg-to-audit-events.sql`) owns the
     destination-side writes of an inter-cloud transfer and logs them against the
@@ -119,17 +124,17 @@
 | D2 | Self stock-out (wastage / adjust / dispatch / R&D) | purchase_manager | Stock Out | ✅ |
 | D3 | Inter-cloud-kitchen transfer — destination leg | purchase_manager | Stock Out | ✅ |
 | D4 | Cancel allocation packing (reverse FIFO) | purchase_manager | Stock Out | ✅ |
-| E1 | Create allocation request (requisition) | supervisor, bp_operator, PM | Requisitions | ❌ |
-| E2 | Edit allocation request items/quantities | supervisor, bp_operator, PM | Requisitions | ❌ |
-| E3 | Delete allocation request items | supervisor, bp_operator, PM | Requisitions | ❌ |
-| E4 | PM adds an item to a supervisor's requisition (pre-pack) | purchase_manager | Requisitions | ❌ |
+| E1 | Create allocation request (requisition) | supervisor, bp_operator, PM | Requisitions | ✅ |
+| E2 | Edit allocation request items/quantities | supervisor, bp_operator, PM | Requisitions | ✅ |
+| E3 | Delete allocation request items | supervisor, bp_operator, PM | Requisitions | ✅ |
+| E4 | PM adds an item to a supervisor's requisition (pre-pack) | purchase_manager | Requisitions | ✅ |
 | F1 | Save checkout/closing draft (returns, wastage, extra consumption) | supervisor | Checkout | ❌ |
 | F2 | Confirm/lock checkout form | supervisor | Checkout | ✅ |
 | G1 | Create/save dispatch plan + items | dispatch_executive | Dispatch Plan | ❌ |
 | G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ❌ |
 | H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ❌ |
 
-**12 audited, 0 partial, 8 gaps** across 20 action points.
+**16 audited, 0 partial, 4 gaps** across 20 action points.
 
 ---
 
@@ -454,12 +459,38 @@
 - **Why audit:** The requisition is the **demand signal** that authorizes stock
   to leave the kitchen. Who requested how much of what, for which outlet, on which
   day is the basis for consumption analytics and for holding an outlet
-  accountable. Over-requesting is the first step in diversion. None of these entry
-  points log today. Per decision #2, closing this — across all three entry
-  points — means introducing a shared Postgres function for creating a
-  requisition (rather than each page inserting directly), similar in spirit to
-  `pack_allocation_request`.
-- **Status:** ❌ GAP.
+  accountable. Over-requesting is the first step in diversion. **Now logged** —
+  `action: 'requisition_created'`, `category: 'requisition'`, `severity:
+  'review'`, with the full item list in `new_values`.
+- **Status:** ✅ Audited, DB-side.
+- **All three entry points now call one function.** `save_allocation_request`
+  (`migrations/wire-requisitions-to-audit-events.sql`) replaces the three
+  near-identical `confirmAllocation` implementations, which had drifted from
+  each other. It handles create *and* edit, because that is one user action —
+  the modal decides which based on whether a request already exists.
+- **It also enforces one requisition per outlet per day.** Each page checked a
+  weaker version of this in JS (packed requests only), and no unique constraint
+  backs it. The rule is now real. Data was clean when this shipped — 0 duplicate
+  outlet/day pairs across 145 requests — so nothing needed reconciling.
+
+> **🐛 A real bug found and fixed here: `request_date` was computed in the wrong
+> timezone by two of the three pages.**
+>
+> `OutletsPageBase` used `getLocalDateString()` (local time). Both `OutletDetails`
+> pages used `new Date().toISOString().split('T')[0]` — **UTC**. India is UTC+5:30,
+> so between 00:00 and 05:30 IST the UTC date is still *yesterday*: a requisition
+> filed from either OutletDetails page in that window landed on the previous day,
+> where every "today's requests" query would miss it — including the packed-check
+> that is supposed to stop a second request being created.
+>
+> The live data settles which is right: of 145 `allocation_requests`, **0 mismatch
+> the IST date of their `created_at`, and 12 mismatch the UTC date.** The business
+> runs on IST.
+>
+> `request_date` is now derived server-side as
+> `(now() AT TIME ZONE 'Asia/Kolkata')::date`, so all three entry points agree and
+> none can drift again. This hardcodes an India assumption — deliberately, for a
+> single-country deployment; a second country makes this a settings lookup.
 
 #### E2 — Edit allocation request items / quantities
 - **What happens:** The same `confirmAllocation` flows, when editing an existing
@@ -469,9 +500,17 @@
   `purchase-manager/OutletDetails.jsx` (~line 303 header, 375 item qty).
 - **Why audit:** Editing a requisition **after** it was created changes the
   authorized amounts — potentially after stock has been discussed or partially
-  planned. Per decision #4, record-level before/after (the request as it was vs.
-  as it is now) is enough for the first pass — no need for a per-field diff.
-- **Status:** ❌ GAP.
+  planned. **Now logged** — `action: 'requisition_updated'`, `category:
+  'requisition'`, `severity: 'review'`, carrying the whole item list before and
+  after, per decision #4's record-level granularity.
+- **Status:** ✅ Audited, DB-side.
+- **A no-op edit writes nothing.** Re-opening a requisition and pressing Confirm
+  without changing anything returns `changed: false` and produces no audit row —
+  that isn't a decision anyone needs to review.
+- **Quantity comparison is now exact.** The client compared quantities with a
+  `0.0001` tolerance to work around JS float error. Server-side these are
+  `numeric`, so `IS DISTINCT FROM` is exact — and numeric equality ignores
+  trailing zeros, so `5.0` vs `5.00` still counts as unchanged.
 
 #### E3 — Delete allocation request items
 - **What happens:** During an edit, removed line items are **deleted** from
@@ -480,7 +519,19 @@
   (~line 390); `purchase-manager/OutletDetails.jsx` (~line 392).
 - **Why audit:** Deleting a requested line erases evidence of what was originally
   asked for. Deletions of authorization records should always be logged.
-- **Status:** ❌ GAP.
+  **Now logged.**
+- **Status:** ✅ Audited, DB-side.
+- **Deletions get their own event, deliberately.** An edit that removes lines
+  writes *two* rows: the `requisition_updated` above, plus
+  `requisition_items_deleted` at `category: 'reversal'`, `severity: 'critical'`
+  — the classification §6.3 gives E3. They share a `correlation_id` (the request
+  id) so the pair is linkable. Folding the deletion into the edit row would have
+  buried a critical action inside a routine one; a separate row means it surfaces
+  in the critical queue on its own. Only correlated when a deletion actually
+  happened, so the partial index on `correlation_id` stays meaningful.
+- The removed lines are snapshotted into `old_values` **before** the delete runs,
+  the same reason `cancel_allocation_packing` does it: the audit row has to
+  outlive the rows it describes.
 
 #### E4 — PM adds an item to a supervisor's requisition (pre-pack)
 - **What happens:** While reviewing an outlet's requisition in the Allocate Stock
@@ -502,11 +553,17 @@
   addition that needs a "who added what, and why" trail, distinct from E1
   (original creation) and E2 (editing existing quantities) because the PM is
   acting on the supervisor's behalf without the supervisor's direct input at that
-  moment. Per decision #2, this should ultimately be logged from inside a Postgres
-  function (ideally the same one that would close E1/E2/E3, or a small dedicated
-  RPC wrapping this insert) rather than the current plain client-side insert.
-- **Status:** ❌ GAP. *(New action point — introduced together with the feature
-  itself; not a regression in previously-audited behavior.)*
+  moment. **Now logged** — `action: 'requisition_items_added_by_pm'`, `category:
+  'requisition'`, `severity: 'review'`, recording the added lines alongside the
+  `requested_by` and `supervisor_name` of the person whose request was widened.
+- **Status:** ✅ Audited, DB-side.
+- **A separate RPC from E1–E3, not the same one.** The doc offered either; a
+  dedicated `add_items_to_allocation_request` won because the semantics differ.
+  `save_allocation_request` **replaces** the item set from the outlet's own
+  screen; this one **appends** from the PM's packing modal. Giving it its own
+  action name is the whole point — "the PM widened someone else's request after
+  they submitted it" has to stay distinguishable from a supervisor editing their
+  own.
 
 ---
 
@@ -609,17 +666,22 @@
   calling role, and — in `cancel_allocation_packing`'s case — a full snapshot
   taken *before* a hard delete specifically so the audit trail survives it.
   Every new gap closed under decision #2 should follow this same shape.
+  *Caveat learned the hard way:* "can't be bypassed" holds only if the function
+  grants are actually right. The two internal-only helpers behind all of this
+  were callable by `anon` for months because their `REVOKE` was written against
+  `PUBLIC` instead of by name — see the first bullet in §6.5.
 - **Real highest-priority gaps, after correcting the RPC findings above:**
   1. ~~**Auth (A1/A2)**~~ — **closed.** Was the foundation gap: every other
      audit entry's value depends on being able to trace it back to a login
      event. `authenticate_user_by_key` now logs both outcomes (see §3.A).
-  2. **Requisition create/edit/delete/PM-add (E1–E4)** — now the top remaining
-     gap. The authorizing document for essentially all outbound stock has no
-     audit trail at all, across all three page entry points, including the PM's
-     own after-the-fact additions.
-  3. **Checkout draft save (F1)** — the actual wastage/return/extra-consumption
-     figures are set here, potentially over several saves; only the final
-     confirm (F2) is logged, and only as an aggregate.
+  2. ~~**Requisition create/edit/delete/PM-add (E1–E4)**~~ — **closed.** The
+     authorizing document for essentially all outbound stock is now logged
+     across all three page entry points, including the PM's own after-the-fact
+     additions.
+  3. **Checkout draft save (F1)** — now the top remaining gap. The actual
+     wastage/return/extra-consumption figures are set here, potentially over
+     several saves; only the final confirm (F2) is logged, and only as an
+     aggregate.
   4. ~~**Stock-in receiving (B1)**~~ — **closed.** The largest inbound financial
      event (quantity + cost + supplier + invoice) is now logged in full by
      `finalize_stock_in()`.
@@ -627,9 +689,21 @@
      checkout chain is audited only at its very last step (F2); the
      plan-authoring and kitchen-confirmation steps that precede it aren't.
 - **Reversals & deletes remain the highest-risk category in general** — this is
-  already reflected in D4 and F2 being audited via RPC. The same treatment is
-  still owed to E3 (delete request items), F1's delete-then-reinsert churn, and
-  G2 (replace plan items).
+  already reflected in D4, F2 and now E3 being audited via RPC. The same
+  treatment is still owed to F1's delete-then-reinsert churn and G2 (replace
+  plan items).
+- **⚠️ Moving a write server-side can silently *remove* a security guard —
+  found while closing E1–E4.** `allocation_request_items` has INSERT, UPDATE and
+  DELETE policies that all require the parent request to have
+  `is_packed = false`. A `SECURITY DEFINER` function owned by `postgres`
+  bypasses RLS entirely, so wrapping those writes in an RPC would have quietly
+  dropped the only thing stopping an already-packed requisition from being
+  edited — after stock has physically left against a fixed item list. Both new
+  functions re-assert `is_packed = false` in their own logic. **Any future gap
+  closed this way must check what RLS was doing for that table first**, and
+  carry it across by hand; F1 (`checkout_form_*`) and G1–G2/H1
+  (`dispatch_plan_items`) should each be checked for the same trap before their
+  writes move.
 - ~~**D3's destination leg is the one remaining "partial."**~~ — **closed, and
   with it the last ⚠️ in this document.** Both legs of an inter-cloud transfer
   are now logged and share a `correlation_id`, so the pair is reviewable
@@ -675,12 +749,13 @@ are now settled and have been folded into the relevant sections above.
    written from Postgres functions/triggers, not client-side inserts —
    matching the existing pattern in `pack_allocation_request`,
    `cancel_allocation_packing`, and `confirm_checkout_form`. Every ❌ gap above
-   that is currently plain client-side table access (E1–E4, F1, G1–G2, H1)
-   will need its write path moved into (or wrapped by) a Postgres function as
-   part of closing it. B1, C3 and D3's destination leg have since been closed
+   that is currently plain client-side table access (F1, G1–G2, H1) will need
+   its write path moved into (or wrapped by) a Postgres function as part of
+   closing it. B1, C3, D3's destination leg and E1–E4 have since been closed
    exactly this way (`finalize_stock_in`, `set_raw_material_active`,
-   `receive_inter_cloud_transfer`). Table/column schemas for the audit entries
-   themselves are intentionally deferred to a later pass.
+   `receive_inter_cloud_transfer`, `save_allocation_request`,
+   `add_items_to_allocation_request`). Table/column schemas for the audit
+   entries themselves are intentionally deferred to a later pass.
 3. **Read/report access — not needed.** This document covers state-changing
    actions only; viewing or exporting reports is out of scope.
 4. **Edit granularity — record-level is enough.** For edits (C3, E2, F1),
@@ -705,8 +780,10 @@ are now settled and have been folded into the relevant sections above.
 > functions to own their write path rather than just log alongside it;
 > `migrations/wire-inter-cloud-destination-leg-to-audit-events.sql` adds
 > `receive_inter_cloud_transfer` (D3) and is the first use of
-> `correlation_id` in anger. Still a v1 — expect further iteration as
-> E1–E4, F1, G1–G2, H1 get closed.
+> `correlation_id` in anger;
+> `migrations/wire-requisitions-to-audit-events.sql` adds
+> `save_allocation_request` and `add_items_to_allocation_request` (E1–E4).
+> Still a v1 — expect further iteration as F1, G1–G2, H1 get closed.
 
 ### 6.1 Why the current `audit_logs` table won't carry this
 
@@ -933,7 +1010,24 @@ judgment call — just making the existing reasoning queryable:
   the fix is rate limiting at the edge, or collapsing repeated identical
   failures (same key hash + IP within N minutes) into a single row with a
   counter, rather than dropping the logging.
-- **Retention/volume** — A1 now writes on every successful login, and once B1,
+- **The "internal only" helpers were not actually internal — fixed in
+  `migrations/fix-internal-audit-helper-grants.sql`.** `log_audit_event()` and
+  `log_auth_event()` are both documented as callable only from inside another
+  `SECURITY DEFINER` function, and both creating migrations end with a
+  `REVOKE ... FROM PUBLIC` meant to enforce that. **Neither revoke did
+  anything.** `REVOKE ... FROM PUBLIC` only strips the implicit privilege held
+  via `PUBLIC`; this database has `ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role`, so both
+  functions were granted to those roles *by name* at creation and the revoke
+  missed them entirely. Since the anon key ships in the frontend bundle, anyone
+  holding it could call `log_audit_event()` with arbitrary arguments and forge
+  audit rows with any actor, category, action or severity — or fabricate
+  `login_success` entries via `log_auth_event()`. The follow-up migration
+  revokes both by name. **Note for future work:** `CREATE OR REPLACE` preserves
+  the ACL, but `DROP` + `CREATE` re-applies the default grants and silently
+  re-opens this — which is exactly how it happened, when A1/A2's migration had
+  to drop `log_auth_event` to add a parameter.
+- **Retention/volume** — A1 now writes on every successful login, and once
   E1-E4, F1, G1-G2, H1 all start writing, volume goes up substantially (every
   draft save in F1 alone). Not urgent yet, but partitioning `audit_events` by
   `created_at` month is the natural answer if it's ever needed.
