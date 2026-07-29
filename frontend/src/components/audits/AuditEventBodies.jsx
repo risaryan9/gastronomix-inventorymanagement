@@ -14,6 +14,7 @@ import {
 import {
   brandLabel,
   displayValue,
+  roleLabel,
   eventKey,
   formatCurrency,
   formatQty,
@@ -727,6 +728,48 @@ const ClosingConfirmedBody = ({ event, description }) => (
   </>
 )
 
+/* ---------------------------- access & overrides --------------------------- */
+
+const SignInBody = ({ description }) => (
+  <Section title="Sign-in">
+    <KeyValueList
+      rows={[
+        { label: 'Role used', value: roleLabel(description.attemptedRole) },
+        { label: 'Kitchen selected', value: description.attemptedKitchen || '—' },
+        { label: 'Result', value: <span className="text-emerald-300 font-semibold">Signed in</span> },
+      ]}
+    />
+  </Section>
+)
+
+const SignInRejectedBody = ({ description }) => (
+  <>
+    <Section title="What was attempted">
+      <KeyValueList
+        rows={[
+          { label: 'Role selected', value: roleLabel(description.attemptedRole) },
+          { label: 'Kitchen selected', value: description.attemptedKitchen || '—' },
+          {
+            label: 'Why it was refused',
+            value: <span className="text-red-300 font-semibold">{description.contextLine}</span>,
+          },
+          {
+            label: 'Whose key was used',
+            value: description.keyOwner || 'Nobody — the key matches no account',
+          },
+        ]}
+      />
+    </Section>
+
+    <Note tone="warn">
+      {description.keyOwner
+        ? `The key presented is a real one belonging to ${description.keyOwner}. Someone holding a working key was refused only because the role or kitchen selected did not match it.`
+        : 'The key presented matches no account at all. Several of these from one address in a short window is what a guessing attempt looks like.'}{' '}
+      Whoever was trying only ever sees a generic error, so this reason is not something they can learn from.
+    </Note>
+  </>
+)
+
 const BODIES = {
   'inventory_in:stock_in_received': StockInBody,
   'inventory_in:inter_cloud_transfer_received': InterCloudBody,
@@ -750,6 +793,8 @@ const BODIES = {
   'checkout:checkout_draft_created': ClosingDraftBody,
   'checkout:checkout_draft_updated': ClosingDraftBody,
   'checkout:checkout_confirmed': ClosingConfirmedBody,
+  'auth:login_success': SignInBody,
+  'auth:login_failed': SignInRejectedBody,
 }
 
 const EventBody = ({ event, description }) => {

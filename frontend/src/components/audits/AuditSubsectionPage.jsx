@@ -78,7 +78,11 @@ const AuditSubsectionPage = ({
   fetchEvents,
   actionKeys,
   familyOptions,
+  // A subsection may group events differently from the registry — Access &
+  // Overrides gathers reversals from every category under one heading.
+  familyForKey = (key) => ACTION_META[key]?.family,
   searchPlaceholder,
+  note = null,
   showCostToggle = false,
   showOutletFilter = false,
   // Catalog events belong to no single kitchen; picking a kitchen must not hide
@@ -193,9 +197,9 @@ const AuditSubsectionPage = ({
     const present = new Set(events.map(eventKey))
     return actionKeys
       .filter((key) => present.has(key))
-      .filter((key) => filters.family === 'all' || ACTION_META[key]?.family === filters.family)
+      .filter((key) => filters.family === 'all' || familyForKey(key) === filters.family)
       .map((key) => ({ value: key, label: ACTION_META[key]?.label || key }))
-  }, [events, filters.family, actionKeys])
+  }, [events, filters.family, actionKeys, familyForKey])
 
   const dateBounds = useMemo(() => {
     switch (filters.range) {
@@ -220,7 +224,7 @@ const AuditSubsectionPage = ({
       if (dateBounds.from && day < dateBounds.from) return false
       if (dateBounds.to && day > dateBounds.to) return false
 
-      if (filters.family !== 'all' && description.family !== filters.family) return false
+      if (filters.family !== 'all' && familyForKey(eventKey(event)) !== filters.family) return false
       if (!filters.actions.includes('all') && !filters.actions.includes(eventKey(event))) return false
       if (filters.severity !== 'all' && event.severity !== filters.severity) return false
 
@@ -255,7 +259,7 @@ const AuditSubsectionPage = ({
 
       return true
     })
-  }, [decorated, filters, dateBounds, keepCatalogOnKitchenFilter, showCostToggle])
+  }, [decorated, filters, dateBounds, keepCatalogOnKitchenFilter, showCostToggle, familyForKey])
 
   useEffect(() => {
     setPage(1)
@@ -308,6 +312,8 @@ const AuditSubsectionPage = ({
         resultCount={filtered.length}
         totalCount={decorated.length}
       />
+
+      {note && <p className="text-xs text-muted-foreground px-1">{note}</p>}
 
       {loading ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center text-muted-foreground">

@@ -14,6 +14,7 @@ import AdminFranchiseCloning from './admin/AdminFranchiseCloning'
 import AuditInventoryCatalog from './admin/audits/AuditInventoryCatalog'
 import AuditRequisitionsStockOut from './admin/audits/AuditRequisitionsStockOut'
 import AuditDispatchCheckout from './admin/audits/AuditDispatchCheckout'
+import AuditAccessOverrides from './admin/audits/AuditAccessOverrides'
 
 const NAV_STRUCTURE = [
   {
@@ -121,6 +122,8 @@ const AdminDashboard = () => {
     activeParentId === 'audits' && activeChildId === 'requisitions-stock-out'
   const isDispatchCheckoutAuditSection =
     activeParentId === 'audits' && activeChildId === 'dispatch-checkout'
+  const isAccessOverridesAuditSection =
+    activeParentId === 'audits' && activeChildId === 'access-overrides'
 
   return (
     <div className="min-h-screen bg-background">
@@ -292,6 +295,10 @@ const AdminDashboard = () => {
             ) : isDispatchCheckoutAuditSection ? (
               <div className="-mt-2">
                 <AuditDispatchCheckout />
+              </div>
+            ) : isAccessOverridesAuditSection ? (
+              <div className="-mt-2">
+                <AuditAccessOverrides />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">

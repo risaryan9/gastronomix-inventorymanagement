@@ -33,6 +33,8 @@ export const FAMILY = {
   STOCK_OUT: 'stock_out',
   DISPATCH: 'dispatch',
   CHECKOUT: 'checkout',
+  ACCESS: 'access',
+  OVERRIDE: 'override',
 }
 
 export const ACTION_META = {
@@ -123,6 +125,21 @@ export const ACTION_META = {
     glyph: '↑',
     why: 'Stock booked out with no receiving outlet — wastage, staff food, kitchen production, or a transfer to another kitchen. It reduces stock with no one on the other end to confirm it arrived.',
   },
+  /* ---------------------------- access & overrides --------------------------- */
+
+  'auth:login_success': {
+    label: 'Signed In',
+    family: FAMILY.ACCESS,
+    glyph: '→',
+    why: 'Login keys are shared secrets that bypass the database\u2019s own permission checks, so the application is the only gate. Knowing who signed in, from where and when is what every other entry in the trail is traced back to.',
+  },
+  'auth:login_failed': {
+    label: 'Sign-In Rejected',
+    family: FAMILY.ACCESS,
+    glyph: '⨯',
+    why: 'Repeated failures against a shared key are the clearest sign of someone guessing keys, or of an ex-employee still trying an old one.',
+  },
+
   /* -------------------------- dispatch & checkout -------------------------- */
 
   'dispatch_plan:dispatch_plan_created': {
@@ -188,6 +205,20 @@ export const STOCK_OUT_REASON_LABEL = {
   'inter-cloud-kitchen': 'Transfer to another kitchen',
   adjustment: 'Stock adjustment',
 }
+
+// Why a sign-in was turned away. The reason is recorded but deliberately never
+// shown to whoever was trying — it only surfaces here.
+export const AUTH_FAILURE_LABEL = {
+  no_matching_key: 'Key not recognised',
+  deleted_user: 'Key belongs to a deleted user',
+  inactive_user: 'Key belongs to a deactivated user',
+  role_mismatch: 'Real key, wrong role selected',
+  cloud_kitchen_mismatch: 'Real key, wrong kitchen selected',
+}
+
+export const authFailureLabel = (reason) =>
+  AUTH_FAILURE_LABEL[reason] ||
+  (reason ? String(reason).replace(/[-_]/g, ' ') : 'No reason recorded')
 
 // Brands are stored as slugs (`el_chaapo`); nobody outside the database calls
 // them that.
@@ -284,6 +315,35 @@ export const fetchDispatchCheckoutEvents = async ({ limit = AUDIT_FETCH_LIMIT } 
   return data || []
 }
 
+// Access & Overrides. Two things at once: sign-ins, and every action anywhere
+// in the system that reverses or overrides something already recorded. The
+// override half is deliberately a second view of events that also appear in
+// their own subsection.
+const ACCESS_OVERRIDE_OR_FILTER = [
+  'and(category.eq.auth,action.in.(login_success,login_failed))',
+  'and(category.eq.reversal,action.in.(requisition_packing_cancelled,requisition_items_deleted,dispatch_plan_items_replaced))',
+  'and(category.eq.catalog,action.in.(deactivate,reactivate))',
+  'and(category.eq.inventory_in,action.eq.inventory_increment)',
+  'and(category.eq.inventory_out,action.eq.inventory_decrement)',
+].join(',')
+
+export const fetchAccessOverrideEvents = async ({ limit = AUDIT_FETCH_LIMIT } = {}) => {
+  const { data, error } = await supabase
+    .from('audit_events')
+    .select(
+      `${SELECT_COLUMNS},
+       auth_detail:audit_auth_events!audit_auth_events_event_id_fkey (
+         attempted_role, attempted_cloud_kitchen_id, success, resolved_user_id, failure_reason
+       )`
+    )
+    .or(ACCESS_OVERRIDE_OR_FILTER)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data || []
+}
+
 // Events sharing a correlation_id are looked up without the subsection filter
 // on purpose: D3's two legs live in different subsections (the source leg is a
 // stock-out), and the whole point of the column is to see them together.
@@ -301,15 +361,17 @@ export const fetchCorrelatedEvents = async (correlationId, excludeEventId) => {
 }
 
 export const fetchAuditLookups = async () => {
-  const [kitchensRes, materialsRes, outletsRes] = await Promise.all([
+  const [kitchensRes, materialsRes, outletsRes, usersRes] = await Promise.all([
     supabase.from('cloud_kitchens').select('id, name').order('name'),
     supabase.from('raw_materials').select('id, name, code, unit'),
     supabase.from('outlets').select('id, name').order('name'),
+    supabase.from('users').select('id, full_name, role'),
   ])
 
   if (kitchensRes.error) throw kitchensRes.error
   if (materialsRes.error) throw materialsRes.error
   if (outletsRes.error) throw outletsRes.error
+  if (usersRes.error) throw usersRes.error
 
   const materials = new Map()
   ;(materialsRes.data || []).forEach((material) => materials.set(material.id, material))
@@ -317,7 +379,16 @@ export const fetchAuditLookups = async () => {
   const outletsById = new Map()
   ;(outletsRes.data || []).forEach((outlet) => outletsById.set(outlet.id, outlet))
 
-  return { kitchens: kitchensRes.data || [], materials, outlets: outletsRes.data || [], outletsById }
+  const usersById = new Map()
+  ;(usersRes.data || []).forEach((user) => usersById.set(user.id, user))
+
+  return {
+    kitchens: kitchensRes.data || [],
+    materials,
+    outlets: outletsRes.data || [],
+    outletsById,
+    usersById,
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -411,8 +482,18 @@ export const formatBusinessDay = (day) => {
 export const roleLabel = (role) =>
   role ? role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Unknown role'
 
-export const actorName = (event) =>
-  event?.actor?.full_name || (event?.actor_user_id ? 'Deleted user' : 'System')
+export const actorName = (event) => {
+  if (event?.actor?.full_name) return event.actor.full_name
+  if (event?.actor_user_id) return 'Deleted user'
+  if (event?.category === 'auth') return 'Not identified'
+  return 'System'
+}
+
+export const kitchenNameById = (lookups, id) =>
+  id ? lookups?.kitchens?.find((k) => k.id === id)?.name || 'Unknown kitchen' : null
+
+export const userNameById = (lookups, id) =>
+  id ? lookups?.usersById?.get(id)?.full_name || 'Unknown user' : null
 
 export const kitchenName = (event, lookups) => {
   if (event?.cloud_kitchen?.name) return event.cloud_kitchen.name
@@ -761,6 +842,32 @@ export const describeEvent = (event, lookups) => {
       primary: { value: 'Cancelled', tone: 'negative' },
       items: packedItems,
       searchText: [outlet, ...packedItems.map((r) => r.material.name)].filter(Boolean).join(' '),
+    }
+  }
+
+  /* ---------------------------- access ---------------------------- */
+
+  if (event.category === 'auth') {
+    const detail = Array.isArray(event.auth_detail) ? event.auth_detail[0] : event.auth_detail
+    const succeeded = event.action === 'login_success'
+    const attemptedKitchen = kitchenNameById(lookups, detail?.attempted_cloud_kitchen_id) || kitchen
+    // On a rejected attempt the key that was presented may still belong to a
+    // real person — that is the fact worth surfacing.
+    const keyOwner = succeeded ? null : userNameById(lookups, newValues?.matched_user_id)
+
+    return {
+      ...base,
+      kitchen: attemptedKitchen,
+      contextLine: succeeded ? 'Signed in with a login key' : authFailureLabel(detail?.failure_reason),
+      detail: [event.ip_address, keyOwner ? `key belongs to ${keyOwner}` : null].filter(Boolean).join(' · '),
+      primary: succeeded ? null : { value: 'Rejected', tone: 'negative' },
+      attemptedRole: detail?.attempted_role || event.actor_role,
+      attemptedKitchen,
+      failureReason: detail?.failure_reason || null,
+      keyOwner,
+      searchText: [actorName(event), attemptedKitchen, event.ip_address, keyOwner, detail?.failure_reason]
+        .filter(Boolean)
+        .join(' '),
     }
   }
 
