@@ -55,14 +55,15 @@
     `lock_dispatch_plan()`, in
     `migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql`. These
     closed the last four gaps and, along the way, fixed a data-loss bug in the
-    checkout draft save, repeated the IST fix for `plan_date`, and added the
-    status guards that neither the client nor RLS was enforcing (see §3.F1,
-    §3.G1, §3.H1).
+    checkout draft save, centralised the business-day rule for `plan_date`, and
+    added the status guards that neither the client nor RLS was enforcing (see
+    §3.F1, §3.G1, §3.H1).
   - **E1–E4** — `save_allocation_request()` (create/edit/delete-lines) and
     `add_items_to_allocation_request()` (the PM's pre-pack additions), in
     `migrations/wire-requisitions-to-audit-events.sql`. The first replaces three
     near-identical client-side `confirmAllocation` implementations with one
-    function, and fixes a timezone bug in two of them along the way (see §3.E1).
+    function, and centralises the business-day rule the three had disagreed on
+    (see the callout under §3.E1 — the day boundary is 05:30 IST, deliberately).
   - **D3** — `receive_inter_cloud_transfer()`
     (`migrations/wire-inter-cloud-destination-leg-to-audit-events.sql`) owns the
     destination-side writes of an inter-cloud transfer and logs them against the
@@ -481,24 +482,35 @@
   backs it. The rule is now real. Data was clean when this shipped — 0 duplicate
   outlet/day pairs across 145 requests — so nothing needed reconciling.
 
-> **🐛 A real bug found and fixed here: `request_date` was computed in the wrong
-> timezone by two of the three pages.**
+> **📅 `request_date` is now decided in one place — and that place uses UTC on
+> purpose. Read this before "fixing" it.**
 >
-> `OutletsPageBase` used `getLocalDateString()` (local time). Both `OutletDetails`
-> pages used `new Date().toISOString().split('T')[0]` — **UTC**. India is UTC+5:30,
-> so between 00:00 and 05:30 IST the UTC date is still *yesterday*: a requisition
-> filed from either OutletDetails page in that window landed on the previous day,
-> where every "today's requests" query would miss it — including the packed-check
-> that is supposed to stop a second request being created.
+> The three pages disagreed: `OutletsPageBase` used browser-local time, both
+> `OutletDetails` pages used `toISOString()` — UTC. `request_date` is now
+> derived server-side by `public.business_today()`, so all three agree and none
+> can drift again.
 >
-> The live data settles which is right: of 145 `allocation_requests`, **0 mismatch
-> the IST date of their `created_at`, and 12 mismatch the UTC date.** The business
-> runs on IST.
+> **That helper deliberately returns the UTC date, which puts the day boundary
+> at 05:30 IST rather than midnight.** This looks wrong and is not.
 >
-> `request_date` is now derived server-side as
-> `(now() AT TIME ZONE 'Asia/Kolkata')::date`, so all three entry points agree and
-> none can drift again. This hardcodes an India assumption — deliberately, for a
-> single-country deployment; a second country makes this a settings lookup.
+> It was briefly changed to `(now() AT TIME ZONE 'Asia/Kolkata')::date` on the
+> reasoning that the business is in India, so IST must be right. That broke a
+> real workflow and had to be reverted
+> (`migrations/revert-business-day-to-utc.sql`). A late shift routinely works
+> past midnight, and that work belongs to the day it started. Under IST, a
+> dispatch plan locked at 10:00 and a closing form filed at 00:30 the next
+> morning land on different days, and the supervisor is told **"No locked
+> dispatch plan found for today"** with no way through. See §3.G1 and §3.H1 —
+> the kitchen executive was blocked the same way.
+>
+> This is routine traffic: **20 records were created in the midnight hour alone**
+> (6 stock-outs, 4 stock-ins, 10 requisitions), plus more at 01:00 and 04:00 IST.
+>
+> The honest version of this rule is "the business day starts at 06:00 IST";
+> UTC approximates it at 05:30. If that ever needs to be exact, change
+> `business_today()` **and** `getBusinessDate()` in
+> `frontend/src/lib/businessDate.js` together — records written under one
+> definition and searched for under another is precisely the failure above.
 
 #### E2 — Edit allocation request items / quantities
 - **What happens:** The same `confirmAllocation` flows, when editing an existing
@@ -657,15 +669,17 @@
   downstream inventory and cost impact, so the author and the numbers should be
   on record. **Now logged.**
 - **Status:** ✅ Audited, DB-side.
-- **🐛 The E1 timezone bug again, same line of code.** `plan_date` came from
-  `new Date().toISOString().split('T')[0]` — UTC — so a plan created between
-  00:00 and 05:30 IST was filed under the previous day. Now derived server-side
-  as `(now() AT TIME ZONE 'Asia/Kolkata')::date`, matching
-  `save_allocation_request`. This one matters more than it looks: `checkout_form`
-  joins a dispatch plan by date, so a plan and a requisition disagreeing about
-  what day it is would break the closing flow. Only 4 plans existed when this
-  shipped and none fell in the affected window, so there was nothing to
-  reconcile.
+- **`plan_date` is decided server-side by `public.business_today()`**, the same
+  helper `save_allocation_request` uses, so a plan and a requisition can never
+  disagree about what day it is. That matters here specifically: `checkout_form`
+  finds its dispatch plan **by date**, so any drift between the two breaks the
+  closing flow outright.
+- **⚠️ Do not switch this to IST.** It was, briefly, and it blocked the late
+  shift: a plan locked at 10:00 IST could not be closed against at 00:30 the
+  next morning, because the plan was dated the 29th and the closing screen asked
+  for the 30th. Reverted in `migrations/revert-business-day-to-utc.sql`. The
+  full reasoning is in the callout under §3.E1 — read it before changing the
+  day boundary.
 - **The edit race is actually closed now.** The client checked `status = 'draft'`
   twice before mutating items, with a comment conceding it only "reduces race
   with kitchen lock". The RPC takes `FOR UPDATE` on the plan row and checks

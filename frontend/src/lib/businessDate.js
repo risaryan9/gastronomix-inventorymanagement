@@ -5,48 +5,42 @@
 // Columns like allocation_requests.request_date, dispatch_plan.plan_date,
 // stock_out.allocation_date and stock_in.receipt_date are Postgres `date`
 // columns. A date has no timezone, so something has to decide *when the day
-// rolls over* — and that is a business question, not a display one.
+// rolls over*. That is a business question, not a display one.
 //
-// The business runs on IST. That is not an assumption: of the 145
-// allocation_requests that existed when this was written, ZERO disagreed with
-// the IST date of their created_at, while twelve disagreed with the UTC date.
-// The stored history is already IST.
+// THE ANSWER HERE IS UTC — DELIBERATELY, AND IT IS NOT AN OVERSIGHT.
 //
-// The old code computed "today" with new Date().toISOString().split('T')[0],
-// which is UTC. India is UTC+5:30, so between 00:00 and 05:30 IST that returns
-// YESTERDAY. For 18.5 hours a day it happens to agree with IST, which is why
-// the bug stayed invisible — but people do work in that window: the earliest
-// requisition on record was created at 00:07 IST, and 26 records across
-// requisitions, stock-in and stock-out fall inside it.
+// UTC runs 5.5 hours behind IST, so deriving the day from UTC means in
+// practice: **the business day does not roll over until 05:30 IST.** That
+// matches how this kitchen actually runs. A late shift routinely finishes
+// after midnight, and that work belongs to the day it started.
 //
-// The server-side RPCs (save_allocation_request, save_dispatch_plan) derive
-// their dates as (now() AT TIME ZONE 'Asia/Kolkata')::date. getBusinessDate()
-// is the frontend's exact mirror of that, so reads and writes agree.
+// This was briefly changed to IST on the reasoning that "the business is in
+// India, so UTC is wrong". That broke a real workflow: a dispatch plan locked
+// at 10:00 IST, with the closing form filed at 00:30 IST the next morning.
+// Under IST the plan is dated the 29th while the closing screen asks for the
+// 30th, so the supervisor sees "No locked dispatch plan found for today" and
+// cannot file at all. The same rollover stopped the kitchen executive locking
+// a draft carried past midnight. Real traffic, not hypothetical — 20 records
+// were created in the midnight hour alone.
 //
-// NOTE: this is deliberately NOT the browser's local timezone. A supervisor
-// travelling, or a laptop with the wrong clock zone, must still file against
-// the kitchen's business day.
-
-const BUSINESS_TIME_ZONE = 'Asia/Kolkata'
+// So: UTC here is doing the job of "business day starts at 05:30 IST".
+//
+// IF YOU CHANGE THIS, CHANGE THE DATABASE TOO. public.business_today() in
+// migrations/revert-business-day-to-utc.sql is the server-side mirror, used by
+// save_allocation_request and save_dispatch_plan. The two must agree, or
+// records get written under one day and searched for under another — which is
+// exactly the bug described above.
+//
+// If the business day should start at a specific hour (06:00 IST is the honest
+// version of what UTC approximates here), that is a better fix than either
+// extreme — but it has to be made in both places at once.
 
 /**
- * The business day (YYYY-MM-DD) for a given instant, in IST.
- * Mirrors the server's (now() AT TIME ZONE 'Asia/Kolkata')::date.
+ * The current business day as YYYY-MM-DD.
+ * Mirrors the server's public.business_today().
  */
-export const getBusinessDate = (date = new Date()) => {
-  // formatToParts rather than format(): avoids depending on any locale's
-  // separator or ordering.
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BUSINESS_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date)
-
-  const part = (type) => parts.find((p) => p.type === type)?.value
-
-  return `${part('year')}-${part('month')}-${part('day')}`
-}
+export const getBusinessDate = (date = new Date()) =>
+  date.toISOString().split('T')[0]
 
 /**
  * Normalizes a stored date value to YYYY-MM-DD for comparison.
@@ -54,7 +48,7 @@ export const getBusinessDate = (date = new Date()) => {
  * Postgres `date` columns arrive as 'YYYY-MM-DD' already; this just guards the
  * cases where a Date object or a full timestamp is passed in. It does NOT
  * shift timezones — a stored business day is already the answer, and
- * re-interpreting it would be the very bug this module exists to prevent.
+ * re-interpreting it would reintroduce the very bug this module prevents.
  */
 export const toBusinessDateString = (value) => {
   if (!value) return null
