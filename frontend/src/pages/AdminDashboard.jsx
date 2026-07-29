@@ -13,6 +13,7 @@ import AdminRequisitionsReports from './admin/AdminRequisitionsReports'
 import AdminFranchiseCloning from './admin/AdminFranchiseCloning'
 import AuditInventoryCatalog from './admin/audits/AuditInventoryCatalog'
 import AuditRequisitionsStockOut from './admin/audits/AuditRequisitionsStockOut'
+import AuditDispatchCheckout from './admin/audits/AuditDispatchCheckout'
 
 const NAV_STRUCTURE = [
   {
@@ -118,6 +119,8 @@ const AdminDashboard = () => {
     activeParentId === 'audits' && activeChildId === 'inventory-catalog'
   const isRequisitionsStockOutAuditSection =
     activeParentId === 'audits' && activeChildId === 'requisitions-stock-out'
+  const isDispatchCheckoutAuditSection =
+    activeParentId === 'audits' && activeChildId === 'dispatch-checkout'
 
   return (
     <div className="min-h-screen bg-background">
@@ -285,6 +288,10 @@ const AdminDashboard = () => {
             ) : isRequisitionsStockOutAuditSection ? (
               <div className="-mt-2">
                 <AuditRequisitionsStockOut />
+              </div>
+            ) : isDispatchCheckoutAuditSection ? (
+              <div className="-mt-2">
+                <AuditDispatchCheckout />
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">

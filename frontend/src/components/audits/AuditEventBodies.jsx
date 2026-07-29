@@ -12,6 +12,7 @@ import {
   SectionTitle,
 } from './AuditPrimitives'
 import {
+  brandLabel,
   displayValue,
   eventKey,
   formatCurrency,
@@ -429,7 +430,302 @@ const PackingCancelledBody = ({ event, description }) => {
   )
 }
 
-/* -------------------------------- dispatch -------------------------------- */
+/* ---------------------------- dispatch planning --------------------------- */
+
+// A plan is a grid of material × outlet. Read as a flat list it is unreadable,
+// so it is grouped by outlet — which is how the kitchen actually loads it out.
+const PlanItemsByOutlet = ({ rows = [] }) => {
+  if (!rows.length) return <p className="text-sm text-muted-foreground">No lines on this plan.</p>
+
+  const groups = new Map()
+  rows.forEach((row) => {
+    if (!groups.has(row.outlet.id)) groups.set(row.outlet.id, { outlet: row.outlet, items: [] })
+    groups.get(row.outlet.id).items.push(row)
+  })
+
+  return (
+    <div className="space-y-3">
+      {[...groups.values()]
+        .sort((a, b) => a.outlet.name.localeCompare(b.outlet.name))
+        .map((group) => (
+          <div key={group.outlet.id} className="rounded-lg border border-border overflow-hidden">
+            <div className="bg-muted/50 px-3 py-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">{group.outlet.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {group.items.length} line{group.items.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {group.items
+                  .sort((a, b) => a.material.name.localeCompare(b.material.name))
+                  .map((item, index) => (
+                    <tr key={`${item.material.id}-${index}`} className="border-t border-border">
+                      <td className="py-1.5 px-3 text-foreground">{item.material.name}</td>
+                      <td className="py-1.5 px-3 text-right whitespace-nowrap text-foreground font-medium">
+                        {formatQtyWithUnit(item.quantity, item.material.unit)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+    </div>
+  )
+}
+
+const PlanComparison = ({ before = [], after = [] }) => {
+  const rows = new Map()
+  const keyOf = (row) => `${row.outlet.id}|${row.material.id}`
+  before.forEach((row) => rows.set(keyOf(row), { ...row, before: row.quantity, after: undefined }))
+  after.forEach((row) => {
+    const existing = rows.get(keyOf(row))
+    if (existing) existing.after = row.quantity
+    else rows.set(keyOf(row), { ...row, before: undefined, after: row.quantity })
+  })
+
+  const list = [...rows.values()].sort(
+    (a, b) => a.outlet.name.localeCompare(b.outlet.name) || a.material.name.localeCompare(b.material.name)
+  )
+  const changed = list.filter((row) => row.before !== row.after)
+
+  if (!changed.length) {
+    return <p className="text-sm text-muted-foreground">The kitchen locked the plan exactly as it was set.</p>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm min-w-[32rem]">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left py-2 px-3 font-semibold text-foreground">Outlet</th>
+            <th className="text-left py-2 px-3 font-semibold text-foreground">Material</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">Planned</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">Locked</th>
+          </tr>
+        </thead>
+        <tbody>
+          {changed.map((row) => (
+            <tr key={`${row.outlet.id}-${row.material.id}`} className="border-t border-border bg-accent/[0.06]">
+              <td className="py-2 px-3 text-foreground">{row.outlet.name}</td>
+              <td className="py-2 px-3 text-foreground">{row.material.name}</td>
+              <td className="py-2 px-3 text-right text-muted-foreground whitespace-nowrap">
+                {row.before === undefined ? 'Not planned' : formatQty(row.before)}
+              </td>
+              <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">
+                {row.after === undefined ? 'Dropped' : formatQty(row.after)}
+                {row.material.unit ? (
+                  <span className="text-muted-foreground font-normal"> {row.material.unit}</span>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const DispatchPlanBody = ({ event, description }) => {
+  const values = event.new_values || {}
+  const outletCount = new Set(description.planItems.map((row) => row.outlet.id)).size
+  return (
+    <>
+      <Section title="Plan">
+        <KeyValueList
+          rows={[
+            { label: 'Plan date', value: displayValue(values.plan_date) },
+            { label: 'Brand', value: displayValue(brandLabel(values.brand)) },
+            { label: 'Cloud kitchen', value: description.kitchen || '—' },
+            { label: 'Outlets covered', value: String(outletCount) },
+            { label: 'Lines', value: String(values.item_count ?? description.planItems.length) },
+          ]}
+        />
+      </Section>
+
+      <Section title="What the kitchen is to produce">
+        <PlanItemsByOutlet rows={description.planItems} />
+      </Section>
+    </>
+  )
+}
+
+const PlanItemsReplacedBody = ({ event, description }) => {
+  const values = event.new_values || {}
+  return (
+    <>
+      <Section title="Replacement">
+        <KeyValueList
+          rows={[
+            { label: 'Lines discarded', value: String(event.old_values?.replaced_count ?? 0) },
+            { label: 'Lines saved instead', value: String(values.item_count ?? 0) },
+            { label: 'Cloud kitchen', value: description.kitchen || '—' },
+          ]}
+        />
+      </Section>
+
+      <Section title="The plan that was discarded" hint="Recorded before it was overwritten">
+        <PlanItemsByOutlet rows={description.planItems} />
+      </Section>
+
+      <Note tone="warn">
+        Re-saving a plan throws the previous version away entirely. This is what it looked like beforehand.
+      </Note>
+    </>
+  )
+}
+
+const PlanLockedBody = ({ event, description }) => {
+  const values = event.new_values || {}
+  return (
+    <>
+      <Section title="Lock">
+        <KeyValueList
+          rows={[
+            { label: 'Plan date', value: displayValue(values.plan_date) },
+            { label: 'Brand', value: displayValue(brandLabel(values.brand)) },
+            { label: 'Cloud kitchen', value: description.kitchen || '—' },
+            {
+              label: 'Kitchen changed quantities',
+              value: description.kitchenChanged ? (
+                <span className="text-red-300 font-semibold">Yes</span>
+              ) : (
+                <span className="text-emerald-300 font-semibold">No</span>
+              ),
+            },
+            { label: 'Lines locked', value: String(values.item_count ?? description.planItems.length) },
+          ]}
+        />
+      </Section>
+
+      <Section title="Changes made at lock time" hint="Only lines that moved">
+        <PlanComparison before={description.planItemsBefore} after={description.planItems} />
+      </Section>
+
+      <Section title="Final locked plan">
+        <PlanItemsByOutlet rows={description.planItems} />
+      </Section>
+    </>
+  )
+}
+
+/* ----------------------------- outlet closing ----------------------------- */
+
+const ClosingQuantityTable = ({ rows = [], quantityLabel }) => {
+  if (!rows.length) return <p className="text-sm text-muted-foreground">Nothing recorded.</p>
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm min-w-[28rem]">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left py-2 px-3 font-semibold text-foreground">Material</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">Sent out</th>
+            <th className="text-right py-2 px-3 font-semibold text-foreground">{quantityLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.material.id}-${index}`} className="border-t border-border">
+              <td className="py-2 px-3">
+                <div className="text-foreground">{row.material.name}</div>
+                <div className="text-xs text-muted-foreground">{row.material.code}</div>
+              </td>
+              <td className="py-2 px-3 text-right text-muted-foreground whitespace-nowrap">
+                {Number.isNaN(row.dispatched) ? '—' : formatQty(row.dispatched)}
+              </td>
+              <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">
+                {formatQtyWithUnit(row.quantity, row.material.unit)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const ClosingDraftBody = ({ event, description }) => {
+  const values = event.new_values || {}
+  const isResave = !!event.old_values
+  const previousWasted = (description.previousWastage || []).reduce(
+    (total, row) => total + (Number(row.quantity) || 0),
+    0
+  )
+  const wastedNow = (description.wastage || []).reduce((total, row) => total + (Number(row.quantity) || 0), 0)
+
+  return (
+    <>
+      <Section title="Closing sheet">
+        <KeyValueList
+          rows={[
+            { label: 'Outlet', value: description.outlet || '—' },
+            { label: 'Cloud kitchen', value: description.kitchen || '—' },
+            { label: 'Filed by', value: displayValue(values.supervisor_name) },
+            { label: 'Lines returned', value: String(description.returns.length) },
+            { label: 'Lines wasted', value: String(description.wastage.length) },
+          ]}
+        />
+      </Section>
+
+      <Section title="Returned to the kitchen">
+        <ClosingQuantityTable rows={description.returns} quantityLabel="Returned" />
+      </Section>
+
+      <Section title="Declared as wastage">
+        <ClosingQuantityTable rows={description.wastage} quantityLabel="Wasted" />
+      </Section>
+
+      {description.additional &&
+        (Number(description.additional.cash) > 0 || Number(description.additional.payment_onside) > 0) && (
+          <Section title="Extra consumption">
+            <KeyValueList
+              rows={[
+                { label: 'Cash', value: formatCurrency(description.additional.cash) },
+                { label: 'Paid on site', value: formatCurrency(description.additional.payment_onside) },
+              ]}
+            />
+          </Section>
+        )}
+
+      {isResave && (
+        <Note tone="warn">
+          This save replaced figures that had already been entered — previously {previousWasted} wasted across{' '}
+          {(description.previousWastage || []).length} line
+          {(description.previousWastage || []).length === 1 ? '' : 's'}, now {wastedNow} across{' '}
+          {description.wastage.length}. A closing sheet can be saved as often as the supervisor likes until it is
+          confirmed.
+        </Note>
+      )}
+    </>
+  )
+}
+
+const ClosingConfirmedBody = ({ event, description }) => (
+  <>
+    <Section title="Confirmation">
+      <KeyValueList
+        rows={[
+          { label: 'Outlet', value: description.outlet || '—' },
+          { label: 'Cloud kitchen', value: description.kitchen || '—' },
+          {
+            label: 'Put back into stock',
+            value: (
+              <span className="text-accent font-bold">{formatQty(event.new_values?.total_returned_qty)}</span>
+            ),
+          },
+          { label: 'Status', value: 'Confirmed — no longer editable' },
+        ]}
+      />
+    </Section>
+
+    <Note>
+      Confirming the sheet takes the returned quantities back into inventory. The per-item detail behind this
+      total is on the closing sheet saves that led up to it.
+    </Note>
+  </>
+)
 
 const BODIES = {
   'inventory_in:stock_in_received': StockInBody,
@@ -447,6 +743,13 @@ const BODIES = {
   'inventory_out:requisition_packed': PackedBody,
   'inventory_out:stock_out': SelfStockOutBody,
   'reversal:requisition_packing_cancelled': PackingCancelledBody,
+  'dispatch_plan:dispatch_plan_created': DispatchPlanBody,
+  'dispatch_plan:dispatch_plan_updated': DispatchPlanBody,
+  'reversal:dispatch_plan_items_replaced': PlanItemsReplacedBody,
+  'dispatch_plan:dispatch_plan_locked': PlanLockedBody,
+  'checkout:checkout_draft_created': ClosingDraftBody,
+  'checkout:checkout_draft_updated': ClosingDraftBody,
+  'checkout:checkout_confirmed': ClosingConfirmedBody,
 }
 
 const EventBody = ({ event, description }) => {

@@ -31,6 +31,8 @@ export const FAMILY = {
   CATALOG: 'catalog',
   REQUISITION: 'requisition',
   STOCK_OUT: 'stock_out',
+  DISPATCH: 'dispatch',
+  CHECKOUT: 'checkout',
 }
 
 export const ACTION_META = {
@@ -121,6 +123,51 @@ export const ACTION_META = {
     glyph: '↑',
     why: 'Stock booked out with no receiving outlet — wastage, staff food, kitchen production, or a transfer to another kitchen. It reduces stock with no one on the other end to confirm it arrived.',
   },
+  /* -------------------------- dispatch & checkout -------------------------- */
+
+  'dispatch_plan:dispatch_plan_created': {
+    label: 'Dispatch Plan Created',
+    family: FAMILY.DISPATCH,
+    glyph: '▤',
+    why: 'The dispatch plan is what the kitchen produces and ships to. It commits kitchen capacity and stock for the day, so the quantities and who set them are on record.',
+  },
+  'dispatch_plan:dispatch_plan_updated': {
+    label: 'Dispatch Plan Revised',
+    family: FAMILY.DISPATCH,
+    glyph: '▤',
+    why: 'Re-saving a plan changes what the kitchen is working to. Without a record there is no way to see that a plan was revised, or by how much.',
+  },
+  'reversal:dispatch_plan_items_replaced': {
+    label: 'Previous Plan Discarded',
+    family: FAMILY.DISPATCH,
+    glyph: '⊘',
+    why: 'A re-save throws away the entire previous plan. The discarded version is kept here so a revision can be compared against what it replaced.',
+  },
+  'dispatch_plan:dispatch_plan_locked': {
+    label: 'Dispatch Plan Locked',
+    family: FAMILY.DISPATCH,
+    glyph: '▣',
+    why: 'Locking hands the plan from planning to the kitchen floor; after this it is treated as final for production and stock movement.',
+  },
+  'checkout:checkout_draft_created': {
+    label: 'Closing Sheet Started',
+    family: FAMILY.CHECKOUT,
+    glyph: '✎',
+    why: 'The closing sheet reconciles what an outlet was given against what came back. Returns and wastage are the outlet\u2019s loss figures and the easiest numbers to fudge.',
+  },
+  'checkout:checkout_draft_updated': {
+    label: 'Closing Sheet Saved',
+    family: FAMILY.CHECKOUT,
+    glyph: '✎',
+    why: 'A closing sheet can be saved repeatedly before it is confirmed. Every save is kept, so a figure that moved between saves is visible rather than lost.',
+  },
+  'checkout:checkout_confirmed': {
+    label: 'Closing Confirmed',
+    family: FAMILY.CHECKOUT,
+    glyph: '✔',
+    why: 'Confirming makes the day\u2019s figures official and puts the returned stock back into inventory. After this the sheet can no longer be edited.',
+  },
+
   'reversal:requisition_packing_cancelled': {
     label: 'Packing Cancelled',
     family: FAMILY.STOCK_OUT,
@@ -141,6 +188,11 @@ export const STOCK_OUT_REASON_LABEL = {
   'inter-cloud-kitchen': 'Transfer to another kitchen',
   adjustment: 'Stock adjustment',
 }
+
+// Brands are stored as slugs (`el_chaapo`); nobody outside the database calls
+// them that.
+export const brandLabel = (brand) =>
+  brand ? String(brand).replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null
 
 export const stockOutReasonLabel = (reason) =>
   STOCK_OUT_REASON_LABEL[reason] ||
@@ -213,6 +265,25 @@ export const fetchRequisitionStockOutEvents = async ({ limit = AUDIT_FETCH_LIMIT
   return data || []
 }
 
+// Dispatch & Checkout.
+const DISPATCH_CHECKOUT_OR_FILTER = [
+  'and(category.eq.dispatch_plan,action.in.(dispatch_plan_created,dispatch_plan_updated,dispatch_plan_locked))',
+  'and(category.eq.checkout,action.in.(checkout_draft_created,checkout_draft_updated,checkout_confirmed))',
+  'and(category.eq.reversal,action.eq.dispatch_plan_items_replaced)',
+].join(',')
+
+export const fetchDispatchCheckoutEvents = async ({ limit = AUDIT_FETCH_LIMIT } = {}) => {
+  const { data, error } = await supabase
+    .from('audit_events')
+    .select(SELECT_COLUMNS)
+    .or(DISPATCH_CHECKOUT_OR_FILTER)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data || []
+}
+
 // Events sharing a correlation_id are looked up without the subsection filter
 // on purpose: D3's two legs live in different subsections (the source leg is a
 // stock-out), and the whole point of the column is to see them together.
@@ -243,7 +314,10 @@ export const fetchAuditLookups = async () => {
   const materials = new Map()
   ;(materialsRes.data || []).forEach((material) => materials.set(material.id, material))
 
-  return { kitchens: kitchensRes.data || [], materials, outlets: outletsRes.data || [] }
+  const outletsById = new Map()
+  ;(outletsRes.data || []).forEach((outlet) => outletsById.set(outlet.id, outlet))
+
+  return { kitchens: kitchensRes.data || [], materials, outlets: outletsRes.data || [], outletsById }
 }
 
 /* ------------------------------------------------------------------ *
@@ -352,6 +426,9 @@ export const outletName = (event, lookups) => {
   return lookups?.outlets?.find((o) => o.id === event.outlet_id)?.name || 'Unknown outlet'
 }
 
+export const resolveOutlet = (lookups, id) =>
+  lookups?.outletsById?.get(id) || { id, name: id ? 'Unknown outlet' : 'No outlet' }
+
 // Some payloads carry the material name and unit alongside the id; where they
 // do, that is what the actor actually saw, so prefer it over a live lookup.
 export const resolveMaterial = (lookups, id, fallback) =>
@@ -430,6 +507,26 @@ const itemRows = (payload, lookups, listKey = 'items') => {
     return { material, quantity, unitCost, gst, lineTotal }
   })
 }
+
+// Dispatch plan lines are per material *per outlet*, so they only read
+// correctly with the outlet resolved alongside the material.
+const planItemRows = (payload, lookups, listKey = 'items') => {
+  const items = Array.isArray(payload?.[listKey]) ? payload[listKey] : []
+  return items.map((item) => ({
+    material: resolveMaterial(lookups, item.raw_material_id, item),
+    outlet: resolveOutlet(lookups, item.outlet_id),
+    quantity: Number(item.quantity),
+  }))
+}
+
+const checkoutRows = (list, lookups, quantityKey) =>
+  (Array.isArray(list) ? list : []).map((item) => ({
+    material: resolveMaterial(lookups, item.raw_material_id, item),
+    dispatched: Number(item.dispatched_quantity),
+    quantity: Number(item[quantityKey]),
+  }))
+
+const sumBy = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0)
 
 /**
  * Reduces one event to the facts a reviewer scans for, so the card component
@@ -667,6 +764,111 @@ export const describeEvent = (event, lookups) => {
     }
   }
 
+  /* ------------------------- dispatch & checkout ------------------------- */
+
+  if (key === 'dispatch_plan:dispatch_plan_created' || key === 'dispatch_plan:dispatch_plan_updated') {
+    const rows = planItemRows(newValues, lookups)
+    const outlets = new Set(rows.map((row) => row.outlet.id))
+    return {
+      ...base,
+      contextLine:
+        [brandLabel(newValues?.brand), newValues?.plan_date].filter(Boolean).join(' · ') || 'Dispatch plan',
+      detail: `${outlets.size} outlet${outlets.size === 1 ? '' : 's'}`,
+      primary: { value: `${newValues?.item_count ?? rows.length} lines`, tone: 'accent' },
+      planItems: rows,
+      searchText: [brandLabel(newValues?.brand), ...rows.map((r) => `${r.material.name} ${r.outlet.name}`)]
+        .filter(Boolean)
+        .join(' '),
+    }
+  }
+
+  if (key === 'reversal:dispatch_plan_items_replaced') {
+    const discarded = planItemRows(oldValues, lookups, 'replaced_items')
+    return {
+      ...base,
+      contextLine: 'Previous version of the plan',
+      detail: `${oldValues?.replaced_count ?? discarded.length} lines discarded, ${
+        newValues?.item_count ?? 0
+      } saved in their place`,
+      primary: { value: `${oldValues?.replaced_count ?? discarded.length} discarded`, tone: 'negative' },
+      planItems: discarded,
+      searchText: discarded.map((r) => `${r.material.name} ${r.outlet.name}`).join(' '),
+    }
+  }
+
+  if (key === 'dispatch_plan:dispatch_plan_locked') {
+    const after = planItemRows(newValues, lookups)
+    const before = planItemRows(oldValues, lookups)
+    const kitchenChanged = newValues?.quantities_changed_by_kitchen === true
+    return {
+      ...base,
+      contextLine:
+        [brandLabel(newValues?.brand), newValues?.plan_date].filter(Boolean).join(' · ') || 'Dispatch plan',
+      detail: kitchenChanged
+        ? 'Kitchen changed the quantities before locking'
+        : 'Locked without changing the quantities',
+      primary: {
+        value: `${newValues?.item_count ?? after.length} lines`,
+        tone: kitchenChanged ? 'negative' : 'accent',
+      },
+      planItems: after,
+      planItemsBefore: before,
+      kitchenChanged,
+      searchText: [brandLabel(newValues?.brand), ...after.map((r) => `${r.material.name} ${r.outlet.name}`)]
+        .filter(Boolean)
+        .join(' '),
+    }
+  }
+
+  if (key === 'checkout:checkout_draft_created' || key === 'checkout:checkout_draft_updated') {
+    const returns = checkoutRows(newValues?.returns, lookups, 'returned_quantity').filter(
+      (row) => row.quantity > 0
+    )
+    const wastage = checkoutRows(newValues?.wastage, lookups, 'wasted_quantity').filter(
+      (row) => row.quantity > 0
+    )
+    const previousReturns = checkoutRows(oldValues?.returns, lookups, 'returned_quantity')
+    const previousWastage = checkoutRows(oldValues?.wastage, lookups, 'wasted_quantity')
+    const wastedTotal = sumBy(wastage, 'quantity')
+    return {
+      ...base,
+      contextLine: outlet || 'Outlet closing',
+      detail: `${returns.length} returned · ${wastage.length} wasted${
+        newValues?.supervisor_name ? ` · ${newValues.supervisor_name}` : ''
+      }`,
+      primary: {
+        value: `${formatQty(wastedTotal)} wasted`,
+        tone: wastedTotal > 0 ? 'negative' : 'muted',
+      },
+      returns,
+      wastage,
+      previousReturns,
+      previousWastage,
+      additional: newValues?.additional || null,
+      previousAdditional: oldValues?.additional || null,
+      searchText: [
+        outlet,
+        newValues?.supervisor_name,
+        ...returns.map((r) => r.material.name),
+        ...wastage.map((r) => r.material.name),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    }
+  }
+
+  if (key === 'checkout:checkout_confirmed') {
+    const returned = Number(newValues?.total_returned_qty)
+    return {
+      ...base,
+      contextLine: outlet || 'Outlet closing',
+      detail: `${formatQty(returned)} put back into stock`,
+      primary: { value: 'Confirmed', tone: 'positive' },
+      totalReturned: returned,
+      searchText: [outlet].filter(Boolean).join(' '),
+    }
+  }
+
   if (event.category === 'catalog') {
     const payload = newValues || oldValues || {}
     // `fields` is every field on the record (the drawer's before/after table);
@@ -741,6 +943,43 @@ export const summarizeEvents = (events) => {
   })
 
   return { total: events.length, received, receipts, adjustments, adjustmentNet, catalogChanges, critical }
+}
+
+export const summarizeDispatchCheckoutEvents = (events) => {
+  let plansCreated = 0
+  let plansRevised = 0
+  let plansLocked = 0
+  let lockedWithChanges = 0
+  let draftSaves = 0
+  let confirmed = 0
+  let critical = 0
+
+  events.forEach((event) => {
+    const key = eventKey(event)
+    if (event.severity === 'critical') critical += 1
+
+    if (key === 'dispatch_plan:dispatch_plan_created') plansCreated += 1
+    if (key === 'dispatch_plan:dispatch_plan_updated') plansRevised += 1
+    if (key === 'dispatch_plan:dispatch_plan_locked') {
+      plansLocked += 1
+      if (event.new_values?.quantities_changed_by_kitchen === true) lockedWithChanges += 1
+    }
+    if (key === 'checkout:checkout_draft_created' || key === 'checkout:checkout_draft_updated') {
+      draftSaves += 1
+    }
+    if (key === 'checkout:checkout_confirmed') confirmed += 1
+  })
+
+  return {
+    total: events.length,
+    plansCreated,
+    plansRevised,
+    plansLocked,
+    lockedWithChanges,
+    draftSaves,
+    confirmed,
+    critical,
+  }
 }
 
 export const summarizeRequisitionEvents = (events) => {

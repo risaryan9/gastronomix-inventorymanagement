@@ -780,6 +780,322 @@ DEMO_AUDIT_EVENTS.push(
   }
 )
 
+/* ================================================================== *
+ * Dispatch & Checkout
+ *
+ * Nothing has ever been recorded for any of these seven types, so all of
+ * them are examples.
+ * ================================================================== */
+
+const EC_OUTLET = {
+  EC1026: { id: '16120f1e-fa85-418e-a40c-bb0b51e8c315', name: 'El Chaapo EC1026' },
+  EC1079: { id: 'b22186b4-9641-448b-8a18-4ebcff83dc1a', name: 'El Chaapo EC1079' },
+  EC1089: { id: 'a2c3bc24-1d64-4492-bef6-a748485c3a38', name: 'El Chaapo EC1089' },
+}
+
+const DISPATCH_EXEC = {
+  id: 'demo-user-dispatch-exec',
+  full_name: 'Dispatch Executive (CK2)',
+  role: 'dispatch_executive',
+  email: null,
+}
+
+const KITCHEN_EXEC = {
+  id: 'demo-user-kitchen-exec',
+  full_name: 'Kitchen Executive (CK2)',
+  role: 'kitchen_executive',
+  email: null,
+}
+
+const planLine = (rawMaterialId, outletId, quantity) => ({
+  raw_material_id: rawMaterialId,
+  outlet_id: outletId,
+  quantity,
+})
+
+const PLAN_ID = 'demo-plan-0201'
+const PLAN_DATE = new Date(Date.now() - 30 * 3600_000).toISOString().slice(0, 10)
+
+// v1 of the plan, the revision that replaced it, and what the kitchen actually
+// locked — three versions of the same day so the chain is visible.
+const planV1 = [
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1026.id, 6),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1026.id, 14),
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1079.id, 4),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1079.id, 9),
+  planLine(MATERIAL.GARLIC_BUTTER, EC_OUTLET.EC1089.id, 20),
+]
+
+const planV2 = [
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1026.id, 8),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1026.id, 14),
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1079.id, 4),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1079.id, 12),
+  planLine(MATERIAL.GARLIC_BUTTER, EC_OUTLET.EC1089.id, 20),
+  planLine(MATERIAL.CHILLI, EC_OUTLET.EC1089.id, 1.5),
+]
+
+const planLocked = [
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1026.id, 8),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1026.id, 11),
+  planLine(MATERIAL.MARINADE, EC_OUTLET.EC1079.id, 4),
+  planLine(MATERIAL.CHICKEN, EC_OUTLET.EC1079.id, 12),
+  planLine(MATERIAL.GARLIC_BUTTER, EC_OUTLET.EC1089.id, 20),
+  planLine(MATERIAL.CHILLI, EC_OUTLET.EC1089.id, 1.5),
+]
+
+const CLOSING_FORM_ID = 'demo-checkout-0207'
+
+const returnLine = (rawMaterialId, dispatched, returned) => ({
+  raw_material_id: rawMaterialId,
+  dispatched_quantity: dispatched,
+  returned_quantity: returned,
+})
+
+const wastageLine = (rawMaterialId, dispatched, wasted) => ({
+  raw_material_id: rawMaterialId,
+  dispatched_quantity: dispatched,
+  wasted_quantity: wasted,
+})
+
+DEMO_AUDIT_EVENTS.push(
+  /* ---------------- G1 — plan created ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0201',
+    actor_user_id: DISPATCH_EXEC.id,
+    actor_role: 'dispatch_executive',
+    actor: DISPATCH_EXEC,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: null,
+    outlet: null,
+    category: 'dispatch_plan',
+    action: 'dispatch_plan_created',
+    entity_type: 'dispatch_plan',
+    entity_id: PLAN_ID,
+    correlation_id: null,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: null,
+    new_values: {
+      plan_date: PLAN_DATE,
+      brand: 'el_chaapo',
+      status: 'draft',
+      item_count: planV1.length,
+      items: planV1,
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(30),
+  },
+
+  /* ---------------- G1 — plan revised ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0202',
+    actor_user_id: DISPATCH_EXEC.id,
+    actor_role: 'dispatch_executive',
+    actor: DISPATCH_EXEC,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: null,
+    outlet: null,
+    category: 'dispatch_plan',
+    action: 'dispatch_plan_updated',
+    entity_type: 'dispatch_plan',
+    entity_id: PLAN_ID,
+    correlation_id: PLAN_ID,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: { items: planV1 },
+    new_values: {
+      plan_date: PLAN_DATE,
+      brand: 'el_chaapo',
+      status: 'draft',
+      item_count: planV2.length,
+      items: planV2,
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(27),
+  },
+
+  /* ---------------- G2 — previous plan discarded (critical) ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0203',
+    actor_user_id: DISPATCH_EXEC.id,
+    actor_role: 'dispatch_executive',
+    actor: DISPATCH_EXEC,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: null,
+    outlet: null,
+    category: 'reversal',
+    action: 'dispatch_plan_items_replaced',
+    entity_type: 'dispatch_plan',
+    entity_id: PLAN_ID,
+    correlation_id: PLAN_ID,
+    reversed_event_id: 'demo-evt-0201',
+    severity: 'critical',
+    old_values: { replaced_items: planV1, replaced_count: planV1.length },
+    new_values: { items: planV2, item_count: planV2.length },
+    ip_address: '106.51.72.204',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(27),
+  },
+
+  /* ---------------- H1 — plan locked, kitchen cut a quantity ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0204',
+    actor_user_id: KITCHEN_EXEC.id,
+    actor_role: 'kitchen_executive',
+    actor: KITCHEN_EXEC,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: null,
+    outlet: null,
+    category: 'dispatch_plan',
+    action: 'dispatch_plan_locked',
+    entity_type: 'dispatch_plan',
+    entity_id: PLAN_ID,
+    correlation_id: PLAN_ID,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: { status: 'draft', items: planV2 },
+    new_values: {
+      status: 'locked',
+      locked_by: KITCHEN_EXEC.id,
+      plan_date: PLAN_DATE,
+      brand: 'el_chaapo',
+      items: planLocked,
+      item_count: planLocked.length,
+      items_replaced: planV2.length,
+      quantities_changed_by_kitchen: true,
+    },
+    ip_address: '157.51.19.88',
+    user_agent: UA_CHROME,
+    session_id: null,
+    created_at: hoursAgo(24),
+  },
+
+  /* ---------------- F1 — closing sheet started ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0205',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: EC_OUTLET.EC1026.id,
+    outlet: EC_OUTLET.EC1026,
+    category: 'checkout',
+    action: 'checkout_draft_created',
+    entity_type: 'checkout_form',
+    entity_id: CLOSING_FORM_ID,
+    correlation_id: CLOSING_FORM_ID,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: null,
+    new_values: {
+      supervisor_name: 'Meera Nair',
+      operator_id: null,
+      dispatch_plan_id: PLAN_ID,
+      return_count: 2,
+      wastage_count: 1,
+      returns: [returnLine(MATERIAL.MARINADE, 8, 1.5), returnLine(MATERIAL.CHICKEN, 11, 2)],
+      wastage: [wastageLine(MATERIAL.CHICKEN, 11, 0.5)],
+      additional: { cash: 0, payment_onside: 0 },
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(15),
+  },
+
+  /* ---------------- F1 — closing sheet saved again, wastage grew ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0206',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    outlet_id: EC_OUTLET.EC1026.id,
+    outlet: EC_OUTLET.EC1026,
+    category: 'checkout',
+    action: 'checkout_draft_updated',
+    entity_type: 'checkout_form',
+    entity_id: CLOSING_FORM_ID,
+    correlation_id: CLOSING_FORM_ID,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: {
+      supervisor_name: 'Meera Nair',
+      operator_id: null,
+      returns: [returnLine(MATERIAL.MARINADE, 8, 1.5), returnLine(MATERIAL.CHICKEN, 11, 2)],
+      wastage: [wastageLine(MATERIAL.CHICKEN, 11, 0.5)],
+      additional: { cash: 0, payment_onside: 0 },
+    },
+    new_values: {
+      supervisor_name: 'Meera Nair',
+      operator_id: null,
+      dispatch_plan_id: PLAN_ID,
+      return_count: 1,
+      wastage_count: 2,
+      returns: [returnLine(MATERIAL.MARINADE, 8, 1.5)],
+      wastage: [wastageLine(MATERIAL.CHICKEN, 11, 2.5), wastageLine(MATERIAL.CHILLI, 1.5, 0.2)],
+      additional: { cash: 450, payment_onside: 0 },
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(14),
+  },
+
+  /* ---------------- F2 — closing confirmed ---------------- */
+  {
+    __demo: true,
+    id: 'demo-evt-0207',
+    actor_user_id: SUPERVISOR_CK2.id,
+    actor_role: 'supervisor',
+    actor: SUPERVISOR_CK2,
+    cloud_kitchen_id: KITCHEN.CK2.id,
+    cloud_kitchen: KITCHEN.CK2,
+    // Faithful to the real function, which sets neither of these — see the
+    // note in AuditDispatchCheckout.jsx. A confirmed closing therefore cannot
+    // currently be tied back to the draft saves it came from, or filtered by
+    // outlet.
+    outlet_id: null,
+    outlet: null,
+    category: 'checkout',
+    action: 'checkout_confirmed',
+    entity_type: 'checkout_form',
+    entity_id: CLOSING_FORM_ID,
+    correlation_id: null,
+    reversed_event_id: null,
+    severity: 'review',
+    old_values: { status: 'submitted', checkout_form_id: CLOSING_FORM_ID },
+    new_values: {
+      status: 'confirmed',
+      stock_in_id: 'demo-stockin-0207',
+      total_returned_qty: 1.5,
+      confirmed_at: hoursAgo(13),
+    },
+    ip_address: '106.51.72.204',
+    user_agent: UA_ANDROID,
+    session_id: null,
+    created_at: hoursAgo(13),
+  }
+)
+
 /** Events this subsection lists. Excludes rows that exist only for linkage. */
 export const demoSubsectionEvents = () => DEMO_AUDIT_EVENTS.filter((event) => !event.__demoOutOfScope)
 
