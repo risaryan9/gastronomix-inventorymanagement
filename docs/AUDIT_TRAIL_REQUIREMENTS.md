@@ -1106,10 +1106,20 @@ judgment call — just making the existing reasoning queryable:
   prefers `cf-connecting-ip` (Supabase fronts Postgres with Cloudflare), then
   the first hop of `x-forwarded-for`, then `x-real-ip`; both helpers return
   `NULL` rather than raising when called outside a request context (SQL editor,
-  psql, migrations). Two caveats for whoever reads this data: **`x-forwarded-for`
+  psql, migrations). Caveat for whoever reads this data: **`x-forwarded-for`
   is client-supplied and therefore spoofable** — treat the IP as corroborating,
-  not proof of origin — and these helpers are available to every future
-  audited flow, not just auth, so B1/E1–E4/F1/G1–G2/H1 should populate them too.
+  not proof of origin. `current_request_ip()` prefers `cf-connecting-ip`, which
+  Supabase's Cloudflare layer sets and a client cannot forge.
+  **Now captured on every event, not just logins**
+  (`migrations/capture-request-context-on-all-audit-events.sql`). Originally
+  only `log_auth_event` was wired up, which left auth rows with an IP and all
+  sixteen other flows without one — the wrong way round, since a login event is
+  only useful as an anchor if the actions anchored to it record where they came
+  from too. Only two functions insert into `audit_events` at all, so wiring the
+  helpers into `log_audit_event` covered every remaining flow without touching a
+  single caller. Rows written before that migration keep a NULL IP and are
+  deliberately not backfilled — inventing request context for past events would
+  be fabricating evidence.
   `session_id` remains unused: key-based logins have no server-side session
   object to reference.
 - **A2 makes `audit_events` writable by unauthenticated callers.** This is
