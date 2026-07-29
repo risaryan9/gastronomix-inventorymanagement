@@ -17,6 +17,7 @@ import PaginationControls from '../../components/PaginationControls'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
+import { getBusinessDate, toBusinessDateString } from '../../lib/businessDate'
 
 const StockIn = () => {
   const [stockInRecords, setStockInRecords] = useState([])
@@ -55,7 +56,7 @@ const StockIn = () => {
   const [purchaseSlip, setPurchaseSlip] = useState({
     supplier_name: '',
     invoice_number: '',
-    receipt_date: new Date().toISOString().split('T')[0],
+    receipt_date: getBusinessDate(),
     notes: ''
   })
 
@@ -772,7 +773,7 @@ const StockIn = () => {
       supplier_name: draft.purchaseSlip.supplier_name ?? '',
       invoice_number: draft.purchaseSlip.invoice_number ?? '',
       receipt_date:
-        draft.purchaseSlip.receipt_date || new Date().toISOString().split('T')[0],
+        draft.purchaseSlip.receipt_date || getBusinessDate(),
       notes: draft.purchaseSlip.notes ?? ''
     })
     setInvoiceFile(null)
@@ -808,7 +809,7 @@ const StockIn = () => {
     setPurchaseSlip({
       supplier_name: '',
       invoice_number: '',
-      receipt_date: new Date().toISOString().split('T')[0],
+      receipt_date: getBusinessDate(),
       notes: ''
     })
     setInvoiceFile(null)
@@ -846,7 +847,7 @@ const StockIn = () => {
     setPurchaseSlip({
       supplier_name: '',
       invoice_number: '',
-      receipt_date: new Date().toISOString().split('T')[0],
+      receipt_date: getBusinessDate(),
       notes: ''
     })
     setInvoiceFile(null)
@@ -1103,11 +1104,9 @@ const StockIn = () => {
           if (dateTo && recordDate > new Date(dateTo)) return false
         }
       } else if (dateFilter.includes('today')) {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const recordDate = new Date(record.receipt_date)
-        recordDate.setHours(0, 0, 0, 0)
-        if (recordDate.getTime() !== today.getTime()) return false
+        // Business-day string comparison, so the "Today" filter agrees with
+        // the IST day a receipt was actually filed under.
+        if (toBusinessDateString(record.receipt_date) !== getBusinessDate()) return false
       } else if (dateFilter.includes('this-week')) {
         const today = new Date()
         const weekAgo = new Date(today)

@@ -1,3 +1,5 @@
+import { getBusinessDate } from './businessDate'
+
 /**
  * Manual inventory adjustment via Supabase client (same pattern as StockOut FIFO).
  * Increment: manual_inventory stock_in + batch from latest reference pricing.
@@ -61,7 +63,7 @@ export async function adjustManualInventory(supabase, params) {
   const adjustmentType = adjustmentAmount > 0 ? 'increment' : 'decrement'
   let stockInId = null
   let stockOutId = null
-  const today = new Date().toISOString().split('T')[0]
+  const today = getBusinessDate()
 
   if (adjustmentAmount > 0) {
     const { data: refBatch, error: refBatchError } = await supabase

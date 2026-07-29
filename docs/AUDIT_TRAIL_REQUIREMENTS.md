@@ -49,8 +49,15 @@
 
 - **What already exists.** `audit_logs` has been replaced by `audit_events` +
   `audit_auth_events` (see §6 for the schema, `migrations/replace-audit-logs-with-audit-events.sql`
-  for the table/RLS/helper-function migration). **Sixteen** flows now write to
-  `audit_events`:
+  for the table/RLS/helper-function migration). **All twenty** action points now
+  write to `audit_events`:
+  - **F1/G1/G2/H1** — `save_checkout_draft()`, `save_dispatch_plan()` and
+    `lock_dispatch_plan()`, in
+    `migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql`. These
+    closed the last four gaps and, along the way, fixed a data-loss bug in the
+    checkout draft save, repeated the IST fix for `plan_date`, and added the
+    status guards that neither the client nor RLS was enforcing (see §3.F1,
+    §3.G1, §3.H1).
   - **E1–E4** — `save_allocation_request()` (create/edit/delete-lines) and
     `add_items_to_allocation_request()` (the PM's pre-pack additions), in
     `migrations/wire-requisitions-to-audit-events.sql`. The first replaces three
@@ -89,8 +96,9 @@
     hardcodes its own `category`/`action`/`severity`/`entity_type` server-side
     and only accepts the business facts as parameters, so the client supplies
     data but never controls what kind of event gets logged.
-  Everything marked ❌ below is a place the business logic says *should* log
-  but doesn't yet — that's the next phase of work, not covered by this pass.
+  **Nothing is marked ❌ any more.** Every action point this document
+  catalogued is audited; what's left is the follow-on work in §6.5, not gaps in
+  coverage.
 
 ### Decisions (settled — see §5 for detail)
 
@@ -128,13 +136,13 @@
 | E2 | Edit allocation request items/quantities | supervisor, bp_operator, PM | Requisitions | ✅ |
 | E3 | Delete allocation request items | supervisor, bp_operator, PM | Requisitions | ✅ |
 | E4 | PM adds an item to a supervisor's requisition (pre-pack) | purchase_manager | Requisitions | ✅ |
-| F1 | Save checkout/closing draft (returns, wastage, extra consumption) | supervisor | Checkout | ❌ |
+| F1 | Save checkout/closing draft (returns, wastage, extra consumption) | supervisor | Checkout | ✅ |
 | F2 | Confirm/lock checkout form | supervisor | Checkout | ✅ |
-| G1 | Create/save dispatch plan + items | dispatch_executive | Dispatch Plan | ❌ |
-| G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ❌ |
-| H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ❌ |
+| G1 | Create/save dispatch plan + items | dispatch_executive | Dispatch Plan | ✅ |
+| G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ✅ |
+| H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ✅ |
 
-**16 audited, 0 partial, 4 gaps** across 20 action points.
+**20 audited, 0 partial, 0 gaps** across 20 action points — the catalogue is complete.
 
 ---
 
@@ -580,19 +588,36 @@
 - **Where:** `frontend/src/pages/supervisor/Checkout.jsx` → `handleSaveDraft`
   (~line 311; form insert/update 321/347, returns 397, wastage 404, additional
   414; deletes at 332/337/342).
+- **Where:** `Checkout.jsx` → `handleSaveDraft` now makes a single
+  `save_checkout_draft` RPC call
+  (`migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql`) in place of
+  the up-to-seven separate client calls it used to run — `action:
+  'checkout_draft_created'` / `'checkout_draft_updated'`, `category:
+  'checkout'`, `severity: 'review'`, with the full return/wastage/additional
+  breakdown before *and* after.
 - **Why audit:** **Wastage and returns are the primary loss/shrinkage numbers.**
   They directly affect how an outlet is evaluated and are the easiest figures to
   fudge (under-report returns, over-report wastage). A supervisor can save a
-  draft multiple times before confirming — right now none of those saves are
-  logged, only the final confirm (F2) is, and even that only records an
-  aggregate total, not the return/wastage/additional line breakdown. Every
-  draft save should be captured, including the delete-then-reinsert churn that
-  can quietly change earlier figures before the form is ever confirmed. Per
-  decision #2, this should be logged from inside a Postgres function once the
-  draft-save path is moved server-side (it is currently plain client
-  inserts/deletes/updates, unlike the confirm step in F2 which already runs
-  through an RPC).
-- **Status:** ❌ GAP.
+  draft multiple times before confirming. **Every save is now captured**,
+  including the delete-then-reinsert churn, with the per-item detail F2 never
+  had.
+- **Status:** ✅ Audited, DB-side.
+- **Every draft save shares a `correlation_id`** (the checkout form's id), so
+  the chain of drafts and the final F2 confirm are reviewable as one sequence —
+  the exact case §6.2 named when the column was designed.
+- **🐛 A data-loss bug fixed here.** The old flow was: update the form, delete
+  the returns, delete the wastage, delete the additional, then re-insert all
+  three. No transaction spanned them, **and the three deletes never checked
+  their error result.** A failure between the deletes and the re-inserts wiped
+  the supervisor's previously saved figures with nothing written back — silent
+  loss of precisely the numbers this section calls the primary shrinkage
+  figures. It is now all-or-nothing.
+- **A confirmed form can no longer be edited.** `handleSaveDraft` set
+  `status: 'draft'` unconditionally, and the only thing stopping it running on a
+  confirmed form was the UI hiding the button (`Checkout.jsx` ~line 913).
+  Nothing in RLS enforced it (see §4). Since F2 has by then already created a
+  `stock_in` from the returns, rewriting the figures afterwards would leave that
+  `stock_in` describing numbers that no longer exist. The RPC refuses.
 
 #### F2 — Confirm / lock checkout form
 - **What happens:** Supervisor finalizes the closing via the
@@ -622,12 +647,30 @@
   kitchen produces and ships.
 - **Where:** `frontend/src/pages/DispatchExecutiveDashboard.jsx` →
   `handleSaveDispatchPlan` (~line 724; plan insert 836, items insert 860).
+- **Where:** `DispatchExecutiveDashboard.jsx` → `handleSaveDispatchPlan` now
+  makes a single `save_dispatch_plan` RPC call
+  (`migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql`) —
+  `action: 'dispatch_plan_created'` / `'dispatch_plan_updated'`, `category:
+  'dispatch_plan'`, `severity: 'review'`, with the full item list.
 - **Why audit:** The dispatch plan is the **production/dispatch authorization** —
   it commits kitchen capacity and stock. Changing planned quantities has direct
   downstream inventory and cost impact, so the author and the numbers should be
-  on record. Per decision #2, this means introducing a Postgres function for
-  dispatch-plan save (this flow is currently plain client inserts).
-- **Status:** ❌ GAP.
+  on record. **Now logged.**
+- **Status:** ✅ Audited, DB-side.
+- **🐛 The E1 timezone bug again, same line of code.** `plan_date` came from
+  `new Date().toISOString().split('T')[0]` — UTC — so a plan created between
+  00:00 and 05:30 IST was filed under the previous day. Now derived server-side
+  as `(now() AT TIME ZONE 'Asia/Kolkata')::date`, matching
+  `save_allocation_request`. This one matters more than it looks: `checkout_form`
+  joins a dispatch plan by date, so a plan and a requisition disagreeing about
+  what day it is would break the closing flow. Only 4 plans existed when this
+  shipped and none fell in the affected window, so there was nothing to
+  reconcile.
+- **The edit race is actually closed now.** The client checked `status = 'draft'`
+  twice before mutating items, with a comment conceding it only "reduces race
+  with kitchen lock". The RPC takes `FOR UPDATE` on the plan row and checks
+  status inside the same transaction, so a concurrent lock must wait and one of
+  the two loses cleanly.
 
 #### G2 — Delete / replace dispatch plan items
 - **What happens:** Re-saving a plan **deletes** existing `dispatch_plan_items`
@@ -635,8 +678,15 @@
 - **Where:** `DispatchExecutiveDashboard.jsx` (~line 790 delete, 805 re-insert).
 - **Why audit:** A full replace silently discards the previous plan. Without a
   log there's no way to see a plan was revised or by how much. This is the
-  same reversal/overwrite risk category as D4 and E3.
-- **Status:** ❌ GAP.
+  same reversal/overwrite risk category as D4 and E3. **Now logged.**
+- **Status:** ✅ Audited, DB-side.
+- **The replace gets its own critical event**, exactly as E3's deletions do: a
+  re-save writes `dispatch_plan_updated` (dispatch_plan/review) *and*
+  `dispatch_plan_items_replaced` (`category: 'reversal'`, `severity:
+  'critical'`) carrying the discarded plan in `old_values`. They share a
+  `correlation_id`, and the reversal row sets **`reversed_event_id`** pointing
+  at the previous save it overwrites — the use §6.1 imagined for that column
+  when it named "G2 → the G1 save it replaces".
 
 ---
 
@@ -647,13 +697,30 @@
   sets the `dispatch_plan` to a confirmed/locked state.
 - **Where:** `frontend/src/pages/KitchenExecutiveDashboard.jsx` →
   `handleConfirmLock` (~line 420; items delete 451 / insert 465; plan update 472).
+- **Where:** `KitchenExecutiveDashboard.jsx` → `handleConfirmLock` now makes a
+  single `lock_dispatch_plan` RPC call
+  (`migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql`) —
+  `action: 'dispatch_plan_locked'`, `category: 'dispatch_plan'`, `severity:
+  'review'`, with the plan's items before and after the lock.
 - **Why audit:** Locking is the **hand-off from planning to execution** — after
-  this, the plan is treated as final for production and stock movement. Who locked
-  it, when, and what the final quantities were is a decision management needs to
-  reconstruct. Per decision #2, this belongs in a Postgres function (e.g. a
-  `lock_dispatch_plan` RPC), consistent with how `confirm_checkout_form` gates
-  and logs the analogous downstream step.
-- **Status:** ❌ GAP.
+  this, the plan is treated as final for production and stock movement. Who
+  locked it, when, and what the final quantities were is a decision management
+  needs to reconstruct. **Now logged.**
+- **Status:** ✅ Audited, DB-side.
+- **It records whether the kitchen changed the numbers.** The event carries
+  `quantities_changed_by_kitchen`, computed by comparing the dispatch
+  executive's items against the kitchen's final set. That is the single most
+  interesting fact about a lock — "the kitchen quietly cut outlet X's order"
+  is now answerable with a filter instead of by diffing two payloads by hand.
+- **⚠️ It checked nothing before locking.** `handleConfirmLock` deleted the
+  items, re-inserted, and set `status = 'locked'` regardless of the plan's
+  current state — and nothing in RLS constrained it either (see §4). Locking an
+  already-locked plan silently overwrote the quantities the kitchen was already
+  working to, *after* `confirm_checkout_form` had begun trusting them (it
+  requires `status = 'locked'` and reads `locked_at` for its 24-hour window).
+  The RPC now refuses unless the plan is still a draft. Note the dispatch side
+  was already defending against this exact race from its end — its comment
+  named "race with kitchen lock" — while the kitchen side had no guard at all.
 
 ---
 
@@ -678,20 +745,25 @@
      authorizing document for essentially all outbound stock is now logged
      across all three page entry points, including the PM's own after-the-fact
      additions.
-  3. **Checkout draft save (F1)** — now the top remaining gap. The actual
-     wastage/return/extra-consumption figures are set here, potentially over
-     several saves; only the final confirm (F2) is logged, and only as an
-     aggregate.
+  3. ~~**Checkout draft save (F1)**~~ — **closed.** Every draft save is logged
+     with its per-item return/wastage/additional breakdown, correlated to the
+     final confirm.
   4. ~~**Stock-in receiving (B1)**~~ — **closed.** The largest inbound financial
      event (quantity + cost + supplier + invoice) is now logged in full by
      `finalize_stock_in()`.
-  5. **Dispatch planning (G1/G2) and kitchen lock (H1)** — the plan → lock →
-     checkout chain is audited only at its very last step (F2); the
-     plan-authoring and kitchen-confirmation steps that precede it aren't.
-- **Reversals & deletes remain the highest-risk category in general** — this is
-  already reflected in D4, F2 and now E3 being audited via RPC. The same
-  treatment is still owed to F1's delete-then-reinsert churn and G2 (replace
-  plan items).
+  5. ~~**Dispatch planning (G1/G2) and kitchen lock (H1)**~~ — **closed.** The
+     whole plan → lock → checkout chain is now audited end to end, not just at
+     its final step.
+
+  **All five are closed. Every action point in §2 is ✅.** What remains is not
+  gaps in the catalogue but the follow-on work listed in §6.5 — chiefly the
+  read/report side (decision #3 deferred it) and the RLS concerns below, which
+  are security issues this document surfaced rather than audit gaps.
+- **Reversals & deletes remain the highest-risk category in general** — now
+  fully covered: D4 (cancel packing), E3 (delete request lines), F1's
+  delete-then-reinsert churn, and G2 (replace plan items) each write a
+  `reversal`-category row at `critical` severity, carrying a snapshot taken
+  before the rows disappear.
 - **⚠️ Moving a write server-side can silently *remove* a security guard —
   found while closing E1–E4.** `allocation_request_items` has INSERT, UPDATE and
   DELETE policies that all require the parent request to have
@@ -701,9 +773,15 @@
   edited — after stock has physically left against a fixed item list. Both new
   functions re-assert `is_packed = false` in their own logic. **Any future gap
   closed this way must check what RLS was doing for that table first**, and
-  carry it across by hand; F1 (`checkout_form_*`) and G1–G2/H1
-  (`dispatch_plan_items`) should each be checked for the same trap before their
-  writes move.
+  carry it across by hand.
+  **Followed up for F1/G1–G2/H1, and the answer was the opposite one.** The
+  `checkout_form_*` and `dispatch_plan*` policies are pure role and
+  cloud-kitchen scoping — *none* encodes a status guard — so nothing was lost
+  by moving those writes. But that means there was never any database-level
+  protection against saving a draft over a **confirmed** checkout form, or
+  editing and re-locking an **already-locked** dispatch plan. The only defences
+  were in JavaScript, and `handleConfirmLock` had none at all. The three new
+  functions enforce those rules server-side; see §3.F1, §3.G1 and §3.H1.
 - ~~**D3's destination leg is the one remaining "partial."**~~ — **closed, and
   with it the last ⚠️ in this document.** Both legs of an inter-cloud transfer
   are now logged and share a `correlation_id`, so the pair is reviewable
@@ -749,13 +827,16 @@ are now settled and have been folded into the relevant sections above.
    written from Postgres functions/triggers, not client-side inserts —
    matching the existing pattern in `pack_allocation_request`,
    `cancel_allocation_packing`, and `confirm_checkout_form`. Every ❌ gap above
-   that is currently plain client-side table access (F1, G1–G2, H1) will need
-   its write path moved into (or wrapped by) a Postgres function as part of
-   closing it. B1, C3, D3's destination leg and E1–E4 have since been closed
-   exactly this way (`finalize_stock_in`, `set_raw_material_active`,
-   `receive_inter_cloud_transfer`, `save_allocation_request`,
-   `add_items_to_allocation_request`). Table/column schemas for the audit
-   entries themselves are intentionally deferred to a later pass.
+   that was plain client-side table access has since been closed exactly this
+   way: B1 (`finalize_stock_in`), C3 (`set_raw_material_active`), D3's
+   destination leg (`receive_inter_cloud_transfer`), E1–E4
+   (`save_allocation_request`, `add_items_to_allocation_request`), F1
+   (`save_checkout_draft`), G1–G2 (`save_dispatch_plan`) and H1
+   (`lock_dispatch_plan`). **Decision #2 is fully carried out — no audited
+   action is written from the client any more.** The one deliberate exception is
+   the four narrow log-only RPCs behind B2/C1/C2/D2, where the business logic
+   still runs client-side and only the audit write is server-side; those remain
+   candidates for the stronger treatment.
 3. **Read/report access — not needed.** This document covers state-changing
    actions only; viewing or exporting reports is out of scope.
 4. **Edit granularity — record-level is enough.** For edits (C3, E2, F1),
@@ -782,8 +863,19 @@ are now settled and have been folded into the relevant sections above.
 > `receive_inter_cloud_transfer` (D3) and is the first use of
 > `correlation_id` in anger;
 > `migrations/wire-requisitions-to-audit-events.sql` adds
-> `save_allocation_request` and `add_items_to_allocation_request` (E1–E4).
-> Still a v1 — expect further iteration as F1, G1–G2, H1 get closed.
+> `save_allocation_request` and `add_items_to_allocation_request` (E1–E4);
+> `migrations/wire-checkout-and-dispatch-plan-to-audit-events.sql` adds
+> `save_checkout_draft` (F1), `save_dispatch_plan` (G1/G2) and
+> `lock_dispatch_plan` (H1), closing the last four.
+> `migrations/fix-internal-audit-helper-grants.sql` then makes the two internal
+> helpers genuinely internal (see §6.5).
+>
+> **The schema survived all twenty action points without a single change** —
+> no new column, no altered constraint, no RLS edit. Every design bet in §6.2
+> paid off in practice: `correlation_id` (D3's two legs, E3's deletions, F1's
+> draft chain, G2's replaces), `reversed_event_id` (D4, G2), `severity` as a
+> triage filter, and `cloud_kitchen_id` on the row itself. Still nominally a
+> v1, but it is now a v1 that has been fully exercised.
 
 ### 6.1 Why the current `audit_logs` table won't carry this
 
@@ -959,10 +1051,12 @@ judgment call — just making the existing reasoning queryable:
 - **A2** now has a natural home (`audit_auth_events`) instead of being forced
   through `entity_id NOT NULL`.
 - **RLS** collapses from "one `EXISTS` subquery per `entity_type`" to one
-  check: `audit_events.cloud_kitchen_id = <acting PM's kitchen>` — no new
-  branch needed as E1-E4, F1, G1-G2, H1 get wired up. Borne out in practice:
-  A1/A2, B1 and C3 each introduced a new `entity_type` (or none at all, for
-  auth) and none of them required an RLS change.
+  check: `audit_events.cloud_kitchen_id = <acting PM's kitchen>`. **Fully borne
+  out:** all twenty action points are now wired, introducing the `stock_in`,
+  `raw_material`, `allocation_request`, `checkout_form` and `dispatch_plan`
+  entity types (and, for auth, none at all) — and not one of them required an
+  RLS change. Under the old `audit_logs` policy each would have needed its own
+  new `EXISTS` branch.
 - **D3** (formerly the one "partial") is now two rows sharing one
   `correlation_id` — reviewable as a matched pair instead of only the source
   leg being visible. **Shipped**, and it validated the column: the id is
@@ -970,7 +1064,10 @@ judgment call — just making the existing reasoning queryable:
   neither leg had to coordinate with the other to produce it.
 - **D4 / G2** (reversals) point at the event they reverse via
   `reversed_event_id`, instead of an admin having to guess which prior pack
-  or plan-save a cancellation corresponds to.
+  or plan-save a cancellation corresponds to. **Both shipped** —
+  `cancel_allocation_packing` links back to the pack it undoes, and
+  `dispatch_plan_items_replaced` links back to the plan save it overwrites,
+  exactly as §6.1 predicted.
 - Admins get a **`severity` filter** to jump straight to "review" and
   "critical" rows instead of scrolling routine catalog creates alongside
   cancellations.
@@ -1030,7 +1127,9 @@ judgment call — just making the existing reasoning queryable:
 - **Retention/volume** — A1 now writes on every successful login, and once
   E1-E4, F1, G1-G2, H1 all start writing, volume goes up substantially (every
   draft save in F1 alone). Not urgent yet, but partitioning `audit_events` by
-  `created_at` month is the natural answer if it's ever needed.
+  `created_at` month is the natural answer if it's ever needed. Now that all
+  twenty points write, this is closer than it was — F1 alone writes on every
+  draft save.
 - **`audit_logs` → `audit_events` migration path** itself (rename vs.
   new-table-plus-backfill vs. keeping `audit_logs` as a compatibility view)
   is a separate decision for whenever this is actually implemented — not

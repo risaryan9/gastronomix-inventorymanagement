@@ -1,11 +1,15 @@
 import { supabase } from './supabase'
+import { getBusinessDate } from './businessDate'
 
-export const getLocalDateString = (date = new Date()) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+/**
+ * @deprecated Use getBusinessDate from lib/businessDate directly.
+ *
+ * Kept as an alias so existing call sites keep working. It used to read the
+ * *browser's* local timezone, which happened to be right for staff sitting in
+ * India and wrong for anyone else; it now resolves to the kitchen's business
+ * day (IST) regardless of where the device is.
+ */
+export const getLocalDateString = (date = new Date()) => getBusinessDate(date)
 
 export const fetchOutletAllocationRequests = async ({ outletId, page = 1, pageSize = 10 }) => {
   const from = (page - 1) * pageSize

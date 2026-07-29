@@ -3,6 +3,7 @@ import { useNavigate, Outlet, NavLink } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
+import { getBusinessDate } from '../lib/businessDate'
 
 const PurchaseManagerDashboard = () => {
   const [session, setSession] = useState(null)
@@ -37,7 +38,7 @@ const PurchaseManagerDashboard = () => {
       if (!currentSession?.cloud_kitchen_id) return
 
       try {
-        const todayStr = new Date().toISOString().split('T')[0]
+        const todayStr = getBusinessDate()
 
         const [pendingAllocationsResult, inventoryResult] = await Promise.all([
           supabase

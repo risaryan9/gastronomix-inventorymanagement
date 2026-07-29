@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { getBusinessDate } from '../../lib/businessDate'
 
 const MATERIAL_TYPE_ORDER = {
   finished: 0,
@@ -79,7 +80,7 @@ const Checkout = () => {
   const fetchTodayPlans = async () => {
     try {
       setLoading(true)
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       
       const { data: plans, error: plansError } = await supabase
         .from('dispatch_plan')
@@ -112,7 +113,7 @@ const Checkout = () => {
   const loadOutletsForBrand = async (brand, plans = null) => {
     try {
       if (!plans) {
-        const today = new Date().toISOString().split('T')[0]
+        const today = getBusinessDate()
         const { data: fetchedPlans, error: plansError } = await supabase
           .from('dispatch_plan')
           .select('*')
@@ -313,55 +314,6 @@ const Checkout = () => {
 
     setIsDraftSaving(true)
     try {
-      const existingForm = checkoutFormsMap[selectedOutlet.id]
-      let checkoutFormId = existingForm?.id
-
-      if (existingForm) {
-        const { error: updateError } = await supabase
-          .from('checkout_form')
-          .update({
-            supervisor_name: supervisorName,
-            operator_id: operatorId || null,
-            status: 'draft'
-          })
-          .eq('id', existingForm.id)
-
-        if (updateError) throw updateError
-
-        await supabase
-          .from('checkout_form_return_items')
-          .delete()
-          .eq('checkout_form_id', existingForm.id)
-
-        await supabase
-          .from('checkout_form_wastage_items')
-          .delete()
-          .eq('checkout_form_id', existingForm.id)
-
-        await supabase
-          .from('checkout_form_additional')
-          .delete()
-          .eq('checkout_form_id', existingForm.id)
-      } else {
-        const { data: newForm, error: insertError } = await supabase
-          .from('checkout_form')
-          .insert({
-            dispatch_plan_id: todayPlan.id,
-            cloud_kitchen_id: cloudKitchenId,
-            plan_date: todayPlan.plan_date,
-            outlet_id: selectedOutlet.id,
-            status: 'draft',
-            supervisor_name: supervisorName,
-            operator_id: operatorId || null,
-            created_by: userId
-          })
-          .select()
-          .single()
-
-        if (insertError) throw insertError
-        checkoutFormId = newForm.id
-      }
-
       const returnItems = []
       const wastageItems = []
 
@@ -372,8 +324,6 @@ const Checkout = () => {
 
         if (returned > 0) {
           returnItems.push({
-            checkout_form_id: checkoutFormId,
-            outlet_id: selectedOutlet.id,
             raw_material_id: item.raw_material_id,
             dispatched_quantity: item.quantity,
             returned_quantity: returned
@@ -382,8 +332,6 @@ const Checkout = () => {
 
         if (wasted > 0) {
           wastageItems.push({
-            checkout_form_id: checkoutFormId,
-            outlet_id: selectedOutlet.id,
             raw_material_id: item.raw_material_id,
             dispatched_quantity: item.quantity,
             wasted_quantity: wasted
@@ -391,34 +339,26 @@ const Checkout = () => {
         }
       })
 
-      if (returnItems.length > 0) {
-        const { error: returnError } = await supabase
-          .from('checkout_form_return_items')
-          .insert(returnItems)
-        if (returnError) throw returnError
-      }
+      // One transactional RPC upserts the form and replaces its return,
+      // wastage and additional rows, and writes the audit entry. This used
+      // to be up to seven separate client calls with no transaction — and
+      // the three deletes did not check their error result, so a failure
+      // between deleting and re-inserting destroyed the previously saved
+      // returns and wastage with nothing written back.
+      const { error: saveError } = await supabase.rpc('save_checkout_draft', {
+        p_acting_user_id: userId,
+        p_dispatch_plan_id: todayPlan.id,
+        p_cloud_kitchen_id: cloudKitchenId,
+        p_outlet_id: selectedOutlet.id,
+        p_supervisor_name: supervisorName,
+        p_return_items: returnItems,
+        p_wastage_items: wastageItems,
+        p_operator_id: operatorId || null,
+        p_cash: parseFloat(cash) || 0,
+        p_payment_onside: parseFloat(paymentOnside) || 0
+      })
 
-      if (wastageItems.length > 0) {
-        const { error: wastageError } = await supabase
-          .from('checkout_form_wastage_items')
-          .insert(wastageItems)
-        if (wastageError) throw wastageError
-      }
-
-      const cashVal = parseFloat(cash) || 0
-      const paymentOnsideVal = parseFloat(paymentOnside) || 0
-
-      if (cashVal > 0 || paymentOnsideVal > 0) {
-        const { error: additionalError } = await supabase
-          .from('checkout_form_additional')
-          .insert({
-            checkout_form_id: checkoutFormId,
-            outlet_id: selectedOutlet.id,
-            cash: cashVal,
-            payment_onside: paymentOnsideVal
-          })
-        if (additionalError) throw additionalError
-      }
+      if (saveError) throw saveError
 
       setAlert({ type: 'success', message: 'Draft saved successfully!' })
       closeOutletForm()
@@ -478,7 +418,7 @@ const Checkout = () => {
     setPreviousFormsLoading(true)
     setIsPreviousFormsOpen(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       
       const { data: forms, error: formsError } = await supabase
         .from('checkout_form')

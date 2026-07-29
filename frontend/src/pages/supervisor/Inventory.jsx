@@ -6,6 +6,7 @@ import MultiSelectFilter from '../../components/MultiSelectFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import { getBusinessDate } from '../../lib/businessDate'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
@@ -383,7 +384,7 @@ const Inventory = () => {
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `inventory_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute('download', `inventory_${getBusinessDate()}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -447,7 +448,7 @@ const Inventory = () => {
     const inventorySheet = XLSX.utils.aoa_to_sheet(inventoryData)
     XLSX.utils.book_append_sheet(workbook, inventorySheet, 'Inventory')
 
-    XLSX.writeFile(workbook, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`)
+    XLSX.writeFile(workbook, `inventory_${getBusinessDate()}.xlsx`)
   }
 
   const exportToPDF = () => {
@@ -577,7 +578,7 @@ const Inventory = () => {
         { align: 'center' }
       )
 
-      doc.save(`inventory_${new Date().toISOString().split('T')[0]}.pdf`)
+      doc.save(`inventory_${getBusinessDate()}.pdf`)
       setShowExportModal(false)
       setAlert({ type: 'success', message: 'Inventory exported to PDF successfully!' })
     } catch (err) {

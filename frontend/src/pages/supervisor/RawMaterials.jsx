@@ -6,6 +6,7 @@ import MultiSelectFilter from '../../components/MultiSelectFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import { getBusinessDate } from '../../lib/businessDate'
 
 // All available categories
 const CATEGORIES = [
@@ -139,7 +140,7 @@ const RawMaterials = () => {
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `raw_materials_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute('download', `raw_materials_${getBusinessDate()}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -186,7 +187,7 @@ const RawMaterials = () => {
     const materialsSheet = XLSX.utils.aoa_to_sheet(materialsData)
     XLSX.utils.book_append_sheet(workbook, materialsSheet, 'Raw Materials')
 
-    XLSX.writeFile(workbook, `raw_materials_${new Date().toISOString().split('T')[0]}.xlsx`)
+    XLSX.writeFile(workbook, `raw_materials_${getBusinessDate()}.xlsx`)
   }
 
   const exportToPDF = () => {
@@ -290,7 +291,7 @@ const RawMaterials = () => {
         { align: 'center' }
       )
 
-      doc.save(`raw_materials_${new Date().toISOString().split('T')[0]}.pdf`)
+      doc.save(`raw_materials_${getBusinessDate()}.pdf`)
       setShowExportModal(false)
       setAlert({ type: 'success', message: 'Raw materials exported to PDF successfully!' })
     } catch (err) {

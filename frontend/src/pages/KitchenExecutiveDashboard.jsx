@@ -13,6 +13,7 @@ import gastronomixLogo from '../assets/gastronomix-logo.png'
 import nippuKodiLogo from '../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../assets/el-chaapo-logo.png'
 import boomPizzaLogo from '../assets/boom-pizza-logo.png'
+import { getBusinessDate } from '../lib/businessDate'
 
 const BRANDS = [
   {
@@ -214,7 +215,7 @@ const KitchenExecutiveDashboard = () => {
       const plans = data || []
       setDispatchPlans(plans)
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       const draftToday = plans.find(
         plan => plan.plan_date === today && plan.status === 'draft'
       ) || null
@@ -445,38 +446,24 @@ const KitchenExecutiveDashboard = () => {
         return
       }
 
-      // Replace dispatch_plan_items with final items
-      const { error: deleteError } = await supabase
-        .from('dispatch_plan_items')
-        .delete()
-        .eq('dispatch_plan_id', todayDraftPlan.id)
+      // One transactional RPC replaces the items with the kitchen's final
+      // numbers and locks the plan, logging both — including whether the
+      // kitchen changed the dispatch executive's quantities on the way
+      // through. It also refuses to lock a plan that is not still a draft,
+      // a check this handler never made: re-locking silently overwrote the
+      // quantities the kitchen was already working to, after
+      // confirm_checkout_form had begun trusting them.
+      const { error: lockError } = await supabase.rpc('lock_dispatch_plan', {
+        p_acting_user_id: userId,
+        p_dispatch_plan_id: todayDraftPlan.id,
+        p_items: items.map(item => ({
+          raw_material_id: item.raw_material_id,
+          outlet_id: item.outlet_id,
+          quantity: item.quantity
+        }))
+      })
 
-      if (deleteError) throw deleteError
-
-      const payload = items.map(item => ({
-        dispatch_plan_id: todayDraftPlan.id,
-        raw_material_id: item.raw_material_id,
-        outlet_id: item.outlet_id,
-        quantity: item.quantity
-      }))
-
-      const { error: insertError } = await supabase
-        .from('dispatch_plan_items')
-        .insert(payload)
-
-      if (insertError) throw insertError
-
-      // Lock the plan
-      const { error: updateError } = await supabase
-        .from('dispatch_plan')
-        .update({
-          status: 'locked',
-          locked_by: userId,
-          locked_at: new Date().toISOString()
-        })
-        .eq('id', todayDraftPlan.id)
-
-      if (updateError) throw updateError
+      if (lockError) throw lockError
 
       // Refresh plans and close modal
       await fetchDispatchPlansForBrand()
@@ -504,7 +491,7 @@ const KitchenExecutiveDashboard = () => {
   const firstName = session.full_name?.split(' ')[0] || 'User'
   const cloudKitchenName = session.cloud_kitchen_name
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getBusinessDate()
   const previousPlans = dispatchPlans.filter(
     (plan) => !(todayPlan && plan.id === todayPlan.id)
   )

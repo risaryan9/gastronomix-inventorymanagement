@@ -12,6 +12,7 @@ import {
   fetchLatestBatchUnitCosts,
   formatRupee
 } from '../lib/dispatchPlanOutletCost.js'
+import { getBusinessDate } from '../lib/businessDate'
 
 const BRANDS = [
   {
@@ -234,7 +235,7 @@ const DispatchExecutiveDashboard = () => {
       const plans = data || []
       setDispatchPlans(plans)
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       const todayPlanExists = plans.some(plan => plan.plan_date === today && plan.status !== 'cancelled')
       setHasTodayPlan(todayPlanExists)
     } catch (error) {
@@ -250,7 +251,7 @@ const DispatchExecutiveDashboard = () => {
     const brandMeta = getBrandMeta(selectedBrand)
     if (!brandMeta) return
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getBusinessDate()
 
     if (hasTodayPlan) {
       const { data: planRow, error: todayPlanError } = await supabase
@@ -757,113 +758,38 @@ const DispatchExecutiveDashboard = () => {
       setSavingPlan(true)
       setModalError(null)
 
-      if (editingPlan) {
-        // Edit existing draft: check if still unlocked, then replace items
-        const { data: planRow, error: fetchError } = await supabase
-          .from('dispatch_plan')
-          .select('id, status')
-          .eq('id', editingPlan.id)
-          .single()
-
-        if (fetchError) throw fetchError
-        if (!planRow || planRow.status !== 'draft') {
-          setModalError('This dispatch plan has been locked and can no longer be edited.')
-          return
-        }
-
-        // Re-check immediately before mutating items (reduces race with kitchen lock)
-        const { data: planRowAgain, error: fetchAgainError } = await supabase
-          .from('dispatch_plan')
-          .select('id, status')
-          .eq('id', editingPlan.id)
-          .single()
-
-        if (fetchAgainError) throw fetchAgainError
-        if (!planRowAgain || planRowAgain.status !== 'draft') {
-          setModalError(
-            'This dispatch plan was locked before your update could complete. Close the dialog and refresh.'
-          )
-          return
-        }
-
-        const { error: deleteError } = await supabase
-          .from('dispatch_plan_items')
-          .delete()
-          .eq('dispatch_plan_id', editingPlan.id)
-
-        if (deleteError) throw deleteError
-
-        const payload = items.map(item => ({
-          dispatch_plan_id: editingPlan.id,
+      // One transactional RPC handles both create and re-save: the plan
+      // header, the full item replace, and the audit entries. plan_date is
+      // derived server-side in IST — this used to come from toISOString(),
+      // i.e. UTC, which filed plans under the previous day between midnight
+      // and 05:30 IST. That matters beyond tidiness: checkout joins a plan
+      // by date, so a plan and a requisition must agree on what day it is.
+      //
+      // The two status re-checks that used to sit here are gone: the RPC
+      // takes FOR UPDATE on the plan row and checks status inside the same
+      // transaction, which actually closes the race the client could only
+      // narrow.
+      const { error: saveError } = await supabase.rpc('save_dispatch_plan', {
+        p_acting_user_id: userId,
+        p_cloud_kitchen_id: cloudKitchenId,
+        p_brand: brandMeta.dbBrand,
+        p_items: items.map(item => ({
           raw_material_id: item.raw_material_id,
           outlet_id: item.outlet_id,
           quantity: item.quantity
-        }))
+        })),
+        p_dispatch_plan_id: editingPlan ? editingPlan.id : null
+      })
 
-        const { error: insertError } = await supabase
-          .from('dispatch_plan_items')
-          .insert(payload)
-
-        if (insertError) throw insertError
-
-        await fetchDispatchPlansForBrand()
-        setIsPlanModalOpen(false)
-        setEditingPlan(null)
-        setQuantities({})
+      if (saveError) {
+        setModalError(saveError.message || 'Failed to save dispatch plan. Please try again.')
         return
       }
-
-      // Create new plan
-      const today = new Date().toISOString().split('T')[0]
-      const { data: existingPlans, error: existingError } = await supabase
-        .from('dispatch_plan')
-        .select('id, plan_date, status')
-        .eq('cloud_kitchen_id', cloudKitchenId)
-        .eq('brand', brandMeta.dbBrand)
-        .eq('plan_date', today)
-        .limit(1)
-
-      if (existingError) throw existingError
-
-      if (existingPlans && existingPlans.length > 0) {
-        setModalError('A dispatch plan for today already exists for this brand.')
-        setHasTodayPlan(true)
-        return
-      }
-
-      const { data: planData, error: planError } = await supabase
-        .from('dispatch_plan')
-        .insert({
-          cloud_kitchen_id: cloudKitchenId,
-          created_by: userId,
-          plan_date: today,
-          status: 'draft',
-          brand: brandMeta.dbBrand,
-          notes: null
-        })
-        .select()
-        .single()
-
-      if (planError) throw planError
-
-      const planId = planData.id
-
-      const payload = items.map(item => ({
-        dispatch_plan_id: planId,
-        raw_material_id: item.raw_material_id,
-        outlet_id: item.outlet_id,
-        quantity: item.quantity
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('dispatch_plan_items')
-        .insert(payload)
-
-      if (itemsError) throw itemsError
 
       await fetchDispatchPlansForBrand()
       setHasTodayPlan(true)
       setIsPlanModalOpen(false)
+      setEditingPlan(null)
       setQuantities({})
     } catch (error) {
       console.error('Error saving dispatch plan:', error)
@@ -960,7 +886,7 @@ const DispatchExecutiveDashboard = () => {
 
   const firstName = session.full_name?.split(' ')[0] || 'User'
   const cloudKitchenName = session.cloud_kitchen_name
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getBusinessDate()
   const todayPlanRow = dispatchPlans.find(p => p.plan_date === todayStr) || null
   const todayPlanIsLocked = todayPlanRow?.status === 'locked'
 
@@ -1180,7 +1106,7 @@ const DispatchExecutiveDashboard = () => {
                   {editingPlan ? 'Edit Dispatch Plan Draft' : 'New Dispatch Plan Draft'}
                 </p>
                 <h2 className="text-sm lg:text-lg font-semibold text-foreground truncate">
-                  {getBrandMeta(selectedBrand)?.name} · {editingPlan ? editingPlan.plan_date : new Date().toISOString().split('T')[0]}
+                  {getBrandMeta(selectedBrand)?.name} · {editingPlan ? editingPlan.plan_date : getBusinessDate()}
                 </h2>
                 <p className="text-[11px] lg:text-xs text-muted-foreground mt-1">
                   Fill quantities for each material and outlet. Scroll horizontally on smaller screens to see all outlets.

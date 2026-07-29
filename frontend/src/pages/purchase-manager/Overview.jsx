@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { getBusinessDate } from '../../lib/businessDate'
 
 const Overview = () => {
   const [stats, setStats] = useState({
@@ -39,11 +40,13 @@ const Overview = () => {
     try {
       setLoading(true)
 
-      const today = new Date()
-      const todayStr = today.toISOString().split('T')[0]
-      const firstOfMonthStr = new Date(today.getFullYear(), today.getMonth(), 1)
-        .toISOString()
-        .split('T')[0]
+      // Business day in IST, matching how request_date / plan_date are written.
+      const todayStr = getBusinessDate()
+      // Derived from the IST day rather than from a local Date: constructing
+      // new Date(year, month, 1) gives local midnight, and toISOString() then
+      // shifted it back 5:30 into the *previous* month — so this used to return
+      // the last day of last month and pull in an extra day of data.
+      const firstOfMonthStr = `${todayStr.slice(0, 7)}-01`
 
       // Fetch all data in parallel
       const [

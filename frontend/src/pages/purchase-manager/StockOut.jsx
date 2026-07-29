@@ -9,6 +9,7 @@ import PaginationControls from '../../components/PaginationControls'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
+import { getBusinessDate, toBusinessDateString } from '../../lib/businessDate'
 
 const DISPATCH_STOCK_OUT_SECTIONS = [
   { key: 'finished', label: 'Finished' },
@@ -199,8 +200,8 @@ const StockOut = () => {
   const viewAllPerPage = 15
   // Date range for PDF exports
   const [pdfDateRange, setPdfDateRange] = useState({
-    from: new Date().toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0]
+    from: getBusinessDate(),
+    to: getBusinessDate()
   })
 
   // Kitchen stock-out (self stock-out) records panel state
@@ -208,8 +209,8 @@ const StockOut = () => {
   const [kitchenSearchTerm, setKitchenSearchTerm] = useState('')
   // Date range for kitchen stock-out per-reason PDF exports
   const [kitchenPdfDateRange, setKitchenPdfDateRange] = useState({
-    from: new Date().toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0]
+    from: getBusinessDate(),
+    to: getBusinessDate()
   })
   // Reason currently generating a PDF (for per-button loading state), or null
   const [downloadingKitchenPdf, setDownloadingKitchenPdf] = useState(null)
@@ -1808,7 +1809,7 @@ const StockOut = () => {
       }
 
       // Fetch today's allocation totals
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       const { data: todayRequests, error: reqError } = await supabase
         .from('allocation_requests')
         .select(`
@@ -1883,7 +1884,7 @@ const StockOut = () => {
       const currentInventory = invData ? parseFloat(invData.quantity || 0) : 0
 
       // Fetch today's total allocation requests for this material (same as Allocate Stock modal)
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       const { data: todayRequests, error: reqError } = await supabase
         .from('allocation_requests')
         .select(`
@@ -2087,7 +2088,7 @@ const StockOut = () => {
       setInventoryData(invMap)
 
       // Calculate today's totals for each material (from all unpacked requests today)
-      const today = new Date().toISOString().split('T')[0]
+      const today = getBusinessDate()
       const { data: todayRequests, error: reqError } = await supabase
         .from('allocation_requests')
         .select(`
@@ -2395,7 +2396,7 @@ const StockOut = () => {
       const stockOutPayload = {
         cloud_kitchen_id: session.cloud_kitchen_id,
         allocated_by: session.id,
-        allocation_date: new Date().toISOString().split('T')[0],
+        allocation_date: getBusinessDate(),
         self_stock_out: isSelfStockOut
       }
 
@@ -2632,17 +2633,14 @@ const StockOut = () => {
 
   const outletMatchesSearch = (request) => allocationRequestMatchesSearch(request, searchTerm)
 
-  const todayStart = (() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d.getTime()
-  })()
+  // Compared as business-day strings rather than Date objects. The previous
+  // version leaned on the browser's timezone happening to be IST — true for
+  // staff in India, wrong for anyone else, and the exact fragility
+  // getBusinessDate exists to remove.
+  const businessToday = getBusinessDate()
 
-  const isRequestDateToday = (request) => {
-    const recordDate = new Date(request.request_date)
-    recordDate.setHours(0, 0, 0, 0)
-    return recordDate.getTime() === todayStart
-  }
+  const isRequestDateToday = (request) =>
+    toBusinessDateString(request.request_date) === businessToday
 
   // Segment 1: Today's requests (pending + packed for today), search applied, pending first then packed
   const todayRequests = allocationRequests

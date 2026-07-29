@@ -9,6 +9,7 @@ import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
+import { getBusinessDate } from '../../lib/businessDate'
 
 const OutletDetails = () => {
   const { outletId } = useParams()
@@ -118,13 +119,13 @@ const OutletDetails = () => {
   // - existingTodayRequest: today's request that is not packed (can be edited)
   // - packedTodayRequest: today's request that has already been packed (no new requests allowed)
   const existingTodayRequest = allocationRequests.find(request => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getBusinessDate()
     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
     return requestDate === today && !request.is_packed
   })
 
   const packedTodayRequest = allocationRequests.find(request => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getBusinessDate()
     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
     return requestDate === today && request.is_packed
   })
@@ -576,7 +577,7 @@ const OutletDetails = () => {
 
                   {/* Edit Button - only show if not packed and is today's request */}
                   {!request.is_packed && (() => {
-                    const today = new Date().toISOString().split('T')[0]
+                    const today = getBusinessDate()
                     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
                     if (requestDate === today) {
                       return (
