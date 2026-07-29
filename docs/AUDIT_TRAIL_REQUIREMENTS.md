@@ -42,15 +42,23 @@
   6. It is an **authentication event** on a shared, key-based, RLS-bypassing login.
 
 - **Legend for "Current status"**
-  - ✅ **Audited** — an `audit_logs` row is already written today.
+  - ✅ **Audited** — an `audit_events` row is already written today.
   - ❌ **GAP** — the action happens but **no** audit entry is written.
   - ⚠️ **Partial / verify** — audited only in some branches, or logging may live
     inside a database RPC that must be confirmed.
 
 - **What already exists.** `audit_logs` has been replaced by `audit_events` +
   `audit_auth_events` (see §6 for the schema, `migrations/replace-audit-logs-with-audit-events.sql`
-  for the table/RLS/helper-function migration). All **seven** previously-✅
-  flows now write to `audit_events`:
+  for the table/RLS/helper-function migration). **Nine** flows now write to
+  `audit_events`:
+  - **A1/A2 (auth)** — `authenticate_user_by_key` calls `log_auth_event()` on
+    both the success and failure branch, writing an `audit_events` row plus its
+    `audit_auth_events` satellite
+    (`migrations/wire-auth-events-to-authenticate-user-by-key.sql`). This was
+    the last flow still using the helpers created-but-left-unwired by the
+    schema migration. Same migration also adds `current_request_ip()` /
+    `current_request_user_agent()`, which read the real client IP and user agent
+    out of PostgREST's request headers — closing the §6.5 open item.
   - `pack_allocation_request` (D1), `cancel_allocation_packing` (D4), and
     `confirm_checkout_form` (F2) call the internal `log_audit_event()` helper
     directly (re-pointed in the same migration above).
@@ -88,8 +96,8 @@
 
 | # | Action | Role(s) | Area | Status |
 |---|--------|---------|------|--------|
-| A1 | Key-based login (success) | supervisor, PM, bp_operator, executives | Auth | ❌ |
-| A2 | Key-based login (failure / invalid key) | any non-admin | Auth | ❌ |
+| A1 | Key-based login (success) | supervisor, PM, bp_operator, executives | Auth | ✅ |
+| A2 | Key-based login (failure / invalid key) | any non-admin | Auth | ✅ |
 | B1 | Stock-In finalize (receive stock) | purchase_manager | Inventory In | ❌ |
 | B2 | Manual inventory adjustment (increment/decrement) | purchase_manager | Inventory In | ✅ |
 | C1 | Create raw material | purchase_manager | Catalog | ✅ |
@@ -109,7 +117,7 @@
 | G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ❌ |
 | H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ❌ |
 
-**7 audited, 1 partial, 12 gaps** across 20 action points.
+**9 audited, 1 partial, 10 gaps** across 20 action points.
 
 ---
 
@@ -121,34 +129,59 @@
 - **What happens:** A supervisor, purchase manager, bp_operator, or executive
   signs in with a shared **login key** scoped to a cloud kitchen and role.
 - **Where:** `frontend/src/pages/Login.jsx` → `handleKeyLogin` (RPC
-  `authenticate_user_by_key`, ~line 100–137). Confirmed by reading the function
-  itself (`migrations/add-bp-operator-role.sql` / `update-login-keys-and-normalize-login.sql`):
-  it is a pure lookup — `SELECT ... FROM users WHERE login_key = ...` — with
-  **no `audit_logs` write anywhere in it**.
+  `authenticate_user_by_key`, ~line 100–137). The audit write lives **inside
+  `authenticate_user_by_key` itself**
+  (`migrations/wire-auth-events-to-authenticate-user-by-key.sql`), which calls
+  `log_auth_event()` on the success branch before returning the user row —
+  `action: 'login_success'`, `category: 'auth'`, `severity: 'info'`, plus the
+  `audit_auth_events` satellite row carrying the hashed key and
+  `resolved_user_id`.
 - **Why audit:** Key-based logins run as the anonymous DB role and **bypass
   RLS**; the application is the only gate. A login key is a shared secret that
   can be passed around. Recording *who authenticated, from where (user agent /
   IP), and when* is the anchor every other audited action ties back to. Without
   it there is no way to attribute a burst of inventory changes to a person or a
-  device. Since decision #2 puts new logging inside the database, this means
-  adding the audit insert **into `authenticate_user_by_key` itself** (it's a
-  `SECURITY DEFINER` function, so it can write regardless of caller role).
-- **Status:** ❌ GAP.
+  device. **Now logged**, including IP and user agent (see §6.5).
+- **Status:** ✅ Audited, DB-side.
+- **Note on severity:** successful logins are by far the highest-volume event in
+  the trail and are "purely additive with no financial or physical-stock effect"
+  — §6.3's own definition of `info` — so they are logged as `info` and stay out
+  of the review queue. A2 remains `critical`. This is the first real user of the
+  `info` level, which §6.3 had reserved but left unused.
+- **Note on the login path:** because all logging happens inside the RPC, this
+  required **no frontend change**. `handleKeyLogin` is unchanged and cannot opt
+  out of being audited.
 
 #### A2 — Key-based login (failure / invalid key)
 - **What happens:** A login attempt with a wrong/expired/guessed key returns no
   matching row; the frontend then raises "Invalid login key or user not found".
-- **Where:** `frontend/src/pages/Login.jsx` → `handleKeyLogin` error branch
-  (~line 141–158); ultimately because `authenticate_user_by_key` returned zero
-  rows.
+- **Where:** the failure branch of `authenticate_user_by_key`
+  (`migrations/wire-auth-events-to-authenticate-user-by-key.sql`) — `action:
+  'login_failed'`, `category: 'auth'`, `severity: 'critical'`. The frontend
+  error branch in `Login.jsx` (~line 141–158) is untouched.
 - **Why audit:** Repeated failures against a shared key are the primary signal
   of a brute-force or an ex-employee still trying old credentials. Security
-  monitoring is impossible if only successes are visible. Logging this one is
-  slightly different in shape from every other entry in this document: there is
-  no valid `user_id` to attribute it to, so the eventual schema will need to
-  record the *attempted* key/role/cloud-kitchen rather than a real actor — a
-  detail for the schema stage, not this document.
-- **Status:** ❌ GAP.
+  monitoring is impossible if only successes are visible. **Now logged.**
+- **Status:** ✅ Audited, DB-side.
+- **Failure reasons.** After the authentication query misses, the function runs
+  a second lookup on the **normalized key alone** (ignoring role / kitchen /
+  active / deleted) purely to classify the failure. This separates a blind guess
+  from someone holding a real but stale credential — a much stronger signal than
+  a flat "login failed". `failure_reason` is one of:
+  - `no_matching_key` — nobody has this key. Guessing/brute force.
+  - `deleted_user` — key belongs to a soft-deleted user.
+  - `inactive_user` — key belongs to a deactivated user (e.g. ex-employee).
+  - `role_mismatch` — real key, wrong role selected.
+  - `cloud_kitchen_mismatch` — real key, wrong kitchen selected.
+- **The failure reason never reaches the client.** It is written to
+  `audit_auth_events` only; the function still returns zero rows in every
+  failure case, so the login screen shows the same generic message regardless.
+  An attacker cannot use this to discover whether a key is valid.
+- **Attributing a rejected key.** `audit_auth_events.resolved_user_id` means
+  "who actually got in", so it stays `NULL` on failure per the schema's
+  contract. The user whose key was presented but rejected is recorded instead as
+  `matched_user_id` inside the event's `new_values` payload — so "someone tried
+  Ravi's old key three times last night" is still answerable.
 - *(Admin email/password login via `handleAdminLogin` is intentionally out of
   scope — Admin action.)*
 
@@ -483,13 +516,13 @@
   taken *before* a hard delete specifically so the audit trail survives it.
   Every new gap closed under decision #2 should follow this same shape.
 - **Real highest-priority gaps, after correcting the RPC findings above:**
-  1. **Auth (A1/A2)** — zero logging today, not even inside
-     `authenticate_user_by_key`. Every other audit entry's value depends on
-     being able to trace it back to a login event, so this is the true
-     foundation gap, not an inventory flow.
-  2. **Requisition create/edit/delete/PM-add (E1–E4)** — the authorizing document
-     for essentially all outbound stock has no audit trail at all, across all
-     three page entry points, including the PM's own after-the-fact additions.
+  1. ~~**Auth (A1/A2)**~~ — **closed.** Was the foundation gap: every other
+     audit entry's value depends on being able to trace it back to a login
+     event. `authenticate_user_by_key` now logs both outcomes (see §3.A).
+  2. **Requisition create/edit/delete/PM-add (E1–E4)** — now the top remaining
+     gap. The authorizing document for essentially all outbound stock has no
+     audit trail at all, across all three page entry points, including the PM's
+     own after-the-fact additions.
   3. **Checkout draft save (F1)** — the actual wastage/return/extra-consumption
      figures are set here, potentially over several saves; only the final
      confirm (F2) is logged, and only as an aggregate.
@@ -547,8 +580,11 @@ are now settled and have been folded into the relevant sections above.
 > implemented: `migrations/replace-audit-logs-with-audit-events.sql` creates
 > the tables/RLS/helper functions below and re-points D1/D4/F2 at them;
 > `migrations/wire-legacy-audit-writers-to-audit-events.sql` adds the
-> narrow RPCs that wire B2/C1/C2/D2 to the same schema. Still a v1 —
-> expect further iteration as B1, C3, E1–E4, F1, G1–G2, H1 get closed.
+> narrow RPCs that wire B2/C1/C2/D2 to the same schema;
+> `migrations/wire-auth-events-to-authenticate-user-by-key.sql` wires A1/A2
+> into `authenticate_user_by_key` and adds the request-context helpers that
+> populate `ip_address`/`user_agent`. Still a v1 — expect further iteration
+> as B1, C3, E1–E4, F1, G1–G2, H1 get closed.
 
 ### 6.1 Why the current `audit_logs` table won't carry this
 
@@ -710,9 +746,11 @@ judgment call — just making the existing reasoning queryable:
   F1 deletes, G2, A2.
 - `review` — criterion 1, 2, 4, or 5 (inventory/financial/reconciliation/lock):
   everything else that's a ❌ or ✅ in §2.
-- `info` — reserved for anything purely additive with no financial or
-  physical-stock effect (none of the current 20 items qualify as `info` —
-  worth revisiting once read/report actions are ever brought into scope).
+- `info` — anything purely additive with no financial or physical-stock
+  effect. **A1 (successful login) is the one current item that qualifies**, and
+  is deliberately logged at this level: it is the highest-volume event in the
+  trail, so putting it in the review queue would bury the events that actually
+  need attention. Every other item in §2 is `review` or `critical`.
 
 ### 6.4 What this fixes concretely
 
@@ -733,22 +771,43 @@ judgment call — just making the existing reasoning queryable:
 
 ### 6.5 Open items for the next iteration
 
-- **Hash, don't store, the raw login key** in `attempted_login_key_hash` —
-  it's a shared secret; logging it in the clear anywhere would itself be a
-  new leak vector.
+- ~~**Hash, don't store, the raw login key**~~ — **done.**
+  `authenticate_user_by_key` hashes via `hash_login_key()` (sha256 of the
+  normalized key) and only ever writes the digest. A `NULL` key is coalesced to
+  `''` before hashing, because `hash_login_key(NULL)` is `NULL` and would
+  otherwise violate `attempted_login_key_hash NOT NULL` and lose the audit row
+  for that attempt entirely.
 - **Who sets `severity`/`correlation_id`?** Cleanest is the same Postgres
   functions that already write the audit row today (`pack_allocation_request`
   etc.) and the new ones decision #2 calls for — not a trigger guessing after
   the fact, since the function already knows *why* it's logging.
-- **`ip_address`/`user_agent`/`session_id` are currently unused in practice**
-  even though the column exists today — worth confirming whether the
-  frontend actually has access to a real client IP (Supabase client calls
-  typically don't carry one server-side without extra plumbing), or whether
-  that column stays aspirational for now.
-- **Retention/volume** — once B1, E1-E4, F1, G1-G2, H1 all start writing,
-  volume goes up substantially (every draft save in F1 alone). Not urgent yet,
-  but partitioning `audit_events` by `created_at` month is the natural answer
-  if it's ever needed.
+- ~~**`ip_address`/`user_agent` are unused in practice**~~ — **resolved, and the
+  answer was better than expected.** No frontend plumbing is needed: PostgREST
+  exposes the inbound HTTP headers to SQL via
+  `current_setting('request.headers')`, so the new `current_request_ip()` /
+  `current_request_user_agent()` helpers read them server-side. `current_request_ip()`
+  prefers `cf-connecting-ip` (Supabase fronts Postgres with Cloudflare), then
+  the first hop of `x-forwarded-for`, then `x-real-ip`; both helpers return
+  `NULL` rather than raising when called outside a request context (SQL editor,
+  psql, migrations). Two caveats for whoever reads this data: **`x-forwarded-for`
+  is client-supplied and therefore spoofable** — treat the IP as corroborating,
+  not proof of origin — and these helpers are available to every future
+  audited flow, not just auth, so B1/E1–E4/F1/G1–G2/H1 should populate them too.
+  `session_id` remains unused: key-based logins have no server-side session
+  object to reference.
+- **A2 makes `audit_events` writable by unauthenticated callers.** This is
+  inherent to logging failed logins, but worth stating plainly: anyone who can
+  reach the `authenticate_user_by_key` endpoint can now cause audit rows to be
+  written by submitting bad keys, with no rate limit in front of it. Acceptable
+  at current scale (22 active key users, low traffic) and the alternative —
+  not logging failures — defeats the point of A2. If it ever becomes a problem
+  the fix is rate limiting at the edge, or collapsing repeated identical
+  failures (same key hash + IP within N minutes) into a single row with a
+  counter, rather than dropping the logging.
+- **Retention/volume** — A1 now writes on every successful login, and once B1,
+  E1-E4, F1, G1-G2, H1 all start writing, volume goes up substantially (every
+  draft save in F1 alone). Not urgent yet, but partitioning `audit_events` by
+  `created_at` month is the natural answer if it's ever needed.
 - **`audit_logs` → `audit_events` migration path** itself (rename vs.
   new-table-plus-backfill vs. keeping `audit_logs` as a compatibility view)
   is a separate decision for whenever this is actually implemented — not
