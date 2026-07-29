@@ -24,15 +24,6 @@ export const SeverityPill = ({ severity, className = '' }) => (
   </span>
 )
 
-export const DemoBadge = ({ className = '' }) => (
-  <span
-    title="Placeholder entry rendered from the frontend — not a real audit event"
-    className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full border border-dashed border-accent/60 bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-wider ${className}`}
-  >
-    Demo
-  </span>
-)
-
 /* --------------------------------- values --------------------------------- */
 
 export const KeyValueList = ({ rows = [] }) => (

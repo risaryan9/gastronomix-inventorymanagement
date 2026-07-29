@@ -4,7 +4,7 @@
 // from where". The per-event body lives in AuditEventBodies.jsx.
 
 import { useEffect } from 'react'
-import { DemoBadge, KeyValueList, SectionTitle, SeverityPill } from './AuditPrimitives'
+import { KeyValueList, SectionTitle, SeverityPill } from './AuditPrimitives'
 import EventBody, { Note } from './AuditEventBodies'
 import {
   actorName,
@@ -51,7 +51,6 @@ const AuditDetailDrawer = ({ event, description, correlated = [], correlatedLoad
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-foreground">{description.title}</h2>
                 <SeverityPill severity={event.severity} />
-                {event.__demo && <DemoBadge />}
               </div>
               {description.contextLine && (
                 <p className="text-sm text-muted-foreground mt-1">{description.contextLine}</p>
@@ -74,13 +73,6 @@ const AuditDetailDrawer = ({ event, description, correlated = [], correlatedLoad
         </header>
 
         <div className="p-5 space-y-6">
-          {event.__demo && (
-            <Note tone="warn">
-              A placeholder entry, shown so this screen can be reviewed before real events of this type exist.
-              Nothing was recorded against the business.
-            </Note>
-          )}
-
           {meta.why && (
             <Section title="Why this is audited">
               <p className="text-sm text-muted-foreground">{meta.why}</p>

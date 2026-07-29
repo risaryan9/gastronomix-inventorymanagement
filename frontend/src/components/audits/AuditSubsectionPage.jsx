@@ -18,9 +18,6 @@ import {
   formatBusinessDay,
 } from '../../lib/auditEvents'
 import { getBusinessDate } from '../../lib/businessDate'
-// ⚠️ TEMPORARY — remove this import and the mergeDemoEvents() call below once
-// every action type has produced a real event. See lib/demoAuditEvents.js.
-import { demoCorrelatedEvents, demoSubsectionEvents } from '../../lib/demoAuditEvents'
 
 const PAGE_SIZE = 15
 
@@ -59,21 +56,6 @@ const shiftBusinessDate = (days) => {
   return getBusinessDate(date)
 }
 
-/**
- * ⚠️ TEMPORARY. Adds placeholder entries only for the action types that have no
- * real event yet, so anything genuinely recorded is shown on its own and never
- * padded out. Delete along with lib/demoAuditEvents.js.
- */
-const mergeDemoEvents = (realEvents, actionKeys) => {
-  const realKeys = new Set(realEvents.map(eventKey))
-  const missingKeys = actionKeys.filter((key) => !realKeys.has(key))
-  if (!missingKeys.length) return { events: realEvents, demoKeys: [] }
-
-  const demo = demoSubsectionEvents().filter((event) => missingKeys.includes(eventKey(event)))
-  const events = [...realEvents, ...demo].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  return { events, demoKeys: [...new Set(demo.map(eventKey))] }
-}
-
 const AuditSubsectionPage = ({
   fetchEvents,
   actionKeys,
@@ -90,7 +72,6 @@ const AuditSubsectionPage = ({
   keepCatalogOnKitchenFilter = false,
 }) => {
   const [events, setEvents] = useState([])
-  const [demoKeys, setDemoKeys] = useState([])
   const [lookups, setLookups] = useState({ kitchens: [], materials: new Map(), outlets: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -111,10 +92,8 @@ const AuditSubsectionPage = ({
         setError('')
         const [referenceData, realEvents] = await Promise.all([fetchAuditLookups(), fetchEvents()])
         if (cancelled) return
-        const merged = mergeDemoEvents(realEvents, actionKeys)
         setLookups(referenceData)
-        setEvents(merged.events)
-        setDemoKeys(merged.demoKeys)
+        setEvents(realEvents)
       } catch (err) {
         console.error('Error loading audit events:', err)
         if (!cancelled) setError('Failed to load audit events. Please try again.')
@@ -142,9 +121,7 @@ const AuditSubsectionPage = ({
     const load = async () => {
       setCorrelatedLoading(true)
       try {
-        const related = selectedEvent.__demo
-          ? demoCorrelatedEvents(selectedEvent.correlation_id, selectedEvent.id)
-          : await fetchCorrelatedEvents(selectedEvent.correlation_id, selectedEvent.id)
+        const related = await fetchCorrelatedEvents(selectedEvent.correlation_id, selectedEvent.id)
         if (!cancelled) setCorrelated(related)
       } catch (err) {
         console.error('Error loading related events:', err)
@@ -280,20 +257,9 @@ const AuditSubsectionPage = ({
   }, [pageRows])
 
   const isFiltered = useMemo(() => JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS), [filters])
-  const demoLabels = demoKeys.map((key) => ACTION_META[key]?.label).filter(Boolean)
 
   return (
     <div className="space-y-4">
-      {demoLabels.length > 0 && (
-        <div className="border border-dashed border-accent/50 bg-accent/5 rounded-xl p-4">
-          <p className="text-sm text-foreground">
-            <span className="font-bold text-accent">Placeholder entries in view.</span> Nothing has been recorded
-            yet for: {demoLabels.join(', ')}. Entries of those types are examples only, so this screen can be
-            reviewed before the real thing happens. Everything else on this page is real.
-          </p>
-        </div>
-      )}
-
       <AuditFilterBar
         filters={filters}
         onChange={setFilters}
