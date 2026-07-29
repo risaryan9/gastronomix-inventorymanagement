@@ -2482,69 +2482,25 @@ const StockOut = () => {
         }
       }
 
-      // Inter-cloud transfer: create destination stock_in, batches, and increment destination inventory
+      // Inter-cloud transfer: mint the destination stock via one transactional
+      // RPC (destination stock_in + batches + inventory rows + audit entry).
+      // The destination and source kitchens are derived server-side from this
+      // stock_out row rather than sent from here, so the call can only complete
+      // the transfer that stock_out already authorized. It is idempotent on
+      // source_stock_out_id, so a retry cannot mint the stock twice.
       if (isSelfStockOut && selfStockOutReason === 'inter-cloud-kitchen' && interCloudFifoResults.length > 0) {
-        const destinationKitchenId = transferToCloudKitchenId
-        const sourceKitchenName = session.cloud_kitchen_name || session.cloud_kitchen_id || 'Source kitchen'
-        const totalTransferCost = interCloudFifoResults.reduce((sum, r) => sum + (r.totalCost || 0), 0)
+        const { error: transferError } = await supabase.rpc('receive_inter_cloud_transfer', {
+          p_acting_user_id: session.id,
+          p_source_stock_out_id: stockOutData.id,
+          p_items: interCloudFifoResults.map(row => ({
+            raw_material_id: row.raw_material_id,
+            quantity: row.quantity,
+            total_cost: row.totalCost,
+            total_qty: row.totalQty
+          }))
+        })
 
-        const { data: stockInData, error: stockInError } = await supabase
-          .from('stock_in')
-          .insert({
-            cloud_kitchen_id: destinationKitchenId,
-            received_by: session.id,
-            receipt_date: new Date().toISOString().split('T')[0],
-            supplier_name: null,
-            invoice_number: null,
-            total_cost: totalTransferCost,
-            notes: `Transfer from ${sourceKitchenName}`,
-            stock_in_type: 'inter_cloud',
-            invoice_image_url: null,
-            source_stock_out_id: stockOutData.id
-          })
-          .select()
-          .single()
-
-        if (stockInError) throw stockInError
-
-        for (const row of interCloudFifoResults) {
-          const unitCost = row.totalQty > 0 ? row.totalCost / row.totalQty : 0.01
-          const { error: batchError } = await supabase
-            .from('stock_in_batches')
-            .insert({
-              stock_in_id: stockInData.id,
-              raw_material_id: row.raw_material_id,
-              cloud_kitchen_id: destinationKitchenId,
-              quantity_purchased: row.quantity,
-              quantity_remaining: row.quantity,
-              unit_cost: Math.max(0.01, unitCost),
-              gst_percent: 0
-            })
-
-          if (batchError) throw batchError
-
-          // Ensure destination inventory entry exists (trigger will set quantity from batches)
-          const { data: destInv } = await supabase
-            .from('inventory')
-            .select('id')
-            .eq('cloud_kitchen_id', destinationKitchenId)
-            .eq('raw_material_id', row.raw_material_id)
-            .maybeSingle()
-
-          if (!destInv) {
-            // Create inventory entry; trigger will set quantity from batches
-            const { error: invInsErr } = await supabase
-              .from('inventory')
-              .insert({
-                cloud_kitchen_id: destinationKitchenId,
-                raw_material_id: row.raw_material_id,
-                quantity: 0, // Trigger will update this
-                updated_by: session.id
-              })
-            if (invInsErr) throw invInsErr
-          }
-          // Note: inventory.quantity is automatically updated by trigger when batches are inserted
-        }
+        if (transferError) throw transferError
       }
 
       // Audit log only for self stock outs

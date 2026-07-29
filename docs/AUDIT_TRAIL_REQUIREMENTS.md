@@ -49,8 +49,14 @@
 
 - **What already exists.** `audit_logs` has been replaced by `audit_events` +
   `audit_auth_events` (see §6 for the schema, `migrations/replace-audit-logs-with-audit-events.sql`
-  for the table/RLS/helper-function migration). **Eleven** flows now write to
+  for the table/RLS/helper-function migration). **Twelve** flows now write to
   `audit_events`:
+  - **D3** — `receive_inter_cloud_transfer()`
+    (`migrations/wire-inter-cloud-destination-leg-to-audit-events.sql`) owns the
+    destination-side writes of an inter-cloud transfer and logs them against the
+    destination kitchen, sharing a `correlation_id` with the source leg so the
+    two halves are reviewable as a matched pair. Same migration re-points
+    `log_self_stock_out` to stamp that correlation on the source side.
   - **B1/C3** — `finalize_stock_in()` and `set_raw_material_active()`
     (`migrations/wire-stock-in-and-catalog-status-to-audit-events.sql`) own
     their write paths outright: the stock-in header/inventory/batches, and the
@@ -111,7 +117,7 @@
 | C3 | Deactivate / reactivate raw material | admin in UI (see §3.C) | Catalog | ✅ |
 | D1 | Regular stock-out / pack requisition (deduct inventory) | purchase_manager | Stock Out | ✅ |
 | D2 | Self stock-out (wastage / adjust / dispatch / R&D) | purchase_manager | Stock Out | ✅ |
-| D3 | Inter-cloud-kitchen transfer — destination leg | purchase_manager | Stock Out | ⚠️ |
+| D3 | Inter-cloud-kitchen transfer — destination leg | purchase_manager | Stock Out | ✅ |
 | D4 | Cancel allocation packing (reverse FIFO) | purchase_manager | Stock Out | ✅ |
 | E1 | Create allocation request (requisition) | supervisor, bp_operator, PM | Requisitions | ❌ |
 | E2 | Edit allocation request items/quantities | supervisor, bp_operator, PM | Requisitions | ❌ |
@@ -123,7 +129,7 @@
 | G2 | Delete/replace dispatch plan items | dispatch_executive | Dispatch Plan | ❌ |
 | H1 | Confirm & lock dispatch plan | kitchen_executive | Kitchen | ❌ |
 
-**11 audited, 1 partial, 8 gaps** across 20 action points.
+**12 audited, 0 partial, 8 gaps** across 20 action points.
 
 ---
 
@@ -364,16 +370,47 @@
   from the source kitchen (audited as part of D2) and **separately creates a
   matching `stock_in` + `stock_in_batches` + `inventory` row at the destination
   kitchen**, carrying FIFO cost across.
-- **Where:** `StockOut.jsx` inter-cloud branch (~line 2355–2417) — the
-  destination-side inserts specifically; the D2 audit entry (now via the
-  `log_self_stock_out` RPC) covers only the source kitchen's stock-out.
+- **Where:** `StockOut.jsx`'s inter-cloud branch now makes a single
+  `receive_inter_cloud_transfer` RPC call
+  (`migrations/wire-inter-cloud-destination-leg-to-audit-events.sql`) in place
+  of the destination-side inserts it used to run. The RPC creates the
+  destination `stock_in` + `stock_in_batches` + `inventory` rows and logs —
+  `action: 'inter_cloud_transfer_received'`, `category: 'inventory_in'`,
+  `severity: 'review'`, on the **destination** kitchen.
 - **Why audit:** Value crosses an organizational boundary (kitchen A → kitchen
-  B) and **mints new inventory and cost at a second kitchen** with no audit
-  entry of its own — only the depleting side is logged. Because it's
+  B) and **mints new inventory and cost at a second kitchen**. Because it's
   cross-kitchen and high value, both legs should be reviewable as a matched
-  pair; right now only one half of the transfer has a paper trail.
-- **Status:** ⚠️ Partial (source leg audited via D2; destination stock-in
-  creation is not).
+  pair. **Now logged**, and paired.
+- **Status:** ✅ Audited, DB-side. *(This was the document's last ⚠️.)*
+- **How the pair is tied together.** Both legs derive `correlation_id`
+  deterministically as **the source `stock_out`'s id**. Neither side needs a
+  client-generated UUID and neither needs to run first — each already knows
+  that id, so each reaches the same answer independently. Only inter-cloud
+  self-stock-outs are stamped; wastage / R&D / dispatch have no second leg, and
+  correlating them would pollute the partial index on `correlation_id` for no
+  benefit. Closing this needed **no frontend change to the source leg** —
+  `log_self_stock_out` already receives both `p_stock_out_id` and `p_reason`,
+  so it derives the correlation itself and keeps its exact signature.
+- **The RPC can't be used to mint stock anywhere else.** Both kitchens are read
+  off the source `stock_out` row rather than accepted as parameters, and the
+  function rejects any stock-out that isn't a genuine inter-cloud transfer. The
+  caller supplies only the per-item FIFO cost, which is the one fact the
+  destination side cannot recompute (the source batches are already spent by
+  then). It is also **idempotent on `source_stock_out_id`** — a retry returns
+  `created: false` rather than minting the inventory a second time.
+- **Known gap, unchanged by this:** the source FIFO consume and the destination
+  mint are still separate client calls with no transaction spanning them, so a
+  hard failure of the destination call consumes stock at the source that never
+  arrives at the destination. It predates this work and isn't made worse by it —
+  and the idempotency guard now makes the natural fix, retrying the destination
+  call, safe. Closing it properly means folding both legs into one RPC, which
+  would rewrite D2's already-audited path.
+- **Not backfilled.** The 20 transfers predating this migration have no
+  destination event, and their source legs predate the `correlation_id` stamp,
+  so they show a single uncorrelated source event. Reconstructing them was
+  possible (all 20 have `stock_in.source_stock_out_id` intact) but deliberately
+  skipped: an audit trail is a contemporaneous record, and rows written long
+  after the fact make the table's history look like it was always there.
 
 #### D4 — Cancel allocation packing (reverse FIFO)
 - **What happens:** PM cancels a packed requisition; the
@@ -593,9 +630,11 @@
   already reflected in D4 and F2 being audited via RPC. The same treatment is
   still owed to E3 (delete request items), F1's delete-then-reinsert churn, and
   G2 (replace plan items).
-- **D3's destination leg is the one remaining "partial."** The source side of
-  an inter-cloud transfer is covered by D2's audit entry; the new inventory
-  minted at the destination kitchen is not separately logged.
+- ~~**D3's destination leg is the one remaining "partial."**~~ — **closed, and
+  with it the last ⚠️ in this document.** Both legs of an inter-cloud transfer
+  are now logged and share a `correlation_id`, so the pair is reviewable
+  together instead of only the depleting half being visible. Every remaining
+  item is a clean ✅ or ❌.
 - **⚠️ Role gates in the UI are not role gates in the database — found while
   closing C3, but general.** Several RLS policies are written in terms of
   `is_purchase_manager_or_admin()`, and that function's final statement is
@@ -636,12 +675,12 @@ are now settled and have been folded into the relevant sections above.
    written from Postgres functions/triggers, not client-side inserts —
    matching the existing pattern in `pack_allocation_request`,
    `cancel_allocation_packing`, and `confirm_checkout_form`. Every ❌ gap above
-   that is currently plain client-side table access (D3's destination leg,
-   E1–E4, F1, G1–G2, H1) will need its write path moved into (or wrapped
-   by) a Postgres function as part of closing it. B1 and C3 have since been
-   closed exactly this way (`finalize_stock_in`, `set_raw_material_active`).
-   Table/column schemas for the audit entries themselves are intentionally
-   deferred to a later pass.
+   that is currently plain client-side table access (E1–E4, F1, G1–G2, H1)
+   will need its write path moved into (or wrapped by) a Postgres function as
+   part of closing it. B1, C3 and D3's destination leg have since been closed
+   exactly this way (`finalize_stock_in`, `set_raw_material_active`,
+   `receive_inter_cloud_transfer`). Table/column schemas for the audit entries
+   themselves are intentionally deferred to a later pass.
 3. **Read/report access — not needed.** This document covers state-changing
    actions only; viewing or exporting reports is out of scope.
 4. **Edit granularity — record-level is enough.** For edits (C3, E2, F1),
@@ -663,8 +702,11 @@ are now settled and have been folded into the relevant sections above.
 > populate `ip_address`/`user_agent`;
 > `migrations/wire-stock-in-and-catalog-status-to-audit-events.sql` adds
 > `finalize_stock_in` (B1) and `set_raw_material_active` (C3), the first two
-> functions to own their write path rather than just log alongside it. Still a
-> v1 — expect further iteration as E1–E4, F1, G1–G2, H1 get closed.
+> functions to own their write path rather than just log alongside it;
+> `migrations/wire-inter-cloud-destination-leg-to-audit-events.sql` adds
+> `receive_inter_cloud_transfer` (D3) and is the first use of
+> `correlation_id` in anger. Still a v1 — expect further iteration as
+> E1–E4, F1, G1–G2, H1 get closed.
 
 ### 6.1 Why the current `audit_logs` table won't carry this
 
@@ -844,9 +886,11 @@ judgment call — just making the existing reasoning queryable:
   branch needed as E1-E4, F1, G1-G2, H1 get wired up. Borne out in practice:
   A1/A2, B1 and C3 each introduced a new `entity_type` (or none at all, for
   auth) and none of them required an RLS change.
-- **D3** (today's one "partial") becomes two rows sharing one
+- **D3** (formerly the one "partial") is now two rows sharing one
   `correlation_id` — reviewable as a matched pair instead of only the source
-  leg being visible.
+  leg being visible. **Shipped**, and it validated the column: the id is
+  derived deterministically from the source `stock_out` on both sides, so
+  neither leg had to coordinate with the other to produce it.
 - **D4 / G2** (reversals) point at the event they reverse via
   `reversed_event_id`, instead of an admin having to guess which prior pack
   or plan-save a cancellation corresponds to.
