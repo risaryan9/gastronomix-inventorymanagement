@@ -53,9 +53,10 @@ const NAV_STRUCTURE = [
     id: 'audits',
     label: 'Audits',
     children: [
-      { id: 'user-audit-logs', label: 'User Audit Logs' },
-      { id: 'cloud-kitchen-audit-logs', label: 'Cloud Kitchen Audit Logs' },
-      { id: 'alerts', label: 'Alerts' },
+      { id: 'inventory-catalog', label: 'Inventory & Catalog' },
+      { id: 'requisitions-stock-out', label: 'Requisitions & Stock Out' },
+      { id: 'dispatch-checkout', label: 'Dispatch & Checkout' },
+      { id: 'access-overrides', label: 'Access & Overrides' },
     ],
   },
   {
