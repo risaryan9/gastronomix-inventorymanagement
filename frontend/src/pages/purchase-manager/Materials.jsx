@@ -41,6 +41,10 @@ const BRAND_MAPPING_OPTIONS = [
   { code: 'ec', label: 'El Chaapo' }
 ]
 
+// Sentinel brand_codes value meaning "internal production only" — never shown
+// in any brand's outlet requisition form, but still visible in kitchen stock-out.
+const INTERNAL_PRODUCTION_CODE = 'ip'
+
 const Materials = ({ isAdminMode = false }) => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
@@ -76,6 +80,7 @@ const Materials = ({ isAdminMode = false }) => {
   const [sortBy, setSortBy] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [applyToAllBrands, setApplyToAllBrands] = useState(true)
+  const [isInternalProduction, setIsInternalProduction] = useState(false)
 
   // Ensure existing units from DB (even if not in UNITS list)
   // still show up and are selectable when editing a material.
@@ -389,6 +394,7 @@ const Materials = ({ isAdminMode = false }) => {
     setIsModalOpen(true)
     setShowConfirmModal(false)
     setApplyToAllBrands(true)
+    setIsInternalProduction(false)
   }
 
   // Open modal for editing material
@@ -398,6 +404,7 @@ const Materials = ({ isAdminMode = false }) => {
 
     // Normalize existing brand_codes so the capsules reflect current mapping:
     // - NULL / empty -> "All Brands"
+    // - [INTERNAL_PRODUCTION_CODE] -> "Internal Production"
     // - Non-empty array -> specific brands
     // - String like "{nk,bp}" -> parse into ['nk','bp']
     let existingBrandCodes = null
@@ -417,6 +424,11 @@ const Materials = ({ isAdminMode = false }) => {
       existingBrandCodes = null
     }
 
+    const existingIsInternalProduction =
+      Array.isArray(existingBrandCodes) &&
+      existingBrandCodes.length === 1 &&
+      existingBrandCodes[0] === INTERNAL_PRODUCTION_CODE
+
     setFormData({
       name: material.name || '',
       code: material.code || '',
@@ -427,11 +439,12 @@ const Materials = ({ isAdminMode = false }) => {
       low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
       vendor_id: material.vendor_id || '',
       material_type: material.material_type || 'raw_material',
-      brand_codes: existingBrandCodes
+      brand_codes: existingIsInternalProduction ? null : existingBrandCodes
     })
     setError(null)
     setIsModalOpen(true)
     setShowConfirmModal(false)
+    setIsInternalProduction(existingIsInternalProduction)
     setApplyToAllBrands(!existingBrandCodes)
   }
 
@@ -441,6 +454,7 @@ const Materials = ({ isAdminMode = false }) => {
   // - If all three brands are selected, auto-collapse to "All"
   const toggleBrandCode = (code) => {
     setApplyToAllBrands(false)
+    setIsInternalProduction(false)
     setFormData(prev => {
       const current = Array.isArray(prev.brand_codes) ? [...prev.brand_codes] : []
       const exists = current.includes(code)
@@ -538,6 +552,14 @@ const Materials = ({ isAdminMode = false }) => {
         throw new Error('Session expired. Please login again.')
       }
 
+      const brandCodesToSave = isInternalProduction
+        ? [INTERNAL_PRODUCTION_CODE]
+        : (applyToAllBrands
+          ? null
+          : (Array.isArray(formData.brand_codes) && formData.brand_codes.length > 0
+            ? formData.brand_codes
+            : null))
+
       if (editingMaterial) {
         // Update existing material
         const updateData = {
@@ -550,11 +572,7 @@ const Materials = ({ isAdminMode = false }) => {
           low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
           vendor_id: formData.vendor_id || null,
           material_type: formData.material_type,
-          brand_codes: applyToAllBrands
-            ? null
-            : (Array.isArray(formData.brand_codes) && formData.brand_codes.length > 0
-              ? formData.brand_codes
-              : null),
+          brand_codes: brandCodesToSave,
           updated_at: new Date().toISOString()
         }
 
@@ -617,11 +635,7 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
             vendor_id: formData.vendor_id || null,
             material_type: formData.material_type,
-            brand_codes: applyToAllBrands
-              ? null
-              : (Array.isArray(formData.brand_codes) && formData.brand_codes.length > 0
-                ? formData.brand_codes
-                : null)
+            brand_codes: brandCodesToSave
           })
           .select()
           .single()
@@ -1065,6 +1079,7 @@ const Materials = ({ isAdminMode = false }) => {
                         type="button"
                         onClick={() => {
                           setApplyToAllBrands(true)
+                          setIsInternalProduction(false)
                           setFormData(prev => ({ ...prev, brand_codes: null }))
                         }}
                         disabled={saving}
@@ -1086,6 +1101,7 @@ const Materials = ({ isAdminMode = false }) => {
                       {BRAND_MAPPING_OPTIONS.map((option) => {
                         const selected =
                           !applyToAllBrands &&
+                          !isInternalProduction &&
                           Array.isArray(formData.brand_codes) &&
                           formData.brand_codes.includes(option.code)
                         return (
@@ -1109,9 +1125,33 @@ const Materials = ({ isAdminMode = false }) => {
                           </button>
                         )
                       })}
+
+                      {/* Internal production capsule - excluded from every brand's requisition form */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setApplyToAllBrands(false)
+                          setIsInternalProduction(true)
+                          setFormData(prev => ({ ...prev, brand_codes: null }))
+                        }}
+                        disabled={saving}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all ${
+                          isInternalProduction
+                            ? 'bg-accent text-background border-accent'
+                            : 'bg-input text-foreground border-border hover:bg-accent/10'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-background/80 border border-border text-[9px] font-bold uppercase">
+                            ip
+                          </span>
+                          <span>Internal Production</span>
+                        </span>
+                      </button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Choose whether this material is shared across all brands or specific to one or more brands.
+                      Choose whether this material is shared across all brands, specific to one or more brands, or
+                      reserved for internal production (never shown in any brand's requisition form).
                     </p>
                   </div>
 

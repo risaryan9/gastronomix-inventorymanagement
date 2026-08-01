@@ -31,7 +31,7 @@ const normalizeBrandCodes = (brandCodes) => {
       .replace(/[\[\]"']/g, ' ')
       .split(/[\s,]+/)
       .map(code => code.trim())
-      .filter(code => ['bp', 'ec', 'nk'].includes(code))
+      .filter(code => ['bp', 'ec', 'nk', 'ip'].includes(code))
   }
   return []
 }
