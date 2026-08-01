@@ -377,7 +377,8 @@ const OutletsPageBase = ({ role }) => {
       if (!selectedBrandCode) return false
 
       const materialBrandCodes = normalizeBrandCodes(m.brand_codes)
-      if (!materialBrandCodes.includes(selectedBrandCode)) return false
+      // No brand codes means "All Brands" (see Materials.jsx applyToAllBrands), not "no brands"
+      if (materialBrandCodes.length > 0 && !materialBrandCodes.includes(selectedBrandCode)) return false
 
       if (!search.trim()) return true
       const q = search.toLowerCase()
