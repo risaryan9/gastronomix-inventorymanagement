@@ -5,6 +5,7 @@
 // cannot drift apart. A section with no `Component` renders the placeholder.
 
 import Materials from '../purchase-manager/Materials'
+import AdminCloudKitchenOverview from './AdminCloudKitchenOverview'
 import AdminUsers from './AdminUsers'
 import AdminOperators from './AdminOperators'
 import AdminRecipes from './AdminRecipes'
@@ -25,7 +26,7 @@ export const ADMIN_NAV = [
     id: 'overview',
     label: 'Overview',
     children: [
-      { id: 'cloud-kitchen', label: 'Cloud Kitchen' },
+      { id: 'cloud-kitchen', label: 'Cloud Kitchen', Component: AdminCloudKitchenOverview },
       { id: 'outlets', label: 'Outlets', Component: AdminOutlets },
     ],
   },
