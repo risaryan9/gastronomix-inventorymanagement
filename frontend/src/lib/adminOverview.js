@@ -67,6 +67,10 @@ const daysBetween = (from, to) =>
     (new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / (24 * 60 * 60 * 1000)
   )
 
+// Past roughly a month, daily points stop being readable and start being noise,
+// so the spend series switches to weekly buckets.
+const DAILY_BUCKET_MAX_DAYS = 31
+
 /**
  * Resolves a range option to inclusive business dates. Business days are UTC
  * here for the reasons documented in businessDate.js — a range built from local
@@ -95,6 +99,44 @@ export const previousRange = ({ from, to }) => {
   const span = daysBetween(from, to)
   const previousTo = shiftDays(from, -1)
   return { from: shiftDays(previousTo, -span), to: previousTo }
+}
+
+/* ------------------------------------------------------------------ *
+ * Spend series
+ * ------------------------------------------------------------------ */
+
+/**
+ * Buckets in-range stock-in spend into one row per period, with a column per
+ * kitchen — the shape a Recharts line chart consumes directly.
+ *
+ * Every bucket in the range is emitted even when nothing was spent, so a quiet
+ * week reads as a run along zero rather than as a gap the line hops over.
+ */
+const buildSpendSeries = (stockIns, kitchens, { from, to }) => {
+  const span = daysBetween(from, to)
+  const bucketDays = span <= DAILY_BUCKET_MAX_DAYS ? 1 : 7
+  const bucketCount = Math.floor(span / bucketDays) + 1
+
+  const rows = Array.from({ length: bucketCount }, (_, index) => {
+    const start = shiftDays(from, index * bucketDays)
+    const row = { bucket: start, bucketDays }
+    kitchens.forEach((kitchen) => {
+      row[kitchen.id] = 0
+    })
+    return row
+  })
+
+  stockIns.forEach((stockIn) => {
+    if (!stockIn.receipt_date || !stockIn.cloud_kitchen_id) return
+
+    const index = Math.floor(daysBetween(from, stockIn.receipt_date) / bucketDays)
+    const row = rows[index]
+    if (!row || !(stockIn.cloud_kitchen_id in row)) return
+
+    row[stockIn.cloud_kitchen_id] += num(stockIn.total_cost)
+  })
+
+  return rows
 }
 
 /* ------------------------------------------------------------------ *
@@ -163,7 +205,7 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
       fetchAll(() =>
         supabase
           .from('stock_in')
-          .select('cloud_kitchen_id, total_cost')
+          .select('cloud_kitchen_id, total_cost, receipt_date')
           .gte('receipt_date', from)
           .lte('receipt_date', to)
       ),
@@ -241,6 +283,7 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
   return {
     kitchens: perKitchen,
     totals,
+    spendSeries: buildSpendSeries(stockIns, kitchens, { from, to }),
     previousSpend: previousStockIns.reduce((sum, row) => sum + num(row.total_cost), 0),
     org: { kitchens: kitchens.length, outlets: outlets.length, users: users.length },
     costDataAvailable: batches.length > 0 || inventory.length === 0,

@@ -9,6 +9,7 @@
 // other half reads as a bug. See lib/adminOverview.js.
 
 import { useCallback, useEffect, useState } from 'react'
+import CloudKitchenCharts from '../../components/admin/CloudKitchenCharts'
 import {
   RANGE_OPTIONS,
   fetchCloudKitchenOverview,
@@ -83,20 +84,16 @@ const Delta = ({ change }) => {
   )
 }
 
-const KpiTile = ({ label, value, caption, tone = 'default', children, unavailable = false }) => (
-  <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-1">
+// Values stay white whatever they say. Severity is the reader's call here — a
+// number that turns red decides for them, and six tiles in three colours is
+// harder to scan than six in one. The brand accent does the structural work
+// instead, as a hairline rule down the leading edge.
+const KpiTile = ({ label, value, caption, children, unavailable = false }) => (
+  <div className="bg-card border border-border border-l-2 border-l-accent/40 rounded-xl p-4 flex flex-col gap-1">
     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-    <p
-      className={`text-2xl font-bold tabular-nums ${
-        unavailable
-          ? 'text-muted-foreground'
-          : tone === 'warn'
-          ? 'text-amber-600 dark:text-amber-400'
-          : tone === 'bad'
-          ? 'text-destructive'
-          : 'text-foreground'
-      }`}
-    >
+    {/* Proportional figures deliberately: tabular-nums gives every digit a zero's
+        width, which reads loose at display sizes. Tabular is for columns. */}
+    <p className={`text-2xl font-bold ${unavailable ? 'text-muted-foreground' : 'text-foreground'}`}>
       {unavailable ? '—' : value}
     </p>
     <div className="flex items-center gap-2 flex-wrap">
@@ -106,20 +103,10 @@ const KpiTile = ({ label, value, caption, tone = 'default', children, unavailabl
   </div>
 )
 
-const CardStat = ({ label, value, tone = 'default' }) => (
+const CardStat = ({ label, value }) => (
   <div>
     <dt className="text-[11px] text-muted-foreground">{label}</dt>
-    <dd
-      className={`text-sm font-semibold tabular-nums ${
-        tone === 'warn'
-          ? 'text-amber-600 dark:text-amber-400'
-          : tone === 'bad'
-          ? 'text-destructive'
-          : 'text-foreground'
-      }`}
-    >
-      {value}
-    </dd>
+    <dd className="text-sm font-semibold tabular-nums text-foreground">{value}</dd>
   </div>
 )
 
@@ -137,11 +124,11 @@ const KitchenCard = ({ kitchen, costDataAvailable, rangeLabel }) => (
       )}
     </header>
 
-    <div>
+    <div className="border-l-2 border-accent/40 pl-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Inventory value
       </p>
-      <p className="text-2xl font-bold text-foreground tabular-nums">
+      <p className="text-2xl font-bold text-foreground">
         {costDataAvailable ? money(kitchen.inventoryValue) : '—'}
       </p>
       <p className="text-[11px] text-muted-foreground">as of now</p>
@@ -149,25 +136,12 @@ const KitchenCard = ({ kitchen, costDataAvailable, rangeLabel }) => (
 
     <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
       <CardStat label="Outlets" value={count(kitchen.outlets)} />
-      <CardStat
-        label="Pending requisitions"
-        value={count(kitchen.pendingRequisitions)}
-        tone={kitchen.pendingRequisitions > 0 ? 'warn' : 'default'}
-      />
-      <CardStat
-        label="Out of stock"
-        value={count(kitchen.outOfStock)}
-        tone={kitchen.outOfStock > 0 ? 'bad' : 'default'}
-      />
-      <CardStat
-        label="Low stock"
-        value={count(kitchen.lowStock)}
-        tone={kitchen.lowStock > 0 ? 'warn' : 'default'}
-      />
+      <CardStat label="Pending requisitions" value={count(kitchen.pendingRequisitions)} />
+      <CardStat label="Out of stock" value={count(kitchen.outOfStock)} />
+      <CardStat label="Low stock" value={count(kitchen.lowStock)} />
       <CardStat
         label="Dead stock"
         value={costDataAvailable ? money(kitchen.deadStockValue) : '—'}
-        tone={kitchen.deadStockValue > 0 ? 'warn' : 'default'}
       />
       <CardStat
         label={`Spend · ${rangeLabel}`}
@@ -283,16 +257,21 @@ const AdminCloudKitchenOverview = () => {
         </div>
       )}
 
-      {loading ? (
-        <div className="bg-card border border-border rounded-xl p-12 text-center text-muted-foreground">
-          Loading overview…
-        </div>
-      ) : error ? (
+      {error ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center text-destructive">
           {error}
         </div>
-      ) : !data ? null : (
-        <>
+      ) : !data ? (
+        <div className="bg-card border border-border rounded-xl p-12 text-center text-muted-foreground">
+          Loading overview…
+        </div>
+      ) : (
+        // Changing the range holds the previous render at reduced opacity rather
+        // than dropping back to a skeleton, so nothing jumps while it refetches.
+        <div
+          aria-busy={loading}
+          className={`space-y-6 transition-opacity duration-200 ${loading ? 'opacity-60' : ''}`}
+        >
           <section aria-label="Key metrics">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <KpiTile
@@ -313,25 +292,21 @@ const AdminCloudKitchenOverview = () => {
                 label="Pending requisitions"
                 value={count(data.totals.pendingRequisitions)}
                 caption="as of now"
-                tone={data.totals.pendingRequisitions > 0 ? 'warn' : 'default'}
               />
               <KpiTile
                 label="Out of stock"
                 value={count(data.totals.outOfStock)}
                 caption="materials at zero, as of now"
-                tone={data.totals.outOfStock > 0 ? 'bad' : 'default'}
               />
               <KpiTile
                 label="Low stock"
                 value={count(data.totals.lowStock)}
                 caption="at or under threshold, as of now"
-                tone={data.totals.lowStock > 0 ? 'warn' : 'default'}
               />
               <KpiTile
                 label="Dead stock"
                 value={money(data.totals.deadStockValue)}
                 caption="unused for 60+ days, as of now"
-                tone={data.totals.deadStockValue > 0 ? 'warn' : 'default'}
                 unavailable={!data.costDataAvailable}
               />
             </div>
@@ -356,7 +331,16 @@ const AdminCloudKitchenOverview = () => {
               </div>
             )}
           </section>
-        </>
+
+          <section aria-label="Cross-kitchen comparison">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Cross-kitchen comparison</h3>
+            <CloudKitchenCharts
+              kitchens={data.kitchens}
+              spendSeries={data.spendSeries}
+              costDataAvailable={data.costDataAvailable}
+            />
+          </section>
+        </div>
       )}
     </div>
   )
