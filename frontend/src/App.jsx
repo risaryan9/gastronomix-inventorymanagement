@@ -16,6 +16,12 @@ import PMOutletDetails from './pages/purchase-manager/OutletDetails'
 import SupervisorOutlets from './pages/supervisor/Outlets'
 import SupervisorOutletDetails from './pages/supervisor/OutletDetails'
 import SupervisorCheckout from './pages/supervisor/Checkout'
+import AdminSectionPlaceholder from './pages/admin/AdminSectionPlaceholder'
+import {
+  ADMIN_NAV,
+  ADMIN_DEFAULT_PATH,
+  adminGroupDefaultPath,
+} from './pages/admin/adminNavigation'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
 import SessionRedirect from './components/SessionRedirect'
@@ -75,14 +81,42 @@ function App() {
         />
 
         {/* Protected routes - Dashboards */}
-        <Route 
-          path="/invmanagement/dashboard/admin" 
+        {/* Admin routes are generated from ADMIN_NAV so the sidebar and the
+            router can never disagree — see pages/admin/adminNavigation.jsx */}
+        <Route
+          path="/invmanagement/dashboard/admin"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
             </ProtectedRoute>
-          } 
-        />
+          }
+        >
+          <Route index element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
+          {ADMIN_NAV.map((group) => (
+            <Route key={group.id} path={group.id}>
+              <Route index element={<Navigate to={adminGroupDefaultPath(group)} replace />} />
+              {group.children.map((section) => (
+                <Route
+                  key={section.id}
+                  path={section.id}
+                  element={
+                    section.Component ? (
+                      <section.Component {...(section.props ?? {})} />
+                    ) : (
+                      <AdminSectionPlaceholder
+                        groupLabel={group.label}
+                        sectionLabel={section.label}
+                      />
+                    )
+                  }
+                />
+              ))}
+            </Route>
+          ))}
+          {/* An unknown admin URL lands on the dashboard's default section
+              rather than bouncing the admin out to the session redirect. */}
+          <Route path="*" element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
+        </Route>
 
         <Route 
           path="/invmanagement/dashboard/dispatch_executive" 

@@ -1,129 +1,63 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, useLocation, NavLink, Outlet } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
-import Materials from './purchase-manager/Materials'
-import AdminUsers from './admin/AdminUsers'
-import AdminOperators from './admin/AdminOperators'
-import AdminRecipes from './admin/AdminRecipes'
-import AdminOutlets from './admin/AdminOutlets'
-import AdminVendors from './admin/AdminVendors'
-import AdminBrandDispatch from './admin/AdminBrandDispatch'
-import AdminRequisitionsReports from './admin/AdminRequisitionsReports'
-import AdminFranchiseCloning from './admin/AdminFranchiseCloning'
-import AuditInventoryCatalog from './admin/audits/AuditInventoryCatalog'
-import AuditRequisitionsStockOut from './admin/audits/AuditRequisitionsStockOut'
-import AuditDispatchCheckout from './admin/audits/AuditDispatchCheckout'
-import AuditAccessOverrides from './admin/audits/AuditAccessOverrides'
-
-const NAV_STRUCTURE = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    children: [
-      { id: 'cloud-kitchen', label: 'Cloud Kitchen' },
-      { id: 'outlets', label: 'Outlets' }
-    ],
-  },
-  {
-    id: 'operations',
-    label: 'Operations',
-    children: [
-      { id: 'materials', label: 'Materials' },
-      { id: 'vendors', label: 'Vendors' },
-      { id: 'recipes', label: 'Recipes' },
-      { id: 'dispatch-brands', label: 'Dispatch Brands' },
-    ],
-  },
-  {
-    id: 'people',
-    label: 'People',
-    children: [
-      { id: 'users', label: 'Users' },
-      { id: 'operators', label: 'Operators' },
-    ],
-  },
-  {
-    id: 'reports-analytics',
-    label: 'Reports & Analytics',
-    children: [
-      { id: 'requisitions-reports', label: 'Requisitions Reports' },
-      { id: 'sales', label: 'Sales' },
-      { id: 'performance', label: 'Performance' },
-      { id: 'trends', label: 'Trends' },
-    ],
-  },
-  {
-    id: 'audits',
-    label: 'Audits',
-    children: [
-      { id: 'inventory-catalog', label: 'Inventory & Catalog' },
-      { id: 'requisitions-stock-out', label: 'Requisitions & Stock Out' },
-      { id: 'dispatch-checkout', label: 'Dispatch & Checkout' },
-      { id: 'access-overrides', label: 'Access & Overrides' },
-    ],
-  },
-  {
-    id: 'franchise',
-    label: 'Franchise',
-    children: [
-      { id: 'data-cloning', label: 'Data Cloning' },
-    ],
-  },
-]
+import {
+  ADMIN_NAV,
+  adminSectionPath,
+  adminGroupDefaultPath,
+  resolveAdminSection,
+} from './admin/adminNavigation'
 
 const AdminDashboard = () => {
-  const [session, setSession] = useState(null)
-  const [activeParentId, setActiveParentId] = useState('overview')
-  const [activeChildId, setActiveChildId] = useState('cloud-kitchen')
-  const [expandedParents, setExpandedParents] = useState([])
+  // getSession() is a synchronous localStorage read, so there is no reason to
+  // start at null and fill it in from an effect — that only costs a blank render.
+  const [session] = useState(getSession)
   const navigate = useNavigate()
+  const location = useLocation()
 
-  useEffect(() => {
-    const currentSession = getSession()
-    setSession(currentSession)
-  }, [])
+  const { group: activeGroup } = resolveAdminSection(location.pathname)
+
+  // Manual expand/collapse, seeded from the URL so a deep link or a refresh
+  // opens the group the user actually landed in.
+  const [expandedGroupIds, setExpandedGroupIds] = useState(() =>
+    activeGroup ? [activeGroup.id] : []
+  )
+
+  // Landing in a group by any route other than a sidebar click — back/forward,
+  // a pasted link — must open it too. Adjusting during render rather than in an
+  // effect avoids rendering the sidebar once with the wrong group folded shut.
+  const [lastOpenedGroupId, setLastOpenedGroupId] = useState(activeGroup?.id ?? null)
+  if (activeGroup && activeGroup.id !== lastOpenedGroupId) {
+    setLastOpenedGroupId(activeGroup.id)
+    setExpandedGroupIds((prev) =>
+      prev.includes(activeGroup.id) ? prev : [...prev, activeGroup.id]
+    )
+  }
 
   const handleLogout = async () => {
     // Sign out from Supabase if auth login
     if (session?.login_type === 'auth') {
       await supabase.auth.signOut()
     }
-    
+
     clearSession()
     navigate('/invmanagement/login')
   }
 
-  if (!session) return null
+  // Clicking the group you are already in just folds it away; clicking any
+  // other group opens it and takes you to its first section.
+  const handleGroupClick = (group) => {
+    if (activeGroup?.id === group.id) {
+      setExpandedGroupIds((prev) => prev.filter((id) => id !== group.id))
+      return
+    }
 
-  const activeParent = NAV_STRUCTURE.find((p) => p.id === activeParentId)
-  const activeChild = activeParent?.children.find((c) => c.id === activeChildId)
-  const isOutletsSection =
-    activeParentId === 'overview' && activeChildId === 'outlets'
-  const isMaterialsSection =
-    activeParentId === 'operations' && activeChildId === 'materials'
-  const isRecipesSection =
-    activeParentId === 'operations' && activeChildId === 'recipes'
-  const isUsersSection =
-    activeParentId === 'people' && activeChildId === 'users'
-  const isOperatorsSection =
-    activeParentId === 'people' && activeChildId === 'operators'
-  const isVendorsSection =
-    activeParentId === 'operations' && activeChildId === 'vendors'
-  const isDispatchBrandsSection =
-    activeParentId === 'operations' && activeChildId === 'dispatch-brands'
-  const isRequisitionsReportsSection =
-    activeParentId === 'reports-analytics' && activeChildId === 'requisitions-reports'
-  const isFranchiseCloningSection =
-    activeParentId === 'franchise' && activeChildId === 'data-cloning'
-  const isInventoryCatalogAuditSection =
-    activeParentId === 'audits' && activeChildId === 'inventory-catalog'
-  const isRequisitionsStockOutAuditSection =
-    activeParentId === 'audits' && activeChildId === 'requisitions-stock-out'
-  const isDispatchCheckoutAuditSection =
-    activeParentId === 'audits' && activeChildId === 'dispatch-checkout'
-  const isAccessOverridesAuditSection =
-    activeParentId === 'audits' && activeChildId === 'access-overrides'
+    setExpandedGroupIds((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]))
+    navigate(adminGroupDefaultPath(group))
+  }
+
+  if (!session) return null
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,69 +85,67 @@ const AdminDashboard = () => {
           {/* Sidebar */}
           <aside className="w-72 shrink-0">
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-xl p-4">
-                {NAV_STRUCTURE.map((parent) => (
-                  <div key={parent.id} className="mb-4 last:mb-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveParentId(parent.id)
-                        // Default to first child when switching parent
-                        if (parent.children?.length) {
-                          setActiveChildId(parent.children[0].id)
-                        }
-                        setExpandedParents((prev) =>
-                          prev.includes(parent.id)
-                            ? prev.filter((id) => id !== parent.id)
-                            : [...prev, parent.id]
-                        )
-                      }}
-                      className={`w-full flex items-center justify-between gap-2 px-1.5 py-2 rounded-md text-base font-semibold tracking-tight transition-colors ${
-                        activeParentId === parent.id
-                          ? 'bg-accent text-black'
-                          : 'text-foreground hover:bg-muted'
-                      }`}
-                    >
-                      <span>{parent.label}</span>
-                      <span
-                        className={`transition-transform duration-200 ${
-                          expandedParents.includes(parent.id) ? 'rotate-90' : 'rotate-0'
+              <nav aria-label="Admin sections" className="bg-card border border-border rounded-xl p-4">
+                {ADMIN_NAV.map((group) => {
+                  const isExpanded = expandedGroupIds.includes(group.id)
+                  const panelId = `admin-nav-panel-${group.id}`
+
+                  return (
+                    <div key={group.id} className="mb-4 last:mb-0">
+                      <button
+                        type="button"
+                        onClick={() => handleGroupClick(group)}
+                        aria-expanded={isExpanded}
+                        aria-controls={panelId}
+                        className={`w-full flex items-center justify-between gap-2 px-1.5 py-2 rounded-md text-base font-semibold tracking-tight transition-colors ${
+                          activeGroup?.id === group.id
+                            ? 'bg-accent text-background'
+                            : 'text-foreground hover:bg-muted'
                         }`}
-                        aria-hidden="true"
                       >
-                        ▸
-                      </span>
-                    </button>
-                    <div
-                      className={`mt-1 pl-1 transition-all duration-300 ease-out ${
-                        expandedParents.includes(parent.id)
-                          ? 'max-h-[min(70vh,28rem)] opacity-100 overflow-y-auto'
-                          : 'max-h-0 opacity-0 overflow-hidden'
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        {parent.children.map((child) => (
-                          <button
-                            key={child.id}
-                            type="button"
-                            onClick={() => {
-                              setActiveParentId(parent.id)
-                              setActiveChildId(child.id)
-                            }}
-                            className={`w-full text-left pl-6 pr-2 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                              activeParentId === parent.id && activeChildId === child.id
-                                ? 'bg-muted text-foreground'
-                                : 'text-muted-foreground hover:bg-muted/60'
-                            }`}
-                          >
-                            {child.label}
-                          </button>
-                        ))}
+                        <span>{group.label}</span>
+                        <span
+                          className={`transition-transform duration-200 ${
+                            isExpanded ? 'rotate-90' : 'rotate-0'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ▸
+                        </span>
+                      </button>
+                      {/* `inert` keeps collapsed items out of the tab order while
+                          leaving the height/opacity transition intact. */}
+                      <div
+                        id={panelId}
+                        inert={!isExpanded}
+                        className={`mt-1 pl-1 transition-all duration-300 ease-out ${
+                          isExpanded
+                            ? 'max-h-[min(70vh,28rem)] opacity-100 overflow-y-auto'
+                            : 'max-h-0 opacity-0 overflow-hidden'
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          {group.children.map((section) => (
+                            <NavLink
+                              key={section.id}
+                              to={adminSectionPath(group.id, section.id)}
+                              className={({ isActive }) =>
+                                `block w-full text-left pl-6 pr-2 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                  isActive
+                                    ? 'bg-muted text-foreground'
+                                    : 'text-muted-foreground hover:bg-muted/60'
+                                }`
+                              }
+                            >
+                              {section.label}
+                            </NavLink>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )
+                })}
+              </nav>
 
               {/* Session Info under sidebar */}
               <div className="bg-card border border-border rounded-xl p-4">
@@ -248,75 +180,9 @@ const AdminDashboard = () => {
 
           {/* Content Area */}
           <section className="flex-1">
-            {isOutletsSection ? (
-              <div className="-mt-2">
-                <AdminOutlets />
-              </div>
-            ) : isMaterialsSection ? (
-              <div className="-mt-2">
-                <Materials isAdminMode={true} />
-              </div>
-            ) : isRecipesSection ? (
-              <div className="-mt-2">
-                <AdminRecipes />
-              </div>
-            ) : isUsersSection ? (
-              <div className="-mt-2">
-                <AdminUsers />
-              </div>
-            ) : isVendorsSection ? (
-              <div className="-mt-2">
-                <AdminVendors />
-              </div>
-            ) : isOperatorsSection ? (
-              <div className="-mt-2">
-                <AdminOperators />
-              </div>
-            ) : isDispatchBrandsSection ? (
-              <div className="-mt-2">
-                <AdminBrandDispatch />
-              </div>
-            ) : isRequisitionsReportsSection ? (
-              <div className="-mt-2">
-                <AdminRequisitionsReports />
-              </div>
-            ) : isFranchiseCloningSection ? (
-              <div className="-mt-2">
-                <AdminFranchiseCloning />
-              </div>
-            ) : isInventoryCatalogAuditSection ? (
-              <div className="-mt-2">
-                <AuditInventoryCatalog />
-              </div>
-            ) : isRequisitionsStockOutAuditSection ? (
-              <div className="-mt-2">
-                <AuditRequisitionsStockOut />
-              </div>
-            ) : isDispatchCheckoutAuditSection ? (
-              <div className="-mt-2">
-                <AuditDispatchCheckout />
-              </div>
-            ) : isAccessOverridesAuditSection ? (
-              <div className="-mt-2">
-                <AuditAccessOverrides />
-              </div>
-            ) : (
-              <div className="bg-card border border-border rounded-xl p-8 flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {activeParent?.label} / {activeChild?.label}
-                </p>
-                <h2 className="text-2xl font-bold text-foreground">
-                  {activeChild?.label} <span className="text-muted-foreground text-base">section</span>
-                </h2>
-                <p className="text-sm text-muted-foreground max-w-xl">
-                  This is a placeholder for the{' '}
-                  <span className="font-semibold text-foreground">
-                    {activeParent?.label} &gt; {activeChild?.label}
-                  </span>{' '}
-                  area of the admin dashboard. We&apos;ll build out this section in detail next.
-                </p>
-              </div>
-            )}
+            <div className="-mt-2">
+              <Outlet />
+            </div>
           </section>
         </div>
       </main>
