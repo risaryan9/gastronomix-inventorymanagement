@@ -1,47 +1,119 @@
 # Admin Dashboard — Gap Analysis & Enhancement Plan
 
-**Date:** 2 August 2026
+**Created:** 2 August 2026
+**Last updated:** 2 August 2026 — after Phase 1 and the Kitchen Wise Overview
 **Method:** Code read of `frontend/src/pages/AdminDashboard.jsx` + admin sub-pages, cross-referenced against the live Supabase database (row counts and data-quality profiling run directly against production).
+
+This is a living plan. §1–§2 are the current state; §3–§5 are the original findings, kept as the record of why the work was scoped this way; §6–§8 are what is left.
 
 ---
 
-## 1. What the admin dashboard is today
+## 1. Where the admin dashboard is now
 
-`frontend/src/pages/AdminDashboard.jsx` is a sidebar shell with 6 groups and 16 sub-sections. Twelve are built; **four are still placeholder text**:
+The sidebar has 6 groups and 17 sub-sections. Fourteen are built; **three are still placeholder text**, all in Reports.
 
 | Section | Status |
 |---|---|
-| Overview → **Cloud Kitchen** | ❌ placeholder — *and it's the default landing screen* |
+| Overview → **Cloud Kitchen Overview** | ✅ built — KPI strip, kitchen cards, cross-kitchen charts |
+| Overview → **Kitchen Wise Overview** | ✅ built — per-kitchen KPIs, analytics, ledgers, outlets |
 | Overview → Outlets | ✅ |
 | Operations → Materials / Vendors / Recipes / Dispatch Brands | ✅ |
 | People → Users / Operators | ✅ |
 | Reports → Requisitions Reports | ✅ |
-| Reports → **Sales** | ❌ placeholder |
+| Reports → **Sales** | ❌ placeholder — genuinely blocked, see §4F |
 | Reports → **Performance** | ❌ placeholder |
 | Reports → **Trends** | ❌ placeholder |
-| Audits → 4 sub-sections | ✅ (nicely built, shared filter bar) |
+| Audits → 4 sub-sections | ✅ |
 | Franchise → Data Cloning | ✅ |
 
-**The single worst thing:** an admin logs in and the first screen they see says *"This is a placeholder… we'll build out this section in detail next."* There is no home screen, no numbers, nothing.
+The landing screen is no longer a placeholder — it is the Cloud Kitchen Overview.
 
 ---
 
-## 2. The structural gap: admin can manage master data, but can't see operations
+## 2. What has been built
 
-The admin can edit **catalogue** things (materials, vendors, outlets, users, recipes, brands). But there is **no screen anywhere in the admin dashboard for actual stock**:
+### 2.1 URL routing for the whole dashboard *(Phase 1, item 1)*
 
-- ❌ No **Inventory** view — admin cannot see what stock exists in any kitchen
-- ❌ No **Stock In** ledger — cannot see purchases/receipts
-- ❌ No **Stock Out** ledger — cannot see allocations, wastage, transfers
-- ❌ No **cross-kitchen comparison** — the whole point of being admin
+The active section lived in component state, so nothing survived the address bar. Every section now has a URL:
 
-The Purchase Manager has all of these (`src/pages/purchase-manager/`), but scoped to one kitchen. The admin — the only role that can see all 3 kitchens — has none of them. Today the only way an admin sees a transaction is by scrolling the Audit feed.
+```
+/invmanagement/dashboard/admin/<group>/<section>
+/invmanagement/dashboard/admin/overview/kitchen-wise/<kitchenId>?tab=stock-in
+```
+
+`pages/admin/adminNavigation.js` is the single source of truth — the sidebar and the router are both generated from it, so a new section is one entry and the URL, nav item and route cannot drift apart. A section may declare `paramPath` to also answer on a parameterised path. Group index routes redirect to their first child; an unknown admin URL lands on the default section rather than bouncing out to the session redirect.
+
+Path builders live in `pages/admin/adminPaths.js`, a leaf module with no imports. This is not stylistic: `adminNavigation.js` imports every admin screen, so a screen importing a builder from it would close an import cycle, and a module-level constant in that screen would then evaluate against a half-initialised module and throw at import time — a white screen the build would not catch.
+
+### 2.2 Overview → Cloud Kitchen Overview *(Phase 1, item 2)*
+
+Read-only. Six KPI tiles (inventory value, spend with period-on-period delta, pending requisitions, out of stock, low stock, dead stock) over one card per cloud kitchen. Cards link into the Kitchen Wise Overview.
+
+Below the cards, three Recharts comparisons: **spend over time** by kitchen, **inventory value** by kitchen, **stock-outs** by kitchen.
+
+Every tile and card stat is captioned "as of now" or with the date range, because the screen mixes point-in-time stock metrics with flow metrics — without the caption, a range change that moves half the numbers and leaves the rest reads as a bug.
+
+### 2.3 Overview → Kitchen Wise Overview
+
+Everything recorded for one cloud kitchen. Kitchen and open tab are both in the URL.
+
+- **Summary** — six stats for the kitchen
+- **Analytics** — spend trend, top materials by value, internal use by reason
+- **Stock In** ledger — receipts with supplier, invoice, type, receiver, cost
+- **Stock Out** ledger — allocations, internal use, transfers and dispatches
+- **Outlets** — the outlets this kitchen serves, with allocations over the range, last allocation and pending requisitions
+
+Ledger rows open a **record modal**: the record's fields, its line items, and the audit trail tied to it. The audit trail renders through the same `describeEvent` + `EventBody` pipeline as the Audits section, so an event looks identical in both places. It is collapsed by default, but whether one *exists* is resolved on open — a record with none says "No audit log tied to this record" rather than offering a disclosure onto nothing.
+
+Tables follow the purchase manager's inventory table: `border-2` card, header on the page background, accent wash on hover, sortable columns with accent arrows, status pills.
+
+### 2.4 The RLS gap that would have made every cost figure zero
+
+Found while writing the overview queries, not by testing. The admin logs in through Supabase auth with `cloud_kitchen_id = NULL`, and the only SELECT policies on `stock_in` and `stock_in_batches` were kitchen-scoped:
+
+```
+(auth.uid() IS NOT NULL AND is_purchase_manager_or_admin()
+ AND EXISTS (… users.cloud_kitchen_id = stock_in.cloud_kitchen_id))
+OR (auth.uid() IS NULL)
+```
+
+For the admin the `EXISTS` can never be true — NULL never equals a kitchen id — so the admin read **zero rows from both tables**. Quantities were unaffected (`inventory` has a permissive public read), which is why it had never surfaced: the gap only showed up in money.
+
+`migrations/add-admin-read-policies-for-stock-in.sql` adds two read-only policies via the existing `is_admin()`. **Applied.** The pages still detect the condition and hide cost tiles rather than showing a confident zero, so the same failure elsewhere is visible rather than silent.
+
+### 2.5 Accessibility and shared code
+
+Fixed: URL routing (§5.1), `inert` on collapsed sidebar panels so keyboard users can no longer tab into invisible items (§5.2), `aria-expanded` / `aria-controls` / `aria-current` on the nav (§5.3), the hardcoded `text-black` (§5.4). New modals ship with `role="dialog"`, `aria-modal`, Escape, focus-on-close-button and body scroll lock. Tables carry `aria-sort`.
+
+Shared modules extracted so the screens cannot drift: `lib/formatNumbers.js`, `lib/chartTheme.js`, `lib/fetchAllRows.js` (pages PostgREST results so a row cap cannot silently truncate a total), `hooks/useTableSort.js`.
+
+### 2.6 Design decisions worth not re-litigating
+
+- **Kitchens are cards, not table rows** — there are three of them and that is not changing soon.
+- **Comparison charts sit below the cards**, not inside each card. A chart inside one kitchen's card compares nothing.
+- **KPI values are white.** Severity colouring made the strip harder to scan and decided for the reader what counts as bad. The brand accent does structural work instead — a hairline rule on the leading edge, section markers, table totals.
+- **No healthy/low/out status stack.** Its natural third segment, healthy green, measures **ΔE 4.1 against critical red under deuteranopia** — a red-green colourblind reader could not separate "fine" from "out of stock" on the one chart whose job is flagging what is out. Any future status-coloured chart needs the palette validated first; the three kitchen hues clear all-pairs at ΔE 9.4 CVD / 20.9 normal-vision against this app's card surface.
+- **Charts have no data-table twin.** Both bar charts label values at the bar tips; the line chart's per-period values are tooltip-only until the detailed analytics screens land.
+- **Ledger rows open a modal**, not an expanded row. Page size 15.
+- **No Inventory tab** on the Kitchen Wise Overview — dropped in favour of the two ledgers plus Outlets.
 
 ---
 
-## 3. The data is already there — and it's rich
+## 3. The original structural gap, and what is left of it
 
-I profiled the live database. This is not a "we need more data" problem for most of what's missing. **4 months of clean transactional history (2026-04-02 → 2026-08-02):**
+The admin could edit **catalogue** things but see no **stock**:
+
+- ~~No **Stock In** ledger~~ → ✅ per kitchen, with line items and audit
+- ~~No **Stock Out** ledger~~ → ✅ per kitchen, with line items and audit
+- ~~No **cross-kitchen comparison**~~ → ✅ Cloud Kitchen Overview
+- **No cross-kitchen Inventory browser** — deliberately not built. Stock *value*, out-of-stock and low-stock counts appear as roll-ups on both overviews; there is no screen listing stock per material per kitchen. Revisit if the roll-ups prove insufficient.
+- **No unified all-kitchen movement ledger** — the ledgers are per kitchen. A cross-kitchen ledger with export is still §4C.
+
+---
+
+## 4. The data (unchanged — this was never the blocker)
+
+**4 months of clean transactional history (2026-04-02 → 2026-08-02):**
 
 | Table | Rows | Quality |
 |---|---|---|
@@ -53,111 +125,80 @@ I profiled the live database. This is not a "we need more data" problem for most
 | `allocation_requests` / `_items` | 175 / 778 | request-vs-fulfilled linkage is **100% intact** ✅ |
 | `inventory` | 876 | live stock per kitchen × material |
 
-Some real numbers I computed straight from your data, which is what the missing dashboard *should* be showing right now:
+Figures as measured: **₹8,50,442** inventory value, **₹21,19,060** spend in 30 days, **9** pending requisitions, **₹76,258** dead stock across 19 batches older than 60 days, **21** material×kitchen pairs unmoved in 45 days.
 
-- **₹8,50,442** total inventory value on hand (all kitchens)
-- **₹21,19,060** procurement spend, last 30 days
-- **9** requisitions pending (unpacked) right now
-- **₹76,258** in "dead stock" — 19 batches older than 60 days still holding quantity
-- **21** material×kitchen pairs holding stock with zero movement in 45 days
-- Self stock-out split: internal-production 473, staff-food 143, inter-kitchen 23, R&D 14, wastage 4
+`docs/ADMIN_DASHBOARD_ANALYTICS.md` specs 26 widgets and claims fill-rate is blocked by missing request↔fulfilment linkage. That claim is **out of date** — every packed requisition links cleanly to its stock-out, so fill rate is computable today.
 
-Notably, `docs/ADMIN_DASHBOARD_ANALYTICS.md` already specs 26 widgets. **Zero of them are built.** The doc also claims fill-rate is blocked by missing request↔fulfilment linkage — that's now **out of date**: every packed requisition links cleanly to its stock-out, so fill-rate is computable today.
+### 4C. Cross-kitchen Stock Movements ledger *(not built)*
+A unified ledger of every movement across all kitchens with date/kitchen/material/type filters and **value** per movement, plus Excel export (`xlsx` and `jspdf` are already dependencies).
 
----
+### 4D. Reports → Performance *(placeholder)*
+**Fill rate %** (fulfilled ÷ requested) by outlet and material, perfect-order %, request→packed turnaround, top under-fulfilled materials, activity by user. The Requisitions Report already computes per-requisition variance; this is that rolled up.
 
-## 4. New sections I'd add
+### 4E. Reports → Trends *(placeholder)*
+Spend split purchase vs in-house, consumption per outlet over time, **material price trend** (four months of per-batch `unit_cost` makes ingredient inflation directly measurable), wastage trend by reason, reorder suggestions.
 
-### A. Overview → Cloud Kitchen *(replaces the placeholder landing page)*
-The admin's home. Two things:
-1. **KPI strip** — inventory value, 30-day spend, pending requisitions, low-stock count, active outlets/users, with a "vs previous period" delta.
-2. **Kitchen comparison table** — one row per kitchen: inventory value, stock-ins, stock-outs, low-stock items, pending requests. Click a row → drill into that kitchen.
+### 4F. Reports → Sales *(blocked)*
+`checkout_form`, `checkout_form_additional`, `checkout_form_return_items` and `franchise_daily_snapshot` are **all zero rows**. The closing/checkout feature that captures cash and returns is not in production use, so there is no revenue data anywhere — Sales, COGS and margin are genuinely blocked. Hide the nav item or label it "coming soon" rather than leave a placeholder.
 
-*All computable today. No schema change.*
-
-### B. Operations → Inventory (new)
-Cross-kitchen stock table with kitchen/category/material-type filters, plus three tabs that are pure gold and currently invisible:
-- **Low & out of stock** — needs reorder
-- **Dead stock** — value sitting unmoved (₹76k today)
-- **Negative / anomaly** — data-integrity check
-
-### C. Operations → Stock Movements (new)
-A unified ledger of every stock-in and stock-out across all kitchens, with date range, kitchen, material, type (purchase / kitchen / self / transfer) and **value** per movement (you have per-batch cost, so this is exact, not estimated). Export to Excel — `xlsx` and `jspdf` are already dependencies.
-
-### D. Reports → Performance *(fills the placeholder)*
-This is where **fill rate** lives — the metric your business actually runs on:
-- **Fill rate %** = fulfilled qty ÷ requested qty, by outlet and by material
-- **Perfect-order %** — requisitions delivered 100% complete
-- **Turnaround time** — request date → packed date
-- **Top under-fulfilled materials** — what you keep running short on
-- **Activity by user** — who is doing the stock-ins/outs
-
-The existing Requisitions Report already computes variance per requisition; this is that same logic rolled up into trends instead of one-at-a-time.
-
-### E. Reports → Trends *(fills the placeholder)*
-- Spend over time, split purchase vs in-house
-- Consumption per outlet over time (spot growing/shrinking outlets)
-- Material price trend — you have `unit_cost` per batch over 4 months, so **ingredient inflation is directly measurable**
-- Wastage & internal-consumption trend by reason
-- **Reorder suggestions** — average daily consumption × lead time vs current stock
-
-### F. Reports → Sales — ⚠️ **cannot build yet**
-Be aware: `checkout_form`, `checkout_form_additional`, `checkout_form_return_items` and `franchise_daily_snapshot` are **all zero rows**. The closing/checkout feature that captures cash and returns isn't in production use yet. Until it is, there is no revenue data anywhere in the system, so Sales, COGS and margin are genuinely blocked. I'd either hide this nav item or label it "coming soon" rather than leave a placeholder.
-
-### G. Alerts / Data Health (new, small but high value)
-A card surfacing what's quietly broken:
-- **46 active materials have no low-stock threshold set** — meaning low-stock alerts silently skip them
+### 4G. Alerts / Data Health *(not built)*
+- **46 active materials have no low-stock threshold set** — low-stock alerts silently skip them
 - **25 stock-in records have no supplier name**
-- Supplier is **free text** (7 distinct strings) and not linked to the `vendors` table (11 rows) — so "spend by supplier" can't be trusted yet; 10 active materials have no `vendor_id`
-- Self stock-out reasons include a literal `"test"` entry and a misspelt `"cullinary-rnd"` — reason codes need to be a fixed list, not free text, or every wastage report will be wrong
+- Supplier is **free text** (7 distinct strings), unlinked to `vendors` (11 rows), so "spend by supplier" cannot be trusted; 10 active materials have no `vendor_id`
+- Self stock-out reasons include a literal `"test"` and a misspelt `"cullinary-rnd"` — reason codes need a fixed list, or every wastage report is wrong
 
 ---
 
-## 5. Accessibility & usability — concrete defects
+## 5. Accessibility & usability — original defects, with status
 
-These are the "accessible" half of the question, and they're all in code I read:
-
-1. **No URL routing.** `AdminDashboard.jsx:77-78` keeps the active section in React state. So: you can't bookmark a section, can't share a link to it, browser Back doesn't work, and **a page refresh throws you back to the placeholder**. The Purchase Manager dashboard does this correctly with nested routes (`App.jsx`) — the admin dashboard should match.
-
-2. **Keyboard users can tab into invisible menu items.** `AdminDashboard.jsx:187-193` hides collapsed sub-menus with `max-h-0 opacity-0 overflow-hidden`. CSS hides them visually but they stay in the tab order — a keyboard or screen-reader user tabs into buttons they can't see. Needs `hidden` or the `inert` attribute.
-
-3. **Zero `aria-current` or `aria-expanded` in the entire codebase.** A screen reader can't tell which section is active or whether a menu is open. The collapse arrow is a bare `▸` character.
-
-4. **Hardcoded `text-black`** on the active nav item (`AdminDashboard.jsx:173`) — breaks in dark theme; everything else uses semantic tokens.
-
-5. **Modals aren't real dialogs.** The two modals in `AdminRequisitionsReports.jsx` have no `role="dialog"`, no `aria-modal`, no Escape-to-close, no focus trap, and no body scroll lock — even though `useBodyScrollLock` exists in the repo and `AuditDetailDrawer.jsx` already does all of this correctly. Escape handling exists in exactly one file across the whole app.
-
-6. **No shared filter state.** Every section re-implements its own kitchen dropdown and date filter. Pick "Kitchen A, last 30 days" once and it should apply everywhere — right now you re-select it in each section.
-
-7. **No charting library installed.** Everything is tables. For trends you'll need either a small library (Recharts) or hand-rolled SVG sparklines — worth deciding before building section E.
+1. ~~**No URL routing.**~~ ✅ Fixed — §2.1.
+2. ~~**Keyboard users can tab into invisible menu items.**~~ ✅ Fixed with `inert`.
+3. ~~**Zero `aria-current` / `aria-expanded`.**~~ ✅ Fixed on the admin nav. Other dashboards still have none.
+4. ~~**Hardcoded `text-black`.**~~ ✅ Fixed.
+5. **Modals aren't real dialogs.** ❌ **Still open** in `AdminRequisitionsReports.jsx` — no `role="dialog"`, no `aria-modal`, no Escape, no focus trap, no scroll lock. New admin modals do all of this; that file was never touched.
+6. **No shared filter state.** ⚠️ Partial — each overview has its own range control and they do not talk to each other. Picking "last 30 days" once should apply everywhere.
+7. ~~**No charting library.**~~ ✅ Recharts 3.10.1 installed.
 
 ---
 
-## 6. Suggested order of work
+## 6. Order of work — updated
 
-**Phase 1 — stop the bleeding (biggest win per hour)**
-1. Move nav into URL routes (fixes refresh/back/bookmark in one change)
-2. Build Overview → Cloud Kitchen: KPI strip + kitchen comparison
-3. Fix the accessibility defects above (small, mechanical)
+**Phase 1 — done**
+1. ✅ URL routes
+2. ✅ Cloud Kitchen Overview
+3. ⚠️ Accessibility — items 1–4 and 7 done; **item 5 outstanding**
 
-**Phase 2 — give admin operational sight**
-4. Inventory section (with low-stock / dead-stock / anomaly tabs)
-5. Stock Movements ledger with export
-6. Data Health card
+**Phase 1.5 — done (added after the fact)**
+- ✅ Kitchen Wise Overview with ledgers, outlets, record modals and audit trails
+- ✅ Admin RLS read policies for `stock_in` / `stock_in_batches`
+
+**Phase 2 — give admin cross-kitchen operational sight**
+4. Cross-kitchen Stock Movements ledger with export (§4C)
+5. Data Health card (§4G)
+6. Outlet detail view on the Kitchen Wise Overview — **content not yet specified**
+7. Fix the `AdminRequisitionsReports` modals (§5.5)
 
 **Phase 3 — analytics**
-7. Performance (fill rate, turnaround, under-fulfilment)
-8. Trends (spend, consumption, price inflation, reorder suggestions)
+8. Performance — fill rate, turnaround, under-fulfilment (§4D)
+9. Trends — spend, consumption, price inflation, reorder suggestions (§4E)
 
 **Phase 4 — blocked on data**
-9. Sales/COGS/margin — only after the checkout form is actually in production use
-10. Expiry tracking, purchase orders, cycle counts — all need new tables (the analytics doc §7 covers these correctly)
+10. Sales / COGS / margin — only once the checkout form is in production use
+11. Expiry tracking, purchase orders, cycle counts — need new tables (`ADMIN_DASHBOARD_ANALYTICS.md` §7 covers these correctly)
 
 ---
 
-## 7. Open decisions before building
+## 7. Open questions
 
-Two things worth deciding first:
+1. **Outlet detail view** — what should clicking an outlet on the Kitchen Wise Overview show? Rows are intentionally not clickable until this is decided.
+2. **Inventory roll-ups** — "Out of stock", "Low stock", inventory value and dead stock still appear on both overviews as summary figures. Confirm these stay now that the Inventory tab is gone.
+3. **Sales** — hide the nav item until checkout data exists, or leave it as a labelled placeholder?
+4. **Shared filter state** — worth building a dashboard-level range/kitchen context, or leave each screen independent?
 
-1. Whether **Sales should be hidden** until checkout data exists.
-2. Whether you want **Inventory/Stock Movements as new admin sections** or as an "admin mode" reuse of the existing Purchase Manager pages (like Materials already does with `isAdminMode`). The reuse route is much less code but those pages assume a single kitchen, so they'd need a kitchen selector threaded through.
+---
+
+## 8. Verification status
+
+Everything shipped so far has been checked by lint, production build, and SQL cross-checks of the computed figures against the database. The chart palette was validated with a colourblindness/contrast validator against the real card surface rather than chosen by eye.
+
+**None of it has been verified visually in a browser.** The Chrome extension used for automated checks has not been connected during this work, so layout, label collisions, tick crowding and overflow are unchecked. This is the main outstanding risk and is worth a manual pass.

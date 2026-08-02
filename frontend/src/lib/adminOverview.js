@@ -18,26 +18,13 @@
 // keep this module's shape.
 
 import { supabase } from './supabase'
+import { fetchAllRows } from './fetchAllRows'
 import { getBusinessDate } from './businessDate'
 
 // Batches still holding stock this long after receipt are capital sitting idle.
 const DEAD_STOCK_AFTER_DAYS = 60
 
-// PostgREST caps a response at a server-configured row count. Paging keeps the
-// folds correct regardless of where that cap sits.
-const PAGE_SIZE = 1000
-
-const fetchAll = async (build) => {
-  const rows = []
-
-  for (let page = 0; ; page += 1) {
-    const { data, error } = await build().range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-    if (error) throw error
-
-    rows.push(...(data ?? []))
-    if (!data || data.length < PAGE_SIZE) return rows
-  }
-}
+const fetchAll = fetchAllRows
 
 const num = (value) => {
   const parsed = parseFloat(value)

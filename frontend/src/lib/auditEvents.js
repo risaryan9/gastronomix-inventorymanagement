@@ -360,6 +360,28 @@ export const fetchCorrelatedEvents = async (correlationId, excludeEventId) => {
   return (data || []).filter((event) => event.id !== excludeEventId)
 }
 
+/**
+ * Every audited action recorded against one record.
+ *
+ * The audit subsections ask "what happened lately"; this asks "what ever
+ * happened to *this*" — the record-detail view on the Kitchen Wise Overview.
+ * Same columns as everything else here, so describeEvent and EventBody render
+ * these identically to the audit screens.
+ */
+export const fetchEntityAuditEvents = async (entityType, entityId) => {
+  if (!entityType || !entityId) return []
+
+  const { data, error } = await supabase
+    .from('audit_events')
+    .select(SELECT_COLUMNS)
+    .eq('entity_type', entityType)
+    .eq('entity_id', entityId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
 export const fetchAuditLookups = async () => {
   const [kitchensRes, materialsRes, outletsRes, usersRes] = await Promise.all([
     supabase.from('cloud_kitchens').select('id, name').order('name'),

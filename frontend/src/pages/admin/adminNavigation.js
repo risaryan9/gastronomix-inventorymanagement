@@ -4,8 +4,10 @@
 // section means adding one entry here — the URL, the nav item and the route
 // cannot drift apart. A section with no `Component` renders the placeholder.
 
+import { ADMIN_BASE_PATH, adminSectionPath } from './adminPaths'
 import Materials from '../purchase-manager/Materials'
 import AdminCloudKitchenOverview from './AdminCloudKitchenOverview'
+import AdminKitchenWiseOverview from './AdminKitchenWiseOverview'
 import AdminUsers from './AdminUsers'
 import AdminOperators from './AdminOperators'
 import AdminRecipes from './AdminRecipes'
@@ -19,14 +21,29 @@ import AuditRequisitionsStockOut from './audits/AuditRequisitionsStockOut'
 import AuditDispatchCheckout from './audits/AuditDispatchCheckout'
 import AuditAccessOverrides from './audits/AuditAccessOverrides'
 
-export const ADMIN_BASE_PATH = '/invmanagement/dashboard/admin'
+// Re-exported so existing consumers keep one import site; the builders
+// themselves live in a leaf module to keep this file out of an import cycle.
+export { ADMIN_BASE_PATH, adminSectionPath } from './adminPaths'
 
 export const ADMIN_NAV = [
   {
     id: 'overview',
     label: 'Overview',
     children: [
-      { id: 'cloud-kitchen', label: 'Cloud Kitchen', Component: AdminCloudKitchenOverview },
+      {
+        id: 'cloud-kitchen',
+        label: 'Cloud Kitchen Overview',
+        Component: AdminCloudKitchenOverview,
+      },
+      {
+        id: 'kitchen-wise',
+        label: 'Kitchen Wise Overview',
+        Component: AdminKitchenWiseOverview,
+        // The selected kitchen lives in the path so a card click, a bookmark and
+        // a refresh all land on the same kitchen. Bare /kitchen-wise redirects
+        // itself to the first one.
+        paramPath: ':kitchenId',
+      },
       { id: 'outlets', label: 'Outlets', Component: AdminOutlets },
     ],
   },
@@ -82,8 +99,6 @@ export const ADMIN_NAV = [
     children: [{ id: 'data-cloning', label: 'Data Cloning', Component: AdminFranchiseCloning }],
   },
 ]
-
-export const adminSectionPath = (groupId, sectionId) => `${ADMIN_BASE_PATH}/${groupId}/${sectionId}`
 
 export const adminGroupDefaultPath = (group) => adminSectionPath(group.id, group.children[0].id)
 

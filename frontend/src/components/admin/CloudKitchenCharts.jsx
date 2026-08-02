@@ -33,31 +33,8 @@ import {
   YAxis,
 } from 'recharts'
 
-// Dark-surface steps. This app has no light theme — the Tailwind config carries
-// fixed dark tokens — so one selected set is correct rather than a pair.
-const SERIES = ['#3987e5', '#d95926', '#199e70']
-
-const INK = {
-  grid: '#2e3138', // border token: one step off the card surface
-  axis: '#a6a6a6', // muted-foreground
-}
-
-const currency = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-})
-
-const money = (value) => currency.format(Math.round(value || 0))
-
-// Axis ticks need to stay short or they collide; ₹19.9L beats ₹19,85,775.
-const compactMoney = (value) => {
-  const amount = Math.abs(value || 0)
-  if (amount >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`
-  if (amount >= 100000) return `₹${(value / 100000).toFixed(1)}L`
-  if (amount >= 1000) return `₹${Math.round(value / 1000)}K`
-  return `₹${Math.round(value || 0)}`
-}
+import { CHART_SURFACE, INK, buildKitchenColors } from '../../lib/chartTheme'
+import { compactMoney, money } from '../../lib/formatNumbers'
 
 const bucketLabel = (bucket, bucketDays) => {
   const date = new Date(`${bucket}T00:00:00Z`)
@@ -179,7 +156,7 @@ const SpendOverTime = ({ kitchens, series, colorOf }) => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 dot={showDots ? { r: 4, strokeWidth: 0 } : false}
-                activeDot={{ r: 4, strokeWidth: 2, stroke: '#1a1d23' }}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: CHART_SURFACE }}
               />
             ))}
           </LineChart>
@@ -333,10 +310,7 @@ const StockOutsByKitchen = ({ kitchens, colorOf }) => {
 const CloudKitchenCharts = ({ kitchens, spendSeries, costDataAvailable }) => {
   if (kitchens.length === 0) return null
 
-  // Keyed by kitchen id, not by position, so a hue belongs to a kitchen rather
-  // than to a row number.
-  const colors = new Map(kitchens.map((kitchen, index) => [kitchen.id, SERIES[index % SERIES.length]]))
-  const colorOf = (kitchenId) => colors.get(kitchenId) ?? SERIES[0]
+  const colorOf = buildKitchenColors(kitchens)
 
   return (
     <div className="space-y-4">

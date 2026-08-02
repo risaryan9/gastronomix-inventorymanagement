@@ -95,22 +95,31 @@ function App() {
           {ADMIN_NAV.map((group) => (
             <Route key={group.id} path={group.id}>
               <Route index element={<Navigate to={adminGroupDefaultPath(group)} replace />} />
-              {group.children.map((section) => (
-                <Route
-                  key={section.id}
-                  path={section.id}
-                  element={
-                    section.Component ? (
-                      <section.Component {...(section.props ?? {})} />
-                    ) : (
-                      <AdminSectionPlaceholder
-                        groupLabel={group.label}
-                        sectionLabel={section.label}
-                      />
-                    )
-                  }
-                />
-              ))}
+              {group.children.flatMap((section) => {
+                const element = section.Component ? (
+                  <section.Component {...(section.props ?? {})} />
+                ) : (
+                  <AdminSectionPlaceholder groupLabel={group.label} sectionLabel={section.label} />
+                )
+
+                const routes = [
+                  <Route key={section.id} path={section.id} element={element} />,
+                ]
+
+                // A section may also answer on a parameterised path — the same
+                // screen, told which record to show (see adminNavigation.js).
+                if (section.paramPath) {
+                  routes.push(
+                    <Route
+                      key={`${section.id}-param`}
+                      path={`${section.id}/${section.paramPath}`}
+                      element={element}
+                    />
+                  )
+                }
+
+                return routes
+              })}
             </Route>
           ))}
           {/* An unknown admin URL lands on the dashboard's default section

@@ -9,21 +9,15 @@
 // other half reads as a bug. See lib/adminOverview.js.
 
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import CloudKitchenCharts from '../../components/admin/CloudKitchenCharts'
+import { count, money } from '../../lib/formatNumbers'
 import {
   RANGE_OPTIONS,
   fetchCloudKitchenOverview,
   resolveRange,
 } from '../../lib/adminOverview'
-
-const currency = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-})
-
-const money = (value) => currency.format(Math.round(value || 0))
-const count = (value) => (value || 0).toLocaleString('en-IN')
+import { kitchenWisePath } from './adminPaths'
 
 const formatRange = ({ from, to }) => {
   const label = (date) =>
@@ -110,18 +104,31 @@ const CardStat = ({ label, value }) => (
   </div>
 )
 
+// The whole card is the link into Kitchen Wise Overview — a card-sized target
+// rather than a small "view" affordance tucked in a corner.
 const KitchenCard = ({ kitchen, costDataAvailable, rangeLabel }) => (
-  <article className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4">
+  <Link
+    to={kitchenWisePath(kitchen.id)}
+    className="group bg-card border border-border rounded-xl p-5 flex flex-col gap-4 transition-colors hover:border-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+  >
     <header className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <h3 className="text-base font-bold text-foreground truncate">{kitchen.name}</h3>
         <p className="text-xs text-muted-foreground">{kitchen.code || '—'}</p>
       </div>
-      {!kitchen.is_active && (
-        <span className="shrink-0 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-[11px] font-semibold">
-          Inactive
+      <div className="flex items-center gap-2 shrink-0">
+        {!kitchen.is_active && (
+          <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-[11px] font-semibold">
+            Inactive
+          </span>
+        )}
+        <span
+          aria-hidden="true"
+          className="text-muted-foreground group-hover:text-accent transition-colors"
+        >
+          →
         </span>
-      )}
+      </div>
     </header>
 
     <div className="border-l-2 border-accent/40 pl-3">
@@ -150,7 +157,7 @@ const KitchenCard = ({ kitchen, costDataAvailable, rangeLabel }) => (
       <CardStat label={`Stock-ins · ${rangeLabel}`} value={count(kitchen.stockInCount)} />
       <CardStat label={`Stock-outs · ${rangeLabel}`} value={count(kitchen.stockOutCount)} />
     </dl>
-  </article>
+  </Link>
 )
 
 /* ------------------------------------------------------------------ *
