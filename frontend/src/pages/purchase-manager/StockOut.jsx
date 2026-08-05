@@ -1376,6 +1376,17 @@ const StockOut = () => {
             users (
               full_name
             )
+          ),
+          allocated_by_user:users!allocated_by (
+            full_name
+          ),
+          source_kitchen:cloud_kitchens!cloud_kitchen_id (
+            name,
+            code
+          ),
+          destination_kitchen:cloud_kitchens!transfer_to_cloud_kitchen_id (
+            name,
+            code
           )
         `)
         .eq('id', stockOutId)
@@ -1390,7 +1401,24 @@ const StockOut = () => {
         : stockOutRecord.allocation_requests
 
       const outlet = allocationRequest?.outlets || requestData?.outlets
-      const outletCode = outlet?.code || 'UNKNOWN'
+
+      // A challan describes a movement, and not every movement goes to an
+      // outlet. A self stock-out has no allocation request at all, so reading
+      // the outlet, the supervisor and the request date off one leaves an
+      // inter-cloud transfer printing N/A down the whole header.
+      const destinationKitchen = stockOutRecord.destination_kitchen || requestData?.destination_kitchen
+      const sourceKitchen = stockOutRecord.source_kitchen || requestData?.source_kitchen
+      const isInterCloudTransfer =
+        stockOutRecord.reason === 'inter-cloud-kitchen' && !!destinationKitchen
+      const isSelfMovement = stockOutRecord.self_stock_out === true || !outlet
+
+      // The code segment of the challan number names the counterparty: the
+      // receiving outlet, the receiving kitchen, or — for a movement that
+      // leaves the business entirely, like wastage — the kitchen it left.
+      const counterpartyCode =
+        (isInterCloudTransfer ? destinationKitchen?.code : outlet?.code) ||
+        (isSelfMovement ? sourceKitchen?.code : null) ||
+        'UNKNOWN'
 
       // Generate challan number from stock_out.created_at timestamp
       const challanTimestamp = new Date(stockOutRecord.created_at)
@@ -1399,7 +1427,7 @@ const StockOut = () => {
       const yy = String(challanTimestamp.getFullYear()).slice(-2)
       const hh = String(challanTimestamp.getHours()).padStart(2, '0')
       const min = String(challanTimestamp.getMinutes()).padStart(2, '0')
-      const challanNumber = `${dd}${mm}${yy}${hh}${min}/${outletCode}`
+      const challanNumber = `${dd}${mm}${yy}${hh}${min}/${counterpartyCode}`
 
       // Fetch raw material details for stock_out_items
       const materialIds = stockOutRecord.stock_out_items.map(item => item.raw_material_id)
@@ -1488,21 +1516,67 @@ const StockOut = () => {
       doc.rect(boxX, boxY, leftBoxWidth, boxHeight)
       doc.rect(rightBoxX, boxY, rightBoxWidth, boxHeight)
 
+      // Six lines is what the box holds. Each movement type spends them on the
+      // fields that mean something for it, so a transfer names the kitchen it
+      // went to where a requisition names the outlet and who asked.
+      const issuedBy =
+        stockOutRecord.allocated_by_user?.full_name ||
+        requestData?.users?.full_name ||
+        session?.full_name ||
+        'N/A'
+      const movementDate = stockOutRecord.allocation_date
+        ? new Date(stockOutRecord.allocation_date).toLocaleDateString()
+        : new Date(stockOutRecord.created_at).toLocaleDateString()
+      const sourceKitchenName = sourceKitchen?.name || session?.cloud_kitchen_name || 'N/A'
+      const withCode = (name, code) => (code ? `${name} (${code})` : name)
+
+      let headerLines
+      if (isInterCloudTransfer) {
+        headerLines = [
+          { text: `Transfer To: ${withCode(destinationKitchen.name || 'N/A', destinationKitchen.code)}`, bold: true },
+          { text: `Transferred From: ${sourceKitchenName}` },
+          { text: `Issued By: ${issuedBy}` },
+          { text: `Transfer Date: ${movementDate}` },
+        ]
+      } else if (isSelfMovement) {
+        const reasonLabel = stockOutRecord.reason
+          ? stockOutRecord.reason.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase())
+          : 'Kitchen stock out'
+        headerLines = [
+          { text: `Cloud Kitchen: ${withCode(sourceKitchenName, sourceKitchen?.code)}`, bold: true },
+          { text: `Reason: ${reasonLabel}${stockOutRecord.dispatch_brand ? ` — ${stockOutRecord.dispatch_brand}` : ''}` },
+          { text: `Issued By: ${issuedBy}` },
+          { text: `Date: ${movementDate}` },
+        ]
+      } else {
+        headerLines = [
+          { text: `Outlet: ${outlet?.name || 'N/A'}`, bold: true },
+          { text: `Outlet Code: ${outlet?.code || 'UNKNOWN'}` },
+          { text: `Supervisor: ${allocationRequest?.supervisor_name || allocationRequest?.users?.full_name || 'N/A'}` },
+          { text: `Request Date: ${allocationRequest?.request_date ? new Date(allocationRequest.request_date).toLocaleDateString() : 'N/A'}` },
+        ]
+      }
+      headerLines.push({ text: 'Place of Supply: Karnataka' })
+      headerLines.push({ text: `Challan Number: ${challanNumber}`, bold: true })
+
+      // Kitchen names are free text and longer than an outlet code ever was;
+      // clipped to the box beats running under the Notes panel beside it.
+      const maxLineWidth = leftBoxWidth - 6
+      const clipToBox = (text) => {
+        if (doc.getTextWidth(text) <= maxLineWidth) return text
+        let clipped = text
+        while (clipped.length > 1 && doc.getTextWidth(`${clipped}...`) > maxLineWidth) {
+          clipped = clipped.slice(0, -1)
+        }
+        return `${clipped}...`
+      }
+
       let leftY = boxY + 5
-      doc.setFont(undefined, 'bold')
-      doc.text(`Outlet: ${outlet?.name || 'N/A'}`, boxX + 3, leftY)
-      leftY += 4.5
-      doc.setFont(undefined, 'normal')
-      doc.text(`Outlet Code: ${outletCode}`, boxX + 3, leftY)
-      leftY += 4.5
-      doc.text(`Supervisor: ${allocationRequest?.supervisor_name || allocationRequest?.users?.full_name || 'N/A'}`, boxX + 3, leftY)
-      leftY += 4.5
-      doc.text(`Request Date: ${allocationRequest?.request_date ? new Date(allocationRequest.request_date).toLocaleDateString() : 'N/A'}`, boxX + 3, leftY)
-      leftY += 4.5
-      doc.text('Place of Supply: Karnataka', boxX + 3, leftY)
-      leftY += 4.5
-      doc.setFont(undefined, 'bold')
-      doc.text(`Challan Number: ${challanNumber}`, boxX + 3, leftY)
+      headerLines.forEach((line, index) => {
+        doc.setFont(undefined, line.bold ? 'bold' : 'normal')
+        doc.text(clipToBox(line.text), boxX + 3, leftY)
+        if (index < headerLines.length - 1) leftY += 4.5
+      })
 
       doc.setFont(undefined, 'bold')
       doc.text('Notes', rightBoxX + 3, boxY + 5)
