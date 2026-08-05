@@ -22,6 +22,8 @@ import {
   ADMIN_DEFAULT_PATH,
   adminGroupDefaultPath,
 } from './pages/admin/adminNavigation'
+import ToastProvider from './components/ui/ToastProvider'
+import ConfirmProvider from './components/ui/ConfirmProvider'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
 import SessionRedirect from './components/SessionRedirect'
@@ -60,140 +62,146 @@ function App() {
   }, [])
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Root redirect to session-based destination or login */}
-        <Route path="/" element={<SessionRedirect />} />
+    // Both providers sit above the router so any screen can raise a toast or a
+    // confirmation without wiring anything through props.
+    <ToastProvider>
+      <ConfirmProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Root redirect to session-based destination or login */}
+            <Route path="/" element={<SessionRedirect />} />
 
-        {/* Generic entry paths that should honor session */}
-        <Route path="/invmanagement" element={<SessionRedirect />} />
-        <Route path="/invmanagement/dashboard" element={<SessionRedirect />} />
-        <Route path="/inventory" element={<SessionRedirect />} />
+            {/* Generic entry paths that should honor session */}
+            <Route path="/invmanagement" element={<SessionRedirect />} />
+            <Route path="/invmanagement/dashboard" element={<SessionRedirect />} />
+            <Route path="/inventory" element={<SessionRedirect />} />
 
-        {/* Public route - Login */}
-        <Route 
-          path="/invmanagement/login" 
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          } 
-        />
+            {/* Public route - Login */}
+            <Route 
+              path="/invmanagement/login" 
+              element={
+                <PublicRoute>
+                  <Login />
+                </PublicRoute>
+              } 
+            />
 
-        {/* Protected routes - Dashboards */}
-        {/* Admin routes are generated from ADMIN_NAV so the sidebar and the
-            router can never disagree — see pages/admin/adminNavigation.jsx */}
-        <Route
-          path="/invmanagement/dashboard/admin"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
-          {ADMIN_NAV.map((group) => (
-            <Route key={group.id} path={group.id}>
-              <Route index element={<Navigate to={adminGroupDefaultPath(group)} replace />} />
-              {group.children.flatMap((section) => {
-                const element = section.Component ? (
-                  <section.Component {...(section.props ?? {})} />
-                ) : (
-                  <AdminSectionPlaceholder groupLabel={group.label} sectionLabel={section.label} />
-                )
+            {/* Protected routes - Dashboards */}
+            {/* Admin routes are generated from ADMIN_NAV so the sidebar and the
+                router can never disagree — see pages/admin/adminNavigation.jsx */}
+            <Route
+              path="/invmanagement/dashboard/admin"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
+              {ADMIN_NAV.map((group) => (
+                <Route key={group.id} path={group.id}>
+                  <Route index element={<Navigate to={adminGroupDefaultPath(group)} replace />} />
+                  {group.children.flatMap((section) => {
+                    const element = section.Component ? (
+                      <section.Component {...(section.props ?? {})} />
+                    ) : (
+                      <AdminSectionPlaceholder groupLabel={group.label} sectionLabel={section.label} />
+                    )
 
-                const routes = [
-                  <Route key={section.id} path={section.id} element={element} />,
-                ]
+                    const routes = [
+                      <Route key={section.id} path={section.id} element={element} />,
+                    ]
 
-                // A section may also answer on a parameterised path — the same
-                // screen, told which record to show (see adminNavigation.js).
-                if (section.paramPath) {
-                  routes.push(
-                    <Route
-                      key={`${section.id}-param`}
-                      path={`${section.id}/${section.paramPath}`}
-                      element={element}
-                    />
-                  )
-                }
+                    // A section may also answer on a parameterised path — the same
+                    // screen, told which record to show (see adminNavigation.js).
+                    if (section.paramPath) {
+                      routes.push(
+                        <Route
+                          key={`${section.id}-param`}
+                          path={`${section.id}/${section.paramPath}`}
+                          element={element}
+                        />
+                      )
+                    }
 
-                return routes
-              })}
+                    return routes
+                  })}
+                </Route>
+              ))}
+              {/* An unknown admin URL lands on the dashboard's default section
+                  rather than bouncing the admin out to the session redirect. */}
+              <Route path="*" element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
             </Route>
-          ))}
-          {/* An unknown admin URL lands on the dashboard's default section
-              rather than bouncing the admin out to the session redirect. */}
-          <Route path="*" element={<Navigate to={ADMIN_DEFAULT_PATH} replace />} />
-        </Route>
 
-        <Route 
-          path="/invmanagement/dashboard/dispatch_executive" 
-          element={
-            <ProtectedRoute allowedRoles={['dispatch_executive']}>
-              <DispatchExecutiveDashboard />
-            </ProtectedRoute>
-          } 
-        />
+            <Route 
+              path="/invmanagement/dashboard/dispatch_executive" 
+              element={
+                <ProtectedRoute allowedRoles={['dispatch_executive']}>
+                  <DispatchExecutiveDashboard />
+                </ProtectedRoute>
+              } 
+            />
 
-        <Route 
-          path="/invmanagement/dashboard/kitchen_executive" 
-          element={
-            <ProtectedRoute allowedRoles={['kitchen_executive']}>
-              <KitchenExecutiveDashboard />
-            </ProtectedRoute>
-          } 
-        />
+            <Route 
+              path="/invmanagement/dashboard/kitchen_executive" 
+              element={
+                <ProtectedRoute allowedRoles={['kitchen_executive']}>
+                  <KitchenExecutiveDashboard />
+                </ProtectedRoute>
+              } 
+            />
         
-        <Route 
-          path="/invmanagement/dashboard/purchase_manager" 
-          element={
-            <ProtectedRoute allowedRoles={['purchase_manager']}>
-              <PurchaseManagerDashboard />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="overview" replace />} />
-          <Route path="overview" element={<Overview />} />
-          <Route path="stock-in" element={<StockIn />} />
-          <Route path="stock-out" element={<StockOut />} />
-          <Route path="materials" element={<Materials />} />
-          <Route path="inventory" element={<Inventory />} />
-          <Route path="outlets" element={<PMOutlets />} />
-          <Route path="outlets/:outletId" element={<PMOutletDetails />} />
-        </Route>
+            <Route 
+              path="/invmanagement/dashboard/purchase_manager" 
+              element={
+                <ProtectedRoute allowedRoles={['purchase_manager']}>
+                  <PurchaseManagerDashboard />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<Overview />} />
+              <Route path="stock-in" element={<StockIn />} />
+              <Route path="stock-out" element={<StockOut />} />
+              <Route path="materials" element={<Materials />} />
+              <Route path="inventory" element={<Inventory />} />
+              <Route path="outlets" element={<PMOutlets />} />
+              <Route path="outlets/:outletId" element={<PMOutletDetails />} />
+            </Route>
         
-        <Route 
-          path="/invmanagement/dashboard/supervisor" 
-          element={
-            <ProtectedRoute allowedRoles={['supervisor']}>
-              <SupervisorDashboard />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="outlets" replace />} />
-          <Route path="outlets" element={<SupervisorOutlets />} />
-          <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
-          <Route path="checkout" element={<SupervisorCheckout />} />
-        </Route>
+            <Route 
+              path="/invmanagement/dashboard/supervisor" 
+              element={
+                <ProtectedRoute allowedRoles={['supervisor']}>
+                  <SupervisorDashboard />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="outlets" replace />} />
+              <Route path="outlets" element={<SupervisorOutlets />} />
+              <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
+              <Route path="checkout" element={<SupervisorCheckout />} />
+            </Route>
 
-        <Route 
-          path="/invmanagement/dashboard/bp_operator" 
-          element={
-            <ProtectedRoute allowedRoles={['bp_operator']}>
-              <SupervisorDashboard hideClosingForm={true} />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="outlets" replace />} />
-          <Route path="outlets" element={<SupervisorOutlets isBpOperator={true} />} />
-          <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
-        </Route>
+            <Route 
+              path="/invmanagement/dashboard/bp_operator" 
+              element={
+                <ProtectedRoute allowedRoles={['bp_operator']}>
+                  <SupervisorDashboard hideClosingForm={true} />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="outlets" replace />} />
+              <Route path="outlets" element={<SupervisorOutlets isBpOperator={true} />} />
+              <Route path="outlets/:outletId" element={<SupervisorOutletDetails />} />
+            </Route>
 
-        {/* Catch all - redirect to /invmanagement */}
-        <Route path="*" element={<Navigate to="/invmanagement" replace />} />
-      </Routes>
-    </BrowserRouter>
+            {/* Catch all - redirect to /invmanagement */}
+            <Route path="*" element={<Navigate to="/invmanagement" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ConfirmProvider>
+    </ToastProvider>
   )
 }
 

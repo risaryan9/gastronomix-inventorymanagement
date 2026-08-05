@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../context/toastContext'
 import {
   clearStockInDraft,
   draftHasMeaningfulContent,
@@ -20,6 +21,7 @@ import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
 import { getBusinessDate, toBusinessDateString } from '../../lib/businessDate'
 
 const StockIn = () => {
+  const toast = useToast()
   const [stockInRecords, setStockInRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -872,7 +874,7 @@ const StockIn = () => {
 
     const session = getSession()
     if (!session?.id || !session?.cloud_kitchen_id) {
-      alert('Session expired. Please log in again.')
+      toast.error('Session expired', 'Please log in again.')
       finalizingRef.current = false
       setFinalizing(false)
       return
@@ -881,25 +883,25 @@ const StockIn = () => {
     // Validate purchase slip based on type
     if (stockInType === 'purchase') {
       if (!purchaseSlip.supplier_name?.trim()) {
-        alert('Please select a supplier')
+        toast.warning('Supplier required', 'Select a supplier before finalizing.')
         finalizingRef.current = false
         setFinalizing(false)
         return
       }
       if (!purchaseSlip.invoice_number?.trim()) {
-        alert('Please enter an invoice number')
+        toast.warning('Invoice number required', 'Enter the invoice number before finalizing.')
         finalizingRef.current = false
         setFinalizing(false)
         return
       }
       if (!invoiceFile) {
-        alert('Please upload an invoice image')
+        toast.warning('Invoice image required', 'Upload a photo or scan of the invoice.')
         finalizingRef.current = false
         setFinalizing(false)
         return
       }
       if (invoiceFileError) {
-        alert(invoiceFileError || 'Please fix the invoice image before submitting.')
+        toast.warning('Check the invoice image', invoiceFileError || 'Please fix the invoice image before submitting.')
         finalizingRef.current = false
         setFinalizing(false)
         return
@@ -907,14 +909,14 @@ const StockIn = () => {
     }
     
     if (!purchaseSlip.receipt_date) {
-      alert('Please select a date')
+      toast.warning('Date required', 'Select the receipt date.')
       finalizingRef.current = false
       setFinalizing(false)
       return
     }
 
     if (validPurchaseItems.length === 0) {
-      alert('Please add at least one item with a material selected')
+      toast.warning('No items added', 'Add at least one item with a material selected.')
       finalizingRef.current = false
       setFinalizing(false)
       return
@@ -924,13 +926,13 @@ const StockIn = () => {
     for (let i = 0; i < validPurchaseItems.length; i++) {
       const item = validPurchaseItems[i]
       if (!item.quantity || parseFloat(item.quantity) <= 0) {
-        alert(`Please enter a valid quantity for ${item.material.name}`)
+        toast.warning('Quantity missing', `Enter a valid quantity for ${item.material.name}.`)
         finalizingRef.current = false
         setFinalizing(false)
         return
       }
       if (!item.unit_cost || parseFloat(item.unit_cost) <= 0) {
-        alert(`Please enter a valid unit cost for ${item.material.name}`)
+        toast.warning('Unit cost missing', `Enter a valid unit cost for ${item.material.name}.`)
         finalizingRef.current = false
         setFinalizing(false)
         return
@@ -939,14 +941,14 @@ const StockIn = () => {
       if (stockInType === 'purchase') {
         const gstVal = item.gst_percent
         if (gstVal === '' || gstVal === null || gstVal === undefined) {
-          alert(`Please enter GST (%) for ${item.material.name}. Use 0 if no GST.`)
+          toast.warning('GST missing', `Enter GST (%) for ${item.material.name}. Use 0 if there is no GST.`)
           finalizingRef.current = false
           setFinalizing(false)
           return
         }
         const gstNum = parseFloat(gstVal)
         if (Number.isNaN(gstNum) || gstNum < 0) {
-          alert(`Please enter a valid GST (%) for ${item.material.name}. Use 0 if no GST.`)
+          toast.warning('GST invalid', `Enter a valid GST (%) for ${item.material.name}. Use 0 if there is no GST.`)
           finalizingRef.current = false
           setFinalizing(false)
           return
@@ -965,7 +967,7 @@ const StockIn = () => {
         )
       } catch (uploadError) {
         console.error('Error uploading invoice file:', uploadError)
-        alert(`Failed to upload invoice file: ${uploadError.message}`)
+        toast.error('Invoice upload failed', uploadError.message)
           finalizingRef.current = false
           setFinalizing(false)
           return
@@ -1035,10 +1037,10 @@ const StockIn = () => {
         setStockInRecords(updatedRecords)
       }
 
-      alert('Purchase slip created successfully! Inventory has been updated.')
+      toast.success('Purchase slip created', 'Inventory has been updated.')
     } catch (err) {
       console.error('Error finalizing purchase slip:', err)
-      alert(`Failed to create purchase slip: ${err.message}`)
+      toast.error('Could not create the purchase slip', err.message)
     } finally {
       finalizingRef.current = false
       setFinalizing(false)
@@ -2093,7 +2095,7 @@ const StockIn = () => {
                 <button
                   onClick={() => {
                     if (validPurchaseItems.length === 0) {
-                      alert('Please add at least one item with a material selected')
+                      toast.warning('No items added', 'Add at least one item with a material selected.')
                       return
                     }
                     if (stockInType === 'purchase') {
@@ -2101,12 +2103,12 @@ const StockIn = () => {
                         item => item.gst_percent === '' || item.gst_percent === null || item.gst_percent === undefined || Number.isNaN(parseFloat(item.gst_percent)) || parseFloat(item.gst_percent) < 0
                       )
                       if (missingGst) {
-                        alert(`Please enter GST (%) for ${missingGst.material.name}. Use 0 if no GST.`)
+                        toast.warning('GST missing', `Enter GST (%) for ${missingGst.material.name}. Use 0 if there is no GST.`)
                         return
                       }
                     }
                     if (stockInType === 'purchase' && !purchaseSlip.invoice_number?.trim()) {
-                      alert('Please enter an invoice number')
+                      toast.warning('Invoice number required', 'Enter the invoice number before finalizing.')
                       return
                     }
                     setShowConfirmModal(true)

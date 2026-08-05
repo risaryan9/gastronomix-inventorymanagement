@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../context/toastContext'
+import { useConfirm } from '../../context/confirmContext'
 import { getSession } from '../../lib/auth'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 
@@ -11,6 +13,9 @@ const ROLE_OPTIONS = [
 ]
 
 const AdminUsers = () => {
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const [users, setUsers] = useState([])
   const [cloudKitchens, setCloudKitchens] = useState([])
   const [outlets, setOutlets] = useState([])
@@ -280,7 +285,14 @@ const AdminUsers = () => {
   }
 
   const handleSoftDelete = async (user) => {
-    if (!window.confirm(`Deactivate and hide user "${user.full_name}"?`)) return
+    const confirmed = await confirm({
+      title: 'Deactivate this user?',
+      message: `"${user.full_name}" will be hidden from the list and will no longer be able to log in. You can reactivate them later.`,
+      confirmLabel: 'Deactivate',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+
     try {
       setSaving(true)
       const { error } = await supabase
@@ -294,9 +306,11 @@ const AdminUsers = () => {
 
       if (error) throw error
       await fetchUsers()
+      toast.success('User deactivated', `"${user.full_name}" can no longer log in.`)
     } catch (err) {
       console.error('Error soft deleting user:', err)
       setError(err.message || 'Failed to deactivate user.')
+      toast.error('Could not deactivate user', err.message)
     } finally {
       setSaving(false)
     }

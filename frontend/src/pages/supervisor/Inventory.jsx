@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../context/toastContext'
 import PaginationControls from '../../components/PaginationControls'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 import jsPDF from 'jspdf'
@@ -30,6 +31,7 @@ const CATEGORIES = [
 ]
 
 const Inventory = () => {
+  const toast = useToast()
   const [inventory, setInventory] = useState([])
   const [materials, setMaterials] = useState([])
   const [loading, setLoading] = useState(true)
@@ -71,7 +73,7 @@ const Inventory = () => {
 
         if (inventoryError) {
           console.error('Error fetching inventory:', inventoryError)
-          alert(`Error fetching inventory: ${inventoryError.message}`)
+          toast.error('Could not load inventory', inventoryError.message)
           setLoading(false)
           return
         }
@@ -204,7 +206,9 @@ const Inventory = () => {
     }
 
     fetchInventory()
-  }, []) // Empty dependency array - only fetch once on mount
+    // `toast` comes from a memoised context value, so it never changes identity
+    // and listing it cannot cause a refetch.
+  }, [toast])
 
 
   // Open edit modal
@@ -229,14 +233,14 @@ const Inventory = () => {
     
     const session = getSession()
     if (!session?.id) {
-      alert('Session expired. Please log in again.')
+      toast.error('Session expired', 'Please log in again.')
       return
     }
 
     const quantity = parseFloat(editForm.quantity)
 
     if (isNaN(quantity) || quantity < 0) {
-      alert('Please enter a valid quantity (>= 0)')
+      toast.warning('Enter a valid quantity', 'Quantity must be zero or more.')
       return
     }
 
@@ -256,14 +260,17 @@ const Inventory = () => {
 
       if (error) {
         console.error('Error updating inventory:', error)
-        alert(`Failed to update inventory: ${error.message}`)
+        toast.error('Could not update inventory', error.message)
         setUpdating(false)
         return
       }
 
       if (!data || data.length === 0) {
         console.error('Update returned no data - RLS might be blocking')
-        alert('Update may have been blocked by security policies. Please check your permissions or run the migration to allow key-based users to update inventory.')
+        toast.error(
+          'Update was blocked',
+          'Security policies stopped this change. Check your permissions with an administrator.'
+        )
         setUpdating(false)
         return
       }
@@ -283,11 +290,15 @@ const Inventory = () => {
           : item
       ))
 
+      // Read the name before closing — closeEditModal clears editingItem.
+      const materialName = editingItem.raw_materials?.name ?? 'Item'
+
       // Close modal
       closeEditModal()
+      toast.success('Inventory updated', `${materialName} is now ${quantity}.`)
     } catch (err) {
       console.error('Error updating inventory:', err)
-      alert(`Failed to update inventory: ${err.message}`)
+      toast.error('Could not update inventory', err.message)
     } finally {
       setUpdating(false)
     }

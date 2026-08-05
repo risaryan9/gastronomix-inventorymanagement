@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { useToast } from '../context/toastContext'
 import { fetchPlanExportData, exportDispatchPlanExcel, exportDispatchPlanPdf } from '../lib/dispatchPlanExport'
 import OutletCostBreakdownModal from '../components/dispatch/OutletCostBreakdownModal.jsx'
 import {
@@ -58,6 +59,7 @@ const MATERIAL_TYPE_LABELS = {
 }
 
 const KitchenExecutiveDashboard = () => {
+  const toast = useToast()
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [cloudKitchenId, setCloudKitchenId] = useState(null)
@@ -402,9 +404,10 @@ const KitchenExecutiveDashboard = () => {
     try {
       const data = await fetchPlanExportData(supabase, planId, session)
       exportDispatchPlanPdf(data)
+      toast.success('PDF downloaded')
     } catch (error) {
       console.error('Error downloading PDF:', error)
-      alert('Failed to download PDF. Please try again.')
+      toast.error('Could not download the PDF', 'Please try again.')
     }
   }
 
@@ -412,9 +415,10 @@ const KitchenExecutiveDashboard = () => {
     try {
       const data = await fetchPlanExportData(supabase, planId, session)
       exportDispatchPlanExcel(data)
+      toast.success('Excel file downloaded')
     } catch (error) {
       console.error('Error downloading Excel:', error)
-      alert('Failed to download Excel. Please try again.')
+      toast.error('Could not download the Excel file', 'Please try again.')
     }
   }
 

@@ -1,7 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../context/toastContext'
+import { useConfirm } from '../../context/confirmContext'
 
 const AdminRecipes = () => {
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const [recipes, setRecipes] = useState([])
   const [finishedProducts, setFinishedProducts] = useState([])
   const [allMaterials, setAllMaterials] = useState([])
@@ -264,7 +269,14 @@ const AdminRecipes = () => {
   }
 
   const handleDeactivate = async (recipe) => {
-    if (!window.confirm(`Deactivate recipe "${recipe.recipe_name}"?`)) return
+    const confirmed = await confirm({
+      title: 'Deactivate this recipe?',
+      message: `"${recipe.recipe_name}" will stop being available for use. You can activate it again later.`,
+      confirmLabel: 'Deactivate',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+
     try {
       setSaving(true)
       const { error } = await supabase
@@ -277,16 +289,24 @@ const AdminRecipes = () => {
 
       if (error) throw error
       await fetchRecipes()
+      toast.success('Recipe deactivated', `"${recipe.recipe_name}" is no longer available.`)
     } catch (err) {
       console.error('Error deactivating recipe:', err)
       setError(err.message || 'Failed to deactivate recipe.')
+      toast.error('Could not deactivate recipe', err.message)
     } finally {
       setSaving(false)
     }
   }
 
   const handleActivate = async (recipe) => {
-    if (!window.confirm(`Activate recipe "${recipe.recipe_name}"?`)) return
+    const confirmed = await confirm({
+      title: 'Activate this recipe?',
+      message: `"${recipe.recipe_name}" will become available for use again.`,
+      confirmLabel: 'Activate',
+    })
+    if (!confirmed) return
+
     try {
       setSaving(true)
       const { error } = await supabase
@@ -299,9 +319,11 @@ const AdminRecipes = () => {
 
       if (error) throw error
       await fetchRecipes()
+      toast.success('Recipe activated', `"${recipe.recipe_name}" is available again.`)
     } catch (err) {
       console.error('Error activating recipe:', err)
       setError(err.message || 'Failed to activate recipe.')
+      toast.error('Could not activate recipe', err.message)
     } finally {
       setSaving(false)
     }

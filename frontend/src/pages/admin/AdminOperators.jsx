@@ -1,7 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useToast } from '../../context/toastContext'
+import { useConfirm } from '../../context/confirmContext'
 
 const AdminOperators = () => {
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const [operators, setOperators] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -109,7 +114,14 @@ const AdminOperators = () => {
   }
 
   const handleDelete = async (op) => {
-    if (!window.confirm(`Delete operator "${op.name}"? This cannot be undone.`)) return
+    const confirmed = await confirm({
+      title: 'Delete this operator?',
+      message: `"${op.name}" will be removed permanently. Unlike deactivating, this cannot be undone.`,
+      confirmLabel: 'Delete permanently',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+
     try {
       setSaving(true)
       const { error: deleteErr } = await supabase
@@ -118,9 +130,11 @@ const AdminOperators = () => {
         .eq('id', op.id)
       if (deleteErr) throw deleteErr
       await fetchOperators()
+      toast.success('Operator deleted', `"${op.name}" has been removed.`)
     } catch (err) {
       console.error('Error deleting operator:', err)
       setError(err.message || 'Failed to delete operator.')
+      toast.error('Could not delete operator', err.message)
     } finally {
       setSaving(false)
     }
