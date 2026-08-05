@@ -1,5 +1,17 @@
 import { useEffect, useState, useMemo } from 'react'
 import { fetchReportCloudKitchens, fetchReportOutlets, fetchOutletVarianceCounts, fetchOutletRequisitionReportRows, fetchRequisitionVarianceDetails } from '../../lib/allocationRequests'
+import {
+  defaultReportRange,
+  fetchRequisitionsInRange,
+  fetchAverageMaterialCosts,
+  buildItemWiseConsumption,
+  buildRequestedVsAllocated,
+} from '../../lib/requisitionReports'
+import {
+  exportItemWiseConsumptionExcel,
+  exportRequestedVsAllocatedExcel,
+} from '../../lib/requisitionReportExports'
+import { useToast } from '../../context/toastContext'
 import PaginationControls from '../../components/PaginationControls'
 
 const summarizeRequisitionVariance = (requisition) => {
@@ -29,6 +41,7 @@ const summarizeRequisitionVariance = (requisition) => {
 }
 
 const AdminRequisitionsReports = () => {
+  const toast = useToast()
   const [cloudKitchens, setCloudKitchens] = useState([])
   const [selectedCloudKitchenId, setSelectedCloudKitchenId] = useState('')
   const [outlets, setOutlets] = useState([])
@@ -36,6 +49,10 @@ const AdminRequisitionsReports = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  // The range drives everything on this screen: the two downloads, the variance
+  // counts in the table, and the requisitions listed when an outlet is opened.
+  const [dateRange, setDateRange] = useState(defaultReportRange)
+  const [downloading, setDownloading] = useState('')
 
   const [selectedOutlet, setSelectedOutlet] = useState(null)
   const [requisitionsModalOpen, setRequisitionsModalOpen] = useState(false)
@@ -58,7 +75,8 @@ const AdminRequisitionsReports = () => {
 
   useEffect(() => {
     loadOutlets(selectedCloudKitchenId)
-  }, [selectedCloudKitchenId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCloudKitchenId, dateRange.startDate, dateRange.endDate])
 
   const loadCloudKitchens = async () => {
     try {
@@ -86,7 +104,7 @@ const AdminRequisitionsReports = () => {
 
   const loadVarianceCounts = async (outletIds) => {
     try {
-      const rows = await fetchOutletVarianceCounts(outletIds)
+      const rows = await fetchOutletVarianceCounts(outletIds, dateRange)
       const counts = {}
       rows.forEach((req) => {
         const { increased, decreased } = summarizeRequisitionVariance(req)
@@ -97,6 +115,80 @@ const AdminRequisitionsReports = () => {
       setVarianceCounts(counts)
     } catch (err) {
       console.error('Error loading variance counts:', err)
+    }
+  }
+
+  const selectedKitchenName = useMemo(
+    () => cloudKitchens.find((kitchen) => kitchen.id === selectedCloudKitchenId)?.name || '',
+    [cloudKitchens, selectedCloudKitchenId]
+  )
+
+  // Both reports read the same requisitions and the same cost map, so they are
+  // fetched together and folded differently. Fetching on click rather than on
+  // every change of range keeps a date tweak from re-running the whole thing.
+  const loadReportInputs = async () => {
+    const requisitions = await fetchRequisitionsInRange({
+      cloudKitchenId: selectedCloudKitchenId || null,
+      ...dateRange,
+    })
+
+    const materialIds = [...new Set(
+      requisitions.flatMap((requisition) => [
+        ...(requisition.allocation_request_items || []).map((item) => item.raw_material_id),
+        ...(requisition.stock_out?.[0]?.stock_out_items || []).map((item) => item.raw_material_id),
+      ])
+    )].filter(Boolean)
+
+    const cloudKitchenIds = [...new Set(requisitions.map((r) => r.cloud_kitchen_id).filter(Boolean))]
+
+    const costs = await fetchAverageMaterialCosts({
+      materialIds,
+      cloudKitchenIds,
+      ...dateRange,
+    })
+
+    return { requisitions, costs }
+  }
+
+  const handleDownload = async (report) => {
+    if (downloading) return
+    if (dateRange.startDate > dateRange.endDate) {
+      toast.warning('Check the dates', 'The start date falls after the end date.')
+      return
+    }
+
+    setDownloading(report)
+    try {
+      const { requisitions, costs } = await loadReportInputs()
+      const options = { ...dateRange, kitchenName: selectedKitchenName }
+
+      if (report === 'consumption') {
+        const built = buildItemWiseConsumption(requisitions, costs)
+        if (built.outlets.length === 0) {
+          toast.warning('Nothing to report', 'No active outlet raised a requisition in this period.')
+          return
+        }
+        exportItemWiseConsumptionExcel(built, options)
+        toast.success('Item-wise consumption downloaded', `${built.outlets.length} outlets over the selected period.`)
+      } else {
+        const built = buildRequestedVsAllocated(requisitions, costs)
+        if (built.rows.length === 0) {
+          toast.warning(
+            'Nothing to report',
+            built.pendingExcluded > 0
+              ? `${built.pendingExcluded} requisitions in this period are not packed yet, so there is nothing to compare.`
+              : 'No packed requisitions in this period.'
+          )
+          return
+        }
+        exportRequestedVsAllocatedExcel(built, options)
+        toast.success('Difference report downloaded', `${built.rows.length} outlets compared.`)
+      }
+    } catch (err) {
+      console.error('Error generating report:', err)
+      toast.error('Could not generate the report', err.message)
+    } finally {
+      setDownloading('')
     }
   }
 
@@ -124,7 +216,7 @@ const AdminRequisitionsReports = () => {
     
     try {
       setRequisitionsLoading(true)
-      const data = await fetchOutletRequisitionReportRows(outlet.id)
+      const data = await fetchOutletRequisitionReportRows(outlet.id, dateRange)
       setRequisitions(data)
     } catch (err) {
       console.error('Error loading requisitions:', err)
@@ -240,6 +332,80 @@ const AdminRequisitionsReports = () => {
   return (
     <div className="space-y-6">
       <div className="bg-card border border-border rounded-xl p-6">
+        <h2 className="text-xl font-bold text-foreground mb-2">Reporting Period</h2>
+        <p className="text-sm text-muted-foreground mb-5">
+          The period below governs both downloads and everything shown further down this page.
+          Defaults to the last 30 days.
+        </p>
+
+        <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div>
+              <label htmlFor="report-start-date" className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+                From
+              </label>
+              <input
+                id="report-start-date"
+                type="date"
+                value={dateRange.startDate}
+                max={dateRange.endDate}
+                onChange={(e) => setDateRange((prev) => ({ ...prev, startDate: e.target.value }))}
+                className="px-4 py-2 border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label htmlFor="report-end-date" className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+                To
+              </label>
+              <input
+                id="report-end-date"
+                type="date"
+                value={dateRange.endDate}
+                min={dateRange.startDate}
+                onChange={(e) => setDateRange((prev) => ({ ...prev, endDate: e.target.value }))}
+                className="px-4 py-2 border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => setDateRange(defaultReportRange())}
+                className="px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors"
+              >
+                Last 30 days
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 lg:ml-auto">
+            <button
+              type="button"
+              onClick={() => handleDownload('consumption')}
+              disabled={!!downloading}
+              className="px-4 py-2.5 rounded-lg font-semibold text-sm bg-accent text-background border-2 border-accent hover:opacity-90 transition-all disabled:opacity-50"
+            >
+              {downloading === 'consumption' ? 'Preparing…' : 'Item-wise Consumption (Excel)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownload('difference')}
+              disabled={!!downloading}
+              className="px-4 py-2.5 rounded-lg font-semibold text-sm bg-input text-foreground border-2 border-border hover:bg-accent/10 transition-all disabled:opacity-50"
+            >
+              {downloading === 'difference' ? 'Preparing…' : 'Requested vs Allocated (Excel)'}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground mt-4">
+          Consumption counts what outlets asked for, priced at the weighted average of what the
+          material cost to buy in this period. The difference report compares those requests against
+          what the purchase manager actually allocated, and covers packed requisitions only.
+          Both cover {selectedKitchenName || 'all cloud kitchens'} and active outlets with at least one requisition.
+        </p>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-6">
         <h2 className="text-xl font-bold text-foreground mb-2">Requisitions Reports</h2>
         <p className="text-sm text-muted-foreground mb-6">
           View and analyze changes made by purchase managers to requisitions. Click on any outlet to see its requisitions, then click on a requisition to view detailed variance.
@@ -282,7 +448,10 @@ const AdminRequisitionsReports = () => {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-semibold text-foreground">Outlet Name</th>
                   <th className="text-left py-3 px-4 font-semibold text-foreground">Cloud Kitchen</th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">Variance Requests</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">
+                    Variance Requests
+                    <span className="block text-xs font-normal text-muted-foreground">in selected period</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -329,6 +498,9 @@ const AdminRequisitionsReports = () => {
                   <p className="text-sm text-muted-foreground mt-1">
                     Cloud Kitchen: {selectedOutlet?.cloud_kitchens?.name}
                   </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {dateRange.startDate} to {dateRange.endDate}
+                  </p>
                 </div>
                 <button
                   onClick={closeRequisitionsModal}
@@ -357,7 +529,7 @@ const AdminRequisitionsReports = () => {
                 <div className="text-center py-12 text-muted-foreground">
                   {requisitionsSearch
                     ? 'No requisitions found matching your search.'
-                    : 'No requisitions with stock-out records found for this outlet.'}
+                    : 'No requisitions with stock-out records for this outlet in the selected period.'}
                 </div>
               ) : (
                 <>

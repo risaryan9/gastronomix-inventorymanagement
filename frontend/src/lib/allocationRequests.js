@@ -116,10 +116,10 @@ export const fetchReportOutlets = async (cloudKitchenId = null) => {
   return data || []
 }
 
-export const fetchOutletVarianceCounts = async (outletIds) => {
+export const fetchOutletVarianceCounts = async (outletIds, { startDate, endDate } = {}) => {
   if (!outletIds?.length) return []
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('allocation_requests')
     .select(`
       id,
@@ -137,12 +137,16 @@ export const fetchOutletVarianceCounts = async (outletIds) => {
     `)
     .in('outlet_id', outletIds)
 
+  if (startDate) query = query.gte('request_date', startDate)
+  if (endDate) query = query.lte('request_date', endDate)
+
+  const { data, error } = await query
   if (error) throw error
   return data || []
 }
 
-export const fetchOutletRequisitionReportRows = async (outletId) => {
-  const { data, error } = await supabase
+export const fetchOutletRequisitionReportRows = async (outletId, { startDate, endDate } = {}) => {
+  let query = supabase
     .from('allocation_requests')
     .select(`
       id,
@@ -173,6 +177,10 @@ export const fetchOutletRequisitionReportRows = async (outletId) => {
     .order('request_date', { ascending: false })
     .order('created_at', { ascending: false })
 
+  if (startDate) query = query.gte('request_date', startDate)
+  if (endDate) query = query.lte('request_date', endDate)
+
+  const { data, error } = await query
   if (error) throw error
   return data || []
 }
