@@ -14,6 +14,7 @@ import KitchenAnalytics from '../../components/admin/kitchen/KitchenAnalytics'
 import KitchenOutletsTab from '../../components/admin/kitchen/KitchenOutletsTab'
 import KitchenStockInTab from '../../components/admin/kitchen/KitchenStockInTab'
 import KitchenStockOutTab from '../../components/admin/kitchen/KitchenStockOutTab'
+import RequisitionCutoffCard from '../../components/admin/kitchen/RequisitionCutoffCard'
 import { buildKitchenColors } from '../../lib/chartTheme'
 import { count, money } from '../../lib/formatNumbers'
 import { RANGE_OPTIONS, resolveRange } from '../../lib/adminOverview'
@@ -263,6 +264,10 @@ const AdminKitchenWiseOverview = () => {
             summaryLoading ? 'opacity-60' : ''
           }`}
         >
+          <section aria-label="Requisition settings">
+            <RequisitionCutoffCard kitchenId={kitchenId} kitchenName={activeKitchen?.name} />
+          </section>
+
           <section aria-label="Kitchen summary">
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <Stat

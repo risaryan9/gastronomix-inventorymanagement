@@ -9,6 +9,14 @@ import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
+import {
+  cutoffAppliesTo,
+  evaluateCutoff,
+  fetchKitchenCutoff,
+  formatIstTime,
+  formatMinutesLeft,
+  WINDOW_OPENS_IST,
+} from '../../lib/requisitionCutoff'
 
 const BRANDS = [
   { id: 'NK', name: 'Nippu Kodi', color: 'bg-black', hoverColor: 'hover:bg-gray-900', logo: nippuKodiLogo },
@@ -74,6 +82,8 @@ const OutletsPageBase = ({ role }) => {
   const [showAllocateModal, setShowAllocateModal] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showPackedModal, setShowPackedModal] = useState(false)
+  const [cutoffIst, setCutoffIst] = useState(null)
+  const [clockTick, setClockTick] = useState(() => new Date())
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [activeOutlet, setActiveOutlet] = useState(null)
   const [allocationRows, setAllocationRows] = useState([])
@@ -114,6 +124,25 @@ const OutletsPageBase = ({ role }) => {
   useEffect(() => {
     fetchRawMaterials()
   }, [])
+
+  // The requisition cutoff. Advisory only — the database trigger is the lock
+  // (see lib/requisitionCutoff.js). This exists so a supervisor learns the
+  // window has closed before filling in a form that cannot be submitted.
+  useEffect(() => {
+    if (!cloudKitchenId) return
+    let cancelled = false
+    fetchKitchenCutoff(cloudKitchenId)
+      .then((value) => { if (!cancelled) setCutoffIst(value) })
+      .catch(() => { if (!cancelled) setCutoffIst(null) })
+    return () => { cancelled = true }
+  }, [cloudKitchenId])
+
+  // A minute is fine: the countdown is read, not raced against.
+  useEffect(() => {
+    if (!cutoffIst) return undefined
+    const timer = setInterval(() => setClockTick(new Date()), 60000)
+    return () => clearInterval(timer)
+  }, [cutoffIst])
 
   useEffect(() => {
     if (selectedBrand && cloudKitchenId) {
@@ -230,6 +259,16 @@ const OutletsPageBase = ({ role }) => {
     }
   }
 
+  // Whether this screen is subject to the cutoff at all: supervisors on Nippu
+  // Kodi and El Chaapo. The purchase manager shares this component and Boom
+  // Pizza is exempt — both deliberate, see docs/REQUISITION_CUTOFF.md.
+  const cutoffApplies = cutoffAppliesTo({ role, brandCode: selectedBrand })
+  const cutoffState = useMemo(
+    () => evaluateCutoff(cutoffIst, clockTick),
+    [cutoffIst, clockTick]
+  )
+  const requisitionsClosed = cutoffApplies && !!cutoffIst && !cutoffState.open
+
   const openAllocateFlow = async (outlet) => {
     setActiveOutlet(outlet)
     const today = getLocalDateString()
@@ -262,6 +301,20 @@ const OutletsPageBase = ({ role }) => {
       }
 
       const existingRequest = (requests || []).find(req => !req.is_packed)
+
+      // Closed means no NEW requisition. An existing one stays editable until
+      // it is packed — a deliberate choice, and its cost is recorded in the
+      // doc: a supervisor can file a token requisition before the cutoff and
+      // fill it in afterwards.
+      if (!existingRequest && requisitionsClosed) {
+        setAlert({
+          type: 'warning',
+          message: `Requisitions closed at ${formatIstTime(cutoffState.cutoffIst)} IST. The next window opens at ${formatIstTime(WINDOW_OPENS_IST)} IST.`
+        })
+        setActiveOutlet(null)
+        return
+      }
+
       if (existingRequest) {
         setEditingRequest(existingRequest)
         setAllocationRows(
@@ -650,6 +703,28 @@ const OutletsPageBase = ({ role }) => {
                     className="w-full bg-input border border-border rounded-lg px-4 py-3 lg:py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-accent transition-all text-base"
                   />
                 </div>
+              </div>
+            )}
+
+            {cutoffApplies && cutoffIst && (
+              <div
+                role="status"
+                className={`mb-4 rounded-xl border-2 p-3 lg:p-4 ${
+                  requisitionsClosed
+                    ? 'border-destructive/50 bg-destructive/10'
+                    : 'border-border bg-card'
+                }`}
+              >
+                <p className="text-sm font-semibold text-foreground">
+                  {requisitionsClosed
+                    ? `Requisitions are closed for today`
+                    : `Requisitions close at ${formatIstTime(cutoffState.cutoffIst)} IST`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {requisitionsClosed
+                    ? `Today's window ended at ${formatIstTime(cutoffState.cutoffIst)} IST. The next one opens at ${formatIstTime(WINDOW_OPENS_IST)} IST. A requisition already raised today can still be edited until the kitchen packs it.`
+                    : `${formatMinutesLeft(cutoffState.minutesLeft) || 'Closing now'} · today's window runs from ${formatIstTime(WINDOW_OPENS_IST)} to ${formatIstTime(cutoffState.cutoffIst)} IST.`}
+                </p>
               </div>
             )}
 
