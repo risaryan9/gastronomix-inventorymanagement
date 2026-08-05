@@ -45,6 +45,27 @@ const BRAND_MAPPING_OPTIONS = [
 // in any brand's outlet requisition form, but still visible in kitchen stock-out.
 const INTERNAL_PRODUCTION_CODE = 'ip'
 
+// brand_codes arrives as an array from PostgREST, but older rows can still hold
+// the raw Postgres literal '{nk,bp}' — both have to parse the same way.
+const parseBrandCodes = (brandCodes) => {
+  if (Array.isArray(brandCodes)) return brandCodes.map(c => String(c).trim()).filter(Boolean)
+  if (typeof brandCodes === 'string' && brandCodes.trim()) {
+    const trimmed = brandCodes.trim()
+    const inner = trimmed.startsWith('{') && trimmed.endsWith('}') ? trimmed.slice(1, -1) : trimmed
+    return inner.split(',').map(c => c.trim()).filter(Boolean)
+  }
+  return []
+}
+
+// The same rule the outlet requisition picker applies, minus the brand the
+// supervisor happens to have open: non-food qualifies by type, everything else
+// by the flag, and internal production is excluded either way.
+const showsInRequisitions = (material) => {
+  const codes = parseBrandCodes(material.brand_codes)
+  if (codes.includes(INTERNAL_PRODUCTION_CODE)) return false
+  return material.material_type === 'non_food' || material.is_requisitionable === true
+}
+
 const Materials = ({ isAdminMode = false }) => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
@@ -67,7 +88,8 @@ const Materials = ({ isAdminMode = false }) => {
     low_stock_threshold: '',
     vendor_id: '',
     material_type: '',
-    brand_codes: null
+    brand_codes: null,
+    is_requisitionable: false
   })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
@@ -354,11 +376,14 @@ const Materials = ({ isAdminMode = false }) => {
       }
     }
     
-    setFormData(prev => ({ 
-      ...prev, 
+    setFormData(prev => ({
+      ...prev,
       material_type: materialType,
       category: autoCategory, // Auto-set for SF/FF/NF, empty for raw
-      code: generatedCode // Auto-generated for SF/FF/NF, empty for raw
+      code: generatedCode, // Auto-generated for SF/FF/NF, empty for raw
+      // Non-food is requisitionable by type, so the flag has nothing to say
+      // about it — clearing it keeps one answer to the question, not two.
+      is_requisitionable: materialType === 'non_food' ? false : prev.is_requisitionable
     }))
   }
 
@@ -388,7 +413,8 @@ const Materials = ({ isAdminMode = false }) => {
       low_stock_threshold: '',
       vendor_id: '',
       material_type: '',
-      brand_codes: null
+      brand_codes: null,
+      is_requisitionable: false
     })
     setError(null)
     setIsModalOpen(true)
@@ -439,7 +465,8 @@ const Materials = ({ isAdminMode = false }) => {
       low_stock_threshold: material.low_stock_threshold ? parseFloat(material.low_stock_threshold).toString() : '',
       vendor_id: material.vendor_id || '',
       material_type: material.material_type || 'raw_material',
-      brand_codes: existingIsInternalProduction ? null : existingBrandCodes
+      brand_codes: existingIsInternalProduction ? null : existingBrandCodes,
+      is_requisitionable: material.is_requisitionable === true
     })
     setError(null)
     setIsModalOpen(true)
@@ -560,6 +587,11 @@ const Materials = ({ isAdminMode = false }) => {
             ? formData.brand_codes
             : null))
 
+      // Non-food never carries the flag: it is requisitionable by type, and a
+      // stored true would look like the reason it shows up when it is not.
+      const isRequisitionableToSave =
+        formData.material_type !== 'non_food' && formData.is_requisitionable === true
+
       if (editingMaterial) {
         // Update existing material
         const updateData = {
@@ -573,6 +605,7 @@ const Materials = ({ isAdminMode = false }) => {
           vendor_id: formData.vendor_id || null,
           material_type: formData.material_type,
           brand_codes: brandCodesToSave,
+          is_requisitionable: isRequisitionableToSave,
           updated_at: new Date().toISOString()
         }
 
@@ -595,7 +628,8 @@ const Materials = ({ isAdminMode = false }) => {
             brand: editingMaterial.brand,
             description: editingMaterial.description,
             low_stock_threshold: editingMaterial.low_stock_threshold,
-            brand_codes: editingMaterial.brand_codes || null
+            brand_codes: editingMaterial.brand_codes || null,
+            is_requisitionable: editingMaterial.is_requisitionable === true
           },
           p_new_values: {
             name: updateData.name,
@@ -605,7 +639,8 @@ const Materials = ({ isAdminMode = false }) => {
             brand: updateData.brand,
             description: updateData.description,
             low_stock_threshold: updateData.low_stock_threshold,
-            brand_codes: updateData.brand_codes
+            brand_codes: updateData.brand_codes,
+            is_requisitionable: updateData.is_requisitionable
           }
         })
 
@@ -635,7 +670,8 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold) : 0,
             vendor_id: formData.vendor_id || null,
             material_type: formData.material_type,
-            brand_codes: brandCodesToSave
+            brand_codes: brandCodesToSave,
+            is_requisitionable: isRequisitionableToSave
           })
           .select()
           .single()
@@ -654,7 +690,8 @@ const Materials = ({ isAdminMode = false }) => {
             brand: newMaterial.brand,
             description: newMaterial.description,
             low_stock_threshold: newMaterial.low_stock_threshold,
-            brand_codes: newMaterial.brand_codes || null
+            brand_codes: newMaterial.brand_codes || null,
+            is_requisitionable: newMaterial.is_requisitionable === true
           }
         })
 
@@ -839,10 +876,18 @@ const Materials = ({ isAdminMode = false }) => {
                             ? 'bg-green-500/20 text-green-400'
                             : 'bg-purple-500/20 text-purple-400'
                         }`}>
-                          {material.material_type === 'raw_material' ? 'Raw Material' : 
-                           material.material_type === 'semi_finished' ? 'Semi-Finished' : 
+                          {material.material_type === 'raw_material' ? 'Raw Material' :
+                           material.material_type === 'semi_finished' ? 'Semi-Finished' :
                            material.material_type === 'finished' ? 'Finished' : 'Non-Food'}
                         </span>
+                        {showsInRequisitions(material) && (
+                          <span
+                            className="mt-1 block w-fit px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground border border-border"
+                            title="Outlets can ask for this material in a requisition"
+                          >
+                            Requisitionable
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-foreground">{material.name}</td>
                       <td className="px-4 py-3 text-foreground font-mono text-sm">{material.code}</td>
@@ -1155,6 +1200,44 @@ const Materials = ({ isAdminMode = false }) => {
                     </p>
                   </div>
 
+                  {/* Requisition availability. Non-food qualifies by type and has
+                      nothing to decide, so it gets a statement rather than a control. */}
+                  {formData.material_type && (
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-2">
+                        Outlet Requisitions
+                      </label>
+                      {formData.material_type === 'non_food' ? (
+                        <p className="text-xs text-muted-foreground">
+                          Non-food materials always appear in the requisition form of every brand they are
+                          mapped to. Nothing to set here.
+                        </p>
+                      ) : (
+                        <>
+                          <label className="flex items-start gap-3 p-3 bg-input border-2 border-border rounded-lg cursor-pointer hover:bg-accent/5 transition-all">
+                            <input
+                              type="checkbox"
+                              checked={formData.is_requisitionable === true}
+                              onChange={(e) =>
+                                setFormData(prev => ({ ...prev, is_requisitionable: e.target.checked }))
+                              }
+                              disabled={saving}
+                              className="mt-0.5 w-4 h-4 accent-accent cursor-pointer"
+                            />
+                            <span className="text-sm text-foreground font-medium">
+                              Outlets can requisition this material
+                            </span>
+                          </label>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {isInternalProduction
+                              ? 'Internal production materials are excluded from every brand\'s requisition form, so this has no effect until the brand mapping changes.'
+                              : 'Off by default. Tick it and this material joins the non-food items in the requisition form of every brand it is mapped to.'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* Material Code - Always shown, always read-only */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
@@ -1352,6 +1435,16 @@ const Materials = ({ isAdminMode = false }) => {
                       <span className="text-muted-foreground">Low Stock Threshold:</span>
                       <span className="text-foreground font-semibold">
                         {formData.low_stock_threshold ? parseFloat(formData.low_stock_threshold).toFixed(2) : '0.00'} {formData.unit}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Outlet requisitions:</span>
+                      <span className="text-foreground font-semibold">
+                        {formData.material_type === 'non_food'
+                          ? 'Yes (all non-food)'
+                          : formData.is_requisitionable === true
+                            ? 'Yes'
+                            : 'No'}
                       </span>
                     </div>
                     {formData.description && (

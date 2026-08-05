@@ -16,6 +16,16 @@ const BRANDS = [
   { id: 'BP', name: 'Boom Pizza', color: 'bg-red-500', hoverColor: 'hover:bg-red-600', logo: boomPizzaLogo },
 ]
 
+// The picker used to be non-food only, so a row needed no type at all. Now
+// that flagged raw and semi-finished materials sit in the same list, the tag
+// is what tells "Chicken Masala" the packet from "Chicken Masala" the batch.
+const MATERIAL_TYPE_TAG = {
+  raw_material: 'Raw',
+  semi_finished: 'Semi-Finished',
+  finished: 'Finished',
+  non_food: 'Non-Food',
+}
+
 const makeEmptyAllocationRow = () => ({
   id: `row-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   raw_material_id: null,
@@ -373,7 +383,9 @@ const OutletsPageBase = ({ role }) => {
 
     return rawMaterials.filter(m => {
       if (usedIds.includes(m.id)) return false
-      if (m.material_type !== 'non_food') return false
+      // Non-food qualifies by type. Anything else has to be opted in one
+      // material at a time — see migrations/add-requisitionable-flag-to-materials.sql.
+      if (m.material_type !== 'non_food' && m.is_requisitionable !== true) return false
       if (!selectedBrandCode) return false
 
       const materialBrandCodes = normalizeBrandCodes(m.brand_codes)
@@ -861,7 +873,14 @@ const OutletsPageBase = ({ role }) => {
                               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-card">
                                 {getFilteredMaterialsForRow(index).map((m) => (
                                   <button key={m.id} type="button" onClick={() => handleSelectMaterial(index, m)} className="w-full text-left px-4 py-3 hover:bg-accent/30 border-b border-border/50">
-                                    <div className="text-sm">{m.name}</div>
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="text-sm">{m.name}</span>
+                                      {MATERIAL_TYPE_TAG[m.material_type] && (
+                                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border text-[10px] font-semibold uppercase tracking-wide">
+                                          {MATERIAL_TYPE_TAG[m.material_type]}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-muted-foreground">{m.code} • {m.unit}</div>
                                   </button>
                                 ))}

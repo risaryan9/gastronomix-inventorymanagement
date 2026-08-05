@@ -555,6 +555,7 @@ const CATALOG_FIELD_ORDER = [
   ['description', 'Description'],
   ['low_stock_threshold', 'Low stock threshold'],
   ['brand_codes', 'Brand codes'],
+  ['is_requisitionable', 'Requisitionable'],
   ['is_active', 'Active'],
 ]
 
