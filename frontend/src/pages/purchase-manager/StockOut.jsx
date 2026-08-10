@@ -10,6 +10,7 @@ import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
 import { getBusinessDate, toBusinessDateString } from '../../lib/businessDate'
+import { pdfMoney } from '../../lib/pdfCurrency'
 
 const DISPATCH_STOCK_OUT_SECTIONS = [
   { key: 'finished', label: 'Finished' },
@@ -1275,7 +1276,9 @@ const StockOut = () => {
           recHeader += ` • Brand: ${rec.dispatch_brand}`
         }
         if (rec.reason === 'inter-cloud-kitchen' && rec.destination_kitchen) {
-          recHeader += ` • → ${rec.destination_kitchen.name}`
+          // "->" and not "→": U+2192 has no WinAnsi slot either, so it would
+          // print as "!’" here. The bullets above are fine — jsPDF maps those.
+          recHeader += ` • -> ${rec.destination_kitchen.name}`
         }
         doc.text(recHeader, margin, yPosD)
         yPosD += 5
@@ -1615,10 +1618,7 @@ const StockOut = () => {
           '',
           '',
           { content: 'Total', styles: { halign: 'right', fontStyle: 'bold' } },
-          // "Rs." and not "₹": jsPDF's built-in Helvetica is WinAnsi-encoded and
-          // has no rupee glyph, so U+20B9 gets truncated to its low byte (0xB9)
-          // and prints as a superscript "1" in front of the amount.
-          { content: `Rs. ${grandTotal.toFixed(2)}`, colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
+          { content: pdfMoney(grandTotal), colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
         ]],
         showFoot: 'lastPage',
         theme: 'grid',

@@ -8,6 +8,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { getBusinessDate } from '../../lib/businessDate'
+import { pdfMoney } from '../../lib/pdfCurrency'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
@@ -524,7 +525,7 @@ const Inventory = () => {
       yPos += 5
       doc.text(`Low Stock Items: ${stats.lowStockItems}`, 25, yPos)
       yPos += 5
-      doc.text(`Total Inventory Value: ₹${stats.totalValue.toFixed(2)}`, 25, yPos)
+      doc.text(`Total Inventory Value: ${pdfMoney(stats.totalValue)}`, 25, yPos)
       yPos += 10
 
       // Check if we need a new page
@@ -547,14 +548,14 @@ const Inventory = () => {
         
         return [
           material?.name || 'N/A',
-          lastPrice !== null ? `₹${lastPrice.toFixed(2)}` : 'N/A',
+          lastPrice !== null ? pdfMoney(lastPrice) : 'N/A',
           material?.code || 'N/A',
           material?.category || 'N/A',
           `${parseFloat(item.quantity).toFixed(2)} ${material?.unit || ''}`,
           parseFloat(item.low_stock_threshold || 0).toFixed(2),
           status,
-          `₹${avgCost.toFixed(2)}`,
-          `₹${totalValue.toFixed(2)}`
+          pdfMoney(avgCost),
+          pdfMoney(totalValue)
         ]
       })
 

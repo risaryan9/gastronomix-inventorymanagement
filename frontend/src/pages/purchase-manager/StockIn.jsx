@@ -10,6 +10,7 @@ import {
   loadStockInDraft,
   saveStockInDraft
 } from '../../lib/stockInDraft'
+import { pdfMoney } from '../../lib/pdfCurrency'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
@@ -596,7 +597,7 @@ const StockIn = () => {
       doc.text(`Invoice #: ${record.invoice_number}`, 25, yPos)
       yPos += 5
     }
-    doc.text(`Total Cost: ₹${parseFloat(record.total_cost || 0).toFixed(2)}`, 25, yPos)
+    doc.text(`Total Cost: ${pdfMoney(record.total_cost)}`, 25, yPos)
     yPos += 10
 
     if (yPos > pageHeight - 60) {
@@ -617,9 +618,9 @@ const StockIn = () => {
         batch.raw_materials?.unit || 'N/A',
         qty.toFixed(2),
         parseFloat(batch.quantity_remaining || 0).toFixed(2),
-        `₹${unitCost.toFixed(2)}`,
+        pdfMoney(unitCost),
         `${gstPercent.toFixed(2)}%`,
-        `₹${totalCost.toFixed(2)}`
+        pdfMoney(totalCost)
       ]
     })
 
