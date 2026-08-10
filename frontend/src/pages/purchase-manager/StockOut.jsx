@@ -1615,7 +1615,10 @@ const StockOut = () => {
           '',
           '',
           { content: 'Total', styles: { halign: 'right', fontStyle: 'bold' } },
-          { content: `₹${grandTotal.toFixed(2)}`, colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
+          // "Rs." and not "₹": jsPDF's built-in Helvetica is WinAnsi-encoded and
+          // has no rupee glyph, so U+20B9 gets truncated to its low byte (0xB9)
+          // and prints as a superscript "1" in front of the amount.
+          { content: `Rs. ${grandTotal.toFixed(2)}`, colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
         ]],
         showFoot: 'lastPage',
         theme: 'grid',
