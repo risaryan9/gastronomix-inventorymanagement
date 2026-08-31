@@ -6,6 +6,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import PaginationControls from '../../components/PaginationControls'
+import OutletRequestHistoryDrawer from '../../components/outlets/OutletRequestHistoryDrawer'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
@@ -182,6 +183,9 @@ const StockOut = () => {
   const [allocationItems, setAllocationItems] = useState([])
   // Last prior allocation (date + qty) per material for the selected request's outlet
   const [lastAllocationByMaterial, setLastAllocationByMaterial] = useState({})
+  // Outlet whose full requisition history is open in the side drawer, with the
+  // material the manager opened it from so its quantity is called out per row
+  const [requestHistoryTarget, setRequestHistoryTarget] = useState(null)
   const [inventoryData, setInventoryData] = useState({})
   const [todayTotals, setTodayTotals] = useState({})
   const [allocating, setAllocating] = useState(false)
@@ -3478,7 +3482,7 @@ const StockOut = () => {
                         <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Requested</th>
                         <th
                           className="px-4 py-3 text-left text-sm font-bold text-foreground"
-                          title="Last time this material was allocated to this outlet"
+                          title="Last time this material was allocated to this outlet — click a row to see every requisition this outlet has sent"
                         >
                           Previously Allocated
                         </th>
@@ -3517,18 +3521,34 @@ const StockOut = () => {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {lastAllocationByMaterial[item.raw_material_id] ? (
-                                <div>
-                                  <p className="text-foreground font-medium">
-                                    {lastAllocationByMaterial[item.raw_material_id].quantity.toFixed(2)} {item.unit}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {new Date(lastAllocationByMaterial[item.raw_material_id].date).toLocaleDateString()}
-                                  </p>
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRequestHistoryTarget({
+                                    outlet: selectedRequest.outlets,
+                                    material: {
+                                      id: item.raw_material_id,
+                                      name: item.name,
+                                      unit: item.unit
+                                    }
+                                  })
+                                }
+                                title={`See every requisition ${selectedRequest.outlets?.name || 'this outlet'} has sent`}
+                                className="text-left rounded hover:underline focus:outline-none focus:ring-2 focus:ring-accent"
+                              >
+                                {lastAllocationByMaterial[item.raw_material_id] ? (
+                                  <>
+                                    <p className="text-accent font-medium">
+                                      {lastAllocationByMaterial[item.raw_material_id].quantity.toFixed(2)} {item.unit}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {new Date(lastAllocationByMaterial[item.raw_material_id].date).toLocaleDateString()}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <span className="text-muted-foreground">— view history</span>
+                                )}
+                              </button>
                             </td>
                             <td className="px-4 py-3 text-foreground">
                               {todayTotal.toFixed(2)} {item.unit}
@@ -3658,6 +3678,14 @@ const StockOut = () => {
                 </button>
               </div>
             </div>
+
+            {requestHistoryTarget && (
+              <OutletRequestHistoryDrawer
+                outlet={requestHistoryTarget.outlet}
+                highlightMaterial={requestHistoryTarget.material}
+                onClose={() => setRequestHistoryTarget(null)}
+              />
+            )}
           </div>
         )}
 
