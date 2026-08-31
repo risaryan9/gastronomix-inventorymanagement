@@ -1410,7 +1410,19 @@ const StockOut = () => {
       // the outlet, the supervisor and the request date off one leaves an
       // inter-cloud transfer printing N/A down the whole header.
       const destinationKitchen = stockOutRecord.destination_kitchen || requestData?.destination_kitchen
-      const sourceKitchen = stockOutRecord.source_kitchen || requestData?.source_kitchen
+      let sourceKitchen = stockOutRecord.source_kitchen || requestData?.source_kitchen
+
+      // The issuing kitchen belongs on every challan, so it cannot depend on
+      // the embed resolving. When it comes back empty the row still carries the
+      // id, and the session names the kitchen the user is signed in to.
+      if (!sourceKitchen && stockOutRecord.cloud_kitchen_id) {
+        const { data: kitchenRow } = await supabase
+          .from('cloud_kitchens')
+          .select('name, code')
+          .eq('id', stockOutRecord.cloud_kitchen_id)
+          .single()
+        if (kitchenRow) sourceKitchen = kitchenRow
+      }
       const isInterCloudTransfer =
         stockOutRecord.reason === 'inter-cloud-kitchen' && !!destinationKitchen
       const isSelfMovement = stockOutRecord.self_stock_out === true || !outlet
@@ -1510,18 +1522,15 @@ const StockOut = () => {
       const boxX = margin
       const boxY = yPos
       const boxWidth = pageWidth - 2 * margin
-      const boxHeight = 32
 
       const leftBoxWidth = Math.floor(boxWidth * 0.4)
       const rightBoxWidth = boxWidth - leftBoxWidth
       const rightBoxX = boxX + leftBoxWidth
 
-      doc.rect(boxX, boxY, leftBoxWidth, boxHeight)
-      doc.rect(rightBoxX, boxY, rightBoxWidth, boxHeight)
-
-      // Six lines is what the box holds. Each movement type spends them on the
-      // fields that mean something for it, so a transfer names the kitchen it
-      // went to where a requisition names the outlet and who asked.
+      // Each movement type spends the header on the fields that mean something
+      // for it, so a transfer names the kitchen it went to where a requisition
+      // names the outlet and who asked. The box is sized to whichever set of
+      // lines it ends up holding.
       const issuedBy =
         stockOutRecord.allocated_by_user?.full_name ||
         requestData?.users?.full_name ||
@@ -1553,6 +1562,7 @@ const StockOut = () => {
         ]
       } else {
         headerLines = [
+          { text: `Cloud Kitchen: ${withCode(sourceKitchenName, sourceKitchen?.code)}` },
           { text: `Outlet: ${outlet?.name || 'N/A'}`, bold: true },
           { text: `Outlet Code: ${outlet?.code || 'UNKNOWN'}` },
           { text: `Supervisor: ${allocationRequest?.supervisor_name || allocationRequest?.users?.full_name || 'N/A'}` },
@@ -1561,6 +1571,12 @@ const StockOut = () => {
       }
       headerLines.push({ text: 'Place of Supply: Karnataka' })
       headerLines.push({ text: `Challan Number: ${challanNumber}`, bold: true })
+
+      const headerLineHeight = 4.5
+      const boxHeight = Math.max(32, (headerLines.length - 1) * headerLineHeight + 9)
+
+      doc.rect(boxX, boxY, leftBoxWidth, boxHeight)
+      doc.rect(rightBoxX, boxY, rightBoxWidth, boxHeight)
 
       // Kitchen names are free text and longer than an outlet code ever was;
       // clipped to the box beats running under the Notes panel beside it.
@@ -1578,7 +1594,7 @@ const StockOut = () => {
       headerLines.forEach((line, index) => {
         doc.setFont(undefined, line.bold ? 'bold' : 'normal')
         doc.text(clipToBox(line.text), boxX + 3, leftY)
-        if (index < headerLines.length - 1) leftY += 4.5
+        if (index < headerLines.length - 1) leftY += headerLineHeight
       })
 
       doc.setFont(undefined, 'bold')
