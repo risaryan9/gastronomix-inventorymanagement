@@ -20,6 +20,11 @@
 import { supabase } from './supabase'
 import { fetchAllRows } from './fetchAllRows'
 import { getBusinessDate } from './businessDate'
+import {
+  BATCH_VALUATION_COLUMNS,
+  batchValue,
+  onlyActiveMaterials,
+} from './inventoryValuation'
 
 // Batches still holding stock this long after receipt are capital sitting idle.
 const DEAD_STOCK_AFTER_DAYS = 60
@@ -177,17 +182,23 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
       ),
       fetchAll(() => supabase.from('users').select('id').eq('is_active', true).is('deleted_at', null)),
       fetchAll(() =>
-        supabase
-          .from('stock_in_batches')
-          .select('cloud_kitchen_id, quantity_remaining, unit_cost, created_at')
-          .gt('quantity_remaining', 0)
+        onlyActiveMaterials(
+          supabase
+            .from('stock_in_batches')
+            .select(
+              `cloud_kitchen_id, created_at, ${BATCH_VALUATION_COLUMNS}, raw_materials!inner(is_active)`
+            )
+            .gt('quantity_remaining', 0)
+        )
       ),
-      // !inner means RLS on raw_materials also filters this join, so inactive and
-      // deleted materials drop out of the low-stock counts for free.
+      // Deactivated and deleted materials are not stock, so they are filtered
+      // in the query rather than left to the RLS policy on raw_materials.
       fetchAll(() =>
-        supabase
-          .from('inventory')
-          .select('cloud_kitchen_id, quantity, raw_materials!inner(low_stock_threshold)')
+        onlyActiveMaterials(
+          supabase
+            .from('inventory')
+            .select('cloud_kitchen_id, quantity, raw_materials!inner(low_stock_threshold)')
+        )
       ),
       fetchAll(() =>
         supabase
@@ -221,7 +232,7 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
   outlets.forEach((outlet) => addTo(byKitchen, outlet.cloud_kitchen_id, (m) => (m.outlets += 1)))
 
   batches.forEach((batch) => {
-    const value = num(batch.quantity_remaining) * num(batch.unit_cost)
+    const value = batchValue(batch)
     addTo(byKitchen, batch.cloud_kitchen_id, (m) => {
       m.inventoryValue += value
       if (batch.created_at && batch.created_at < deadStockBefore) m.deadStockValue += value

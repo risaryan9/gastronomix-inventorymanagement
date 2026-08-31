@@ -9,6 +9,7 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { getBusinessDate } from '../../lib/businessDate'
 import { pdfMoney } from '../../lib/pdfCurrency'
+import { BATCH_VALUATION_COLUMNS, batchValue, gstInclusiveUnitCost } from '../../lib/inventoryValuation'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
@@ -96,6 +97,7 @@ const Inventory = () => {
           .select('id, name, code, unit, category')
           .in('id', rawMaterialIds)
           .eq('is_active', true)
+          .is('deleted_at', null)
 
         if (materialsError) {
           console.error('Error fetching raw materials:', materialsError)
@@ -109,7 +111,7 @@ const Inventory = () => {
         // Fetch batches data to calculate GST-inclusive costs
         const { data: batchesData } = await supabase
           .from('stock_in_batches')
-          .select('raw_material_id, quantity_remaining, unit_cost, gst_percent')
+          .select(`raw_material_id, ${BATCH_VALUATION_COLUMNS}`)
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .in('raw_material_id', rawMaterialIds)
           .gt('quantity_remaining', 0)
@@ -126,10 +128,6 @@ const Inventory = () => {
         if (batchesData) {
           batchesData.forEach(batch => {
             const materialId = batch.raw_material_id
-            const unitCost = parseFloat(batch.unit_cost)
-            const gstPercent = parseFloat(batch.gst_percent || 0)
-            const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
-            const batchValue = parseFloat(batch.quantity_remaining) * gstInclusiveCost
 
             if (!materialValuationMap.has(materialId)) {
               materialValuationMap.set(materialId, {
@@ -140,7 +138,7 @@ const Inventory = () => {
             }
 
             const current = materialValuationMap.get(materialId)
-            current.totalValue += batchValue
+            current.totalValue += batchValue(batch)
             current.totalQuantity += parseFloat(batch.quantity_remaining)
           })
 
@@ -155,10 +153,7 @@ const Inventory = () => {
         const latestPriceByMaterialId = new Map()
         ;(latestCostData || []).forEach((batch) => {
           if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
-            const unitCost = parseFloat(batch.unit_cost)
-            const gstPercent = parseFloat(batch.gst_percent || 0)
-            const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
-            latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveCost)
+            latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveUnitCost(batch))
           }
         })
 
@@ -171,22 +166,24 @@ const Inventory = () => {
         }
 
         // Join inventory with materials and GST-inclusive costs
-        const inventoryWithMaterials = inventoryData.map(item => {
-          const valuation = materialValuationMap.get(item.raw_material_id) || {
-            totalValue: 0,
-            totalQuantity: 0,
-            averageCost: 0
-          }
+        const inventoryWithMaterials = inventoryData
+          .filter(item => materialsMap.has(item.raw_material_id))
+          .map(item => {
+            const valuation = materialValuationMap.get(item.raw_material_id) || {
+              totalValue: 0,
+              totalQuantity: 0,
+              averageCost: 0
+            }
 
-          return {
-            ...item,
-            raw_materials: materialsMap.get(item.raw_material_id) || null,
-            cost_per_unit: valuation.averageCost,
-            fifo_total_value: valuation.totalValue,
-            fifo_average_cost: valuation.averageCost,
-            last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
-          }
-        })
+            return {
+              ...item,
+              raw_materials: materialsMap.get(item.raw_material_id),
+              cost_per_unit: valuation.averageCost,
+              fifo_total_value: valuation.totalValue,
+              fifo_average_cost: valuation.averageCost,
+              last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
+            }
+          })
 
         // Sort by material name
         inventoryWithMaterials.sort((a, b) => {

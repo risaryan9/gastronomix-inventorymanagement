@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import { getBusinessDate } from '../../lib/businessDate'
+import {
+  BATCH_VALUATION_COLUMNS,
+  batchValue,
+  onlyActiveMaterials,
+} from '../../lib/inventoryValuation'
 
 const Overview = () => {
   const [stats, setStats] = useState({
@@ -59,17 +64,19 @@ const Overview = () => {
         supervisorsResult
       ] = await Promise.all([
         // Inventory data with raw material details (for low stock and total materials count)
-        supabase
-          .from('inventory')
-          .select(`
-            quantity,
-            raw_material_id,
-            raw_materials!inner (
-              id,
-              low_stock_threshold
-            )
-          `)
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id),
+        onlyActiveMaterials(
+          supabase
+            .from('inventory')
+            .select(`
+              quantity,
+              raw_material_id,
+              raw_materials!inner (
+                id,
+                low_stock_threshold
+              )
+            `)
+            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+        ),
         
         // Stock In for this month (recent records)
         supabase
@@ -101,11 +108,13 @@ const Overview = () => {
           .limit(5),
 
         // Stock-in batches for FIFO-based valuation
-        supabase
-          .from('stock_in_batches')
-          .select('quantity_remaining, unit_cost')
-          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
-          .gt('quantity_remaining', 0),
+        onlyActiveMaterials(
+          supabase
+            .from('stock_in_batches')
+            .select(`${BATCH_VALUATION_COLUMNS}, raw_materials!inner (is_active)`)
+            .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+            .gt('quantity_remaining', 0)
+        ),
 
         // Pending allocation requests for today
         supabase
@@ -152,13 +161,11 @@ const Overview = () => {
         })
       }
 
-      // Total inventory value using FIFO batches (sum of quantity_remaining * unit_cost)
+      // Total inventory value from the FIFO batches, GST included
       let totalValue = 0
       if (batchesResult.data) {
         batchesResult.data.forEach(batch => {
-          const qty = parseFloat(batch.quantity_remaining) || 0
-          const cost = parseFloat(batch.unit_cost) || 0
-          totalValue += qty * cost
+          totalValue += batchValue(batch)
         })
       }
 

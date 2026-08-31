@@ -14,6 +14,12 @@
 import { supabase } from './supabase'
 import { fetchAllRows } from './fetchAllRows'
 import { getBusinessDate } from './businessDate'
+import {
+  BATCH_VALUATION_COLUMNS,
+  batchValue,
+  gstInclusiveUnitCost,
+  onlyActiveMaterials,
+} from './inventoryValuation'
 
 const DEAD_STOCK_AFTER_DAYS = 60
 const DAILY_BUCKET_MAX_DAYS = 31
@@ -111,17 +117,23 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
         .is('deleted_at', null)
     ),
     fetchAllRows(() =>
-      supabase
-        .from('stock_in_batches')
-        .select('raw_material_id, quantity_remaining, unit_cost, created_at, raw_materials(name, unit)')
-        .eq('cloud_kitchen_id', kitchenId)
-        .gt('quantity_remaining', 0)
+      onlyActiveMaterials(
+        supabase
+          .from('stock_in_batches')
+          .select(
+            `raw_material_id, created_at, ${BATCH_VALUATION_COLUMNS}, raw_materials!inner(name, unit)`
+          )
+          .eq('cloud_kitchen_id', kitchenId)
+          .gt('quantity_remaining', 0)
+      )
     ),
     fetchAllRows(() =>
-      supabase
-        .from('inventory')
-        .select('quantity, raw_materials!inner(low_stock_threshold)')
-        .eq('cloud_kitchen_id', kitchenId)
+      onlyActiveMaterials(
+        supabase
+          .from('inventory')
+          .select('quantity, raw_materials!inner(low_stock_threshold)')
+          .eq('cloud_kitchen_id', kitchenId)
+      )
     ),
     fetchAllRows(() =>
       supabase
@@ -153,7 +165,7 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
   const valueByMaterial = new Map()
 
   batches.forEach((batch) => {
-    const value = num(batch.quantity_remaining) * num(batch.unit_cost)
+    const value = batchValue(batch)
     inventoryValue += value
     if (batch.created_at && batch.created_at < deadStockBefore) deadStockValue += value
 
@@ -337,7 +349,7 @@ export const fetchStockInLines = async (stockInId) => {
     remaining: num(row.quantity_remaining),
     unitCost: num(row.unit_cost),
     gstPercent: num(row.gst_percent),
-    lineTotal: num(row.quantity_purchased) * num(row.unit_cost),
+    lineTotal: num(row.quantity_purchased) * gstInclusiveUnitCost(row),
   }))
 }
 

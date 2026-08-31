@@ -4,6 +4,7 @@ import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 import { getBusinessDate } from '../lib/businessDate'
+import { onlyActiveMaterials } from '../lib/inventoryValuation'
 
 const PurchaseManagerDashboard = () => {
   const [session, setSession] = useState(null)
@@ -47,17 +48,19 @@ const PurchaseManagerDashboard = () => {
             .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
             .eq('request_date', todayStr)
             .eq('is_packed', false),
-          supabase
-            .from('inventory')
-            .select(`
-              quantity,
-              raw_material_id,
-              raw_materials!inner (
-                id,
-                low_stock_threshold
-              )
-            `)
-            .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
+          onlyActiveMaterials(
+            supabase
+              .from('inventory')
+              .select(`
+                quantity,
+                raw_material_id,
+                raw_materials!inner (
+                  id,
+                  low_stock_threshold
+                )
+              `)
+              .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
+          )
         ])
 
         const pendingAllocationsToday = pendingAllocationsResult.data?.length || 0

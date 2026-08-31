@@ -9,6 +9,12 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { getBusinessDate } from '../../lib/businessDate'
 import { pdfMoney } from '../../lib/pdfCurrency'
+import {
+  BATCH_VALUATION_COLUMNS,
+  batchValue,
+  gstInclusiveUnitCost,
+  onlyActiveMaterials,
+} from '../../lib/inventoryValuation'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
@@ -78,22 +84,24 @@ const Inventory = () => {
 
       console.log('Fetching inventory for cloud_kitchen_id:', session.cloud_kitchen_id)
 
-      const { data: inventoryData, error: inventoryError } = await supabase
-        .from('inventory')
-        .select(`
-            *,
-            raw_materials (
-              id,
-              name,
-              code,
-              unit,
-              category,
-              low_stock_threshold,
-              material_type,
-              is_active
-            )
-          `)
-        .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+      const { data: inventoryData, error: inventoryError } = await onlyActiveMaterials(
+        supabase
+          .from('inventory')
+          .select(`
+              *,
+              raw_materials!inner (
+                id,
+                name,
+                code,
+                unit,
+                category,
+                low_stock_threshold,
+                material_type,
+                is_active
+              )
+            `)
+          .eq('cloud_kitchen_id', session.cloud_kitchen_id)
+      )
 
       console.log('Inventory query result:', { inventoryData, inventoryError })
 
@@ -115,7 +123,7 @@ const Inventory = () => {
       const rawMaterialIds = inventoryData.map(item => item.raw_material_id)
       const { data: batchesData } = await supabase
         .from('stock_in_batches')
-        .select('raw_material_id, quantity_remaining, unit_cost, gst_percent')
+        .select(`raw_material_id, ${BATCH_VALUATION_COLUMNS}`)
         .eq('cloud_kitchen_id', session.cloud_kitchen_id)
         .in('raw_material_id', rawMaterialIds)
         .gt('quantity_remaining', 0)
@@ -132,10 +140,6 @@ const Inventory = () => {
       if (batchesData) {
         batchesData.forEach(batch => {
           const materialId = batch.raw_material_id
-          const unitCost = parseFloat(batch.unit_cost)
-          const gstPercent = parseFloat(batch.gst_percent || 0)
-          const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
-          const batchValue = parseFloat(batch.quantity_remaining) * gstInclusiveCost
 
           if (!materialValuationMap.has(materialId)) {
             materialValuationMap.set(materialId, {
@@ -146,7 +150,7 @@ const Inventory = () => {
           }
 
           const current = materialValuationMap.get(materialId)
-          current.totalValue += batchValue
+          current.totalValue += batchValue(batch)
           current.totalQuantity += parseFloat(batch.quantity_remaining)
         })
 
@@ -160,10 +164,7 @@ const Inventory = () => {
       const latestPriceByMaterialId = new Map()
       ;(latestCostData || []).forEach((batch) => {
         if (!latestPriceByMaterialId.has(batch.raw_material_id)) {
-          const unitCost = parseFloat(batch.unit_cost)
-          const gstPercent = parseFloat(batch.gst_percent || 0)
-          const gstInclusiveCost = unitCost * (1 + gstPercent / 100)
-          latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveCost)
+          latestPriceByMaterialId.set(batch.raw_material_id, gstInclusiveUnitCost(batch))
         }
       })
 
@@ -180,7 +181,7 @@ const Inventory = () => {
           fifo_average_cost: valuation.averageCost,
           last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
         }
-      }).filter(item => item.raw_materials?.is_active !== false)
+      })
 
       const stockStatusOrder = (item) => {
         const qty = parseFloat(item.quantity) || 0
