@@ -12,7 +12,7 @@ import AdminUsers from './AdminUsers'
 import AdminOperators from './AdminOperators'
 import AdminRecipes from './AdminRecipes'
 import AdminOutlets from './AdminOutlets'
-import AdminVendors from './AdminVendors'
+import AdminVendorManagement from './AdminVendorManagement'
 import AdminBrandDispatch from './AdminBrandDispatch'
 import AdminRequisitionsReports from './AdminRequisitionsReports'
 import AdminFranchiseCloning from './AdminFranchiseCloning'
@@ -52,7 +52,7 @@ export const ADMIN_NAV = [
     label: 'Operations',
     children: [
       { id: 'materials', label: 'Materials', Component: Materials, props: { isAdminMode: true } },
-      { id: 'vendors', label: 'Vendors', Component: AdminVendors },
+      { id: 'vendors', label: 'Vendor Management', Component: AdminVendorManagement },
       { id: 'recipes', label: 'Recipes', Component: AdminRecipes },
       { id: 'dispatch-brands', label: 'Dispatch Brands', Component: AdminBrandDispatch },
     ],

@@ -221,6 +221,14 @@ const KitchenRecordModal = ({
   headline,
   fields = [],
   notes,
+  // An optional band between the record's own fields and its line items, for a
+  // record that has a document attached to it. Vendor Management puts the
+  // scanned invoice here: it belongs with the receipt it documents, above the
+  // lines it should be checked against, rather than in a separate window.
+  media,
+  mediaTitle = 'Attachment',
+  // A record carrying a document needs more room than a plain ledger row.
+  maxWidthClass = 'max-w-4xl',
   linesTitle = 'Items',
   linesHint,
   linesLoading,
@@ -282,7 +290,7 @@ const KitchenRecordModal = ({
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
-        className="bg-card border-2 border-border rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl"
+        className={`bg-card border-2 border-border rounded-xl w-full ${maxWidthClass} max-h-[90vh] flex flex-col shadow-xl`}
       >
         <header className="shrink-0 p-5 border-b border-border flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
@@ -337,6 +345,8 @@ const KitchenRecordModal = ({
               </Boxed>
             </Section>
           )}
+
+          {media && <Section title={mediaTitle}>{media}</Section>}
 
           <Section title={linesTitle} hint={linesHint}>
             {linesLoading ? (
