@@ -1,0 +1,88 @@
+# Decision log
+
+Why the code is the way it is, when the code itself cannot say so.
+
+Each file here records one decision: what we chose, what we chose against, and
+what would have to change for the answer to be different. They are written for
+whoever picks this up next — a new engineer, or a coding agent with no memory of
+the conversation that produced the code.
+
+## What belongs here
+
+This codebase already explains itself well in place. `lib/businessDate.js` spends
+thirty lines on why the business day is derived from UTC; `lib/requisitionReports.js`
+opens by defining what "consumed" means. That is the right home for a reason that
+lives inside one file, because it is read at the moment it matters and it cannot
+drift away from the code it describes.
+
+Write a record here instead when the reason does **not** fit in one file:
+
+- **It spans places.** A rule enforced in the frontend and mirrored in a Postgres
+  function. A convention every export follows. Something a reader would have to
+  already know to find.
+- **It rules something out.** We tried it, it broke, here is the traffic that
+  proves it. Without the record the next person re-tries it — this has already
+  happened once, see `businessDate.js`.
+- **It is a judgement, not a fact.** Two defensible options, one picked for
+  reasons that are not recoverable by reading the result.
+- **It constrains future work.** "Do not add X until Y" — advice that has no
+  natural line of code to sit on.
+
+## What does not
+
+- A reason that fits above a function. Put it above the function.
+- Anything git already answers: what changed, when, by whom.
+- Restating what a record already says. Amend that record instead.
+- Task notes, plans, or progress. Those belong in the PR.
+
+## Format
+
+Files are `NNNN-kebab-case-title.md`, numbered in the order they were written.
+Numbers are never reused, and a superseded record is not deleted — it is marked
+Superseded and points at the one that replaced it, because the fact that we once
+decided otherwise is itself worth knowing.
+
+Keep them short. A record nobody finishes reading protects nothing.
+
+```markdown
+# NNNN. Title in plain words
+
+Date: YYYY-MM-DD
+Status: Accepted | Superseded by NNNN | Reversed
+
+## Context
+What was true that forced a choice.
+
+## Decision
+What we chose, in the active voice.
+
+## Alternatives
+What else was on the table, and the specific reason it lost.
+
+## Consequences
+What this makes easy, what it makes hard, and what would have to be true
+for us to revisit it.
+
+## Where it lives
+The files that implement it, so the record and the code can be checked
+against each other.
+```
+
+## Records
+
+| # | Decision | Read before touching | Status |
+|---|----------|----------------------|--------|
+| [0001](0001-single-outlet-requisition-reports.md) | Requisition reports narrow to one outlet, and change shape when they do | the admin requisition reports | Accepted |
+| [0002](0002-business-day-is-the-utc-date.md) | **The business day is the UTC date** — deliberate, and reverted once already | any date column, anything "today" | Accepted |
+| [0003](0003-inventory-value-is-gst-inclusive.md) | Stock is valued GST-inclusive; a deactivated material is not stock | any screen reporting an inventory figure | Accepted |
+| [0004](0004-audit-writes-are-server-side-only.md) | Audit events are written only by server-side functions | audit writes, any `SECURITY DEFINER` function's grants | Accepted |
+| [0005](0005-requisition-cutoff-is-a-database-trigger.md) | The requisition cutoff is a database trigger; the frontend is a courtesy | the cutoff, requisition creation | Accepted |
+| [0006](0006-requisitionable-materials.md) | Whether an outlet can requisition a material is three questions, not one | the requisition picker, the material catalog | Accepted |
+| [0007](0007-pdf-money-goes-through-pdfcurrency.md) | Money in a PDF goes through `pdfCurrency` — jsPDF cannot print ₹ | any jsPDF export | Accepted |
+| [0008](0008-no-browser-alerts-or-confirms.md) | No `window.alert` or `window.confirm` — toasts and one dialog | any user-facing message or prompt | Accepted |
+| [0009](0009-paged-queries-need-a-unique-tiebreaker.md) | A paged query needs a unique tiebreaker in its ORDER BY | any query passed to `fetchAllRows` | Accepted |
+
+Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
+comments that already carried the reasoning. Where a date is given as
+"recorded", the decision itself is older — see the commit named at the foot of
+the record.
