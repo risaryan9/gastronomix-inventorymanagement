@@ -711,7 +711,7 @@ const ClosingConfirmedBody = ({ event, description }) => (
           { label: 'Outlet', value: description.outlet || '—' },
           { label: 'Cloud kitchen', value: description.kitchen || '—' },
           {
-            label: 'Put back into stock',
+            label: 'Quantity returned',
             value: (
               <span className="text-accent font-bold">{formatQty(event.new_values?.total_returned_qty)}</span>
             ),
@@ -722,8 +722,9 @@ const ClosingConfirmedBody = ({ event, description }) => (
     </Section>
 
     <Note>
-      Confirming the sheet takes the returned quantities back into inventory. The per-item detail behind this
-      total is on the closing sheet saves that led up to it.
+      Confirming records the sheet and closes it to edits. It does not move stock — the purchase manager
+      records the returned quantities as a stock-in. The per-item detail behind this total is on the closing
+      sheet saves that led up to it.
     </Note>
   </>
 )

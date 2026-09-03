@@ -21,6 +21,7 @@ look like bugs and are not.** Check the index in
 | a jsPDF export | [0007 — PDF money](docs/decisions/0007-pdf-money-goes-through-pdfcurrency.md) |
 | a user-facing message or prompt | [0008 — no browser alerts](docs/decisions/0008-no-browser-alerts-or-confirms.md) |
 | a query passed to `fetchAllRows` | [0009 — paged queries need a tiebreaker](docs/decisions/0009-paged-queries-need-a-unique-tiebreaker.md) |
+| dispatch planning, the closing sheet, or returns | [0010 — dispatch and closing do not move stock](docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

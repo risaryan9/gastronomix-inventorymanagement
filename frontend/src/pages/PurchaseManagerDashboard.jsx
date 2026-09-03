@@ -122,6 +122,7 @@ const PurchaseManagerDashboard = () => {
     { path: 'stock-out', label: 'Stock Out' },
     { path: 'materials', label: 'Materials' },
     { path: 'inventory', label: 'Inventory' },
+    { path: 'returns', label: 'Returns' },
     { path: 'outlets', label: 'Requisition' },
   ]
 

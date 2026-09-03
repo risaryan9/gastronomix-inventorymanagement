@@ -627,24 +627,28 @@
 - **A confirmed form can no longer be edited.** `handleSaveDraft` set
   `status: 'draft'` unconditionally, and the only thing stopping it running on a
   confirmed form was the UI hiding the button (`Checkout.jsx` ~line 913).
-  Nothing in RLS enforced it (see §4). Since F2 has by then already created a
-  `stock_in` from the returns, rewriting the figures afterwards would leave that
-  `stock_in` describing numbers that no longer exist. The RPC refuses.
+  Nothing in RLS enforced it (see §4). F2 no longer creates a `stock_in` (see
+  `docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md`), but the lock
+  still holds for a better reason: a purchase manager will have keyed stock
+  against these figures by hand, and numbers that move after someone has acted
+  on them are worse than numbers that cannot be corrected. The RPC refuses.
 
 #### F2 — Confirm / lock checkout form
 - **What happens:** Supervisor finalizes the closing via the
   `confirm_checkout_form` RPC: it validates the dispatch plan is locked and
-  within a 24-hour window, creates a `stock_in` + batches for returned
-  quantities, and marks the checkout form `confirmed`.
+  within a 24-hour window, totals the returned quantities, and marks the
+  checkout form `confirmed`. **It does not move stock** — see
+  `migrations/stop-checkout-confirm-from-creating-stock-in.sql`. It used to
+  create a `stock_in` + batches from the returns; the purchase manager now
+  records that movement by hand.
 - **Where:** `Checkout.jsx` → `handleFinalConfirm` (RPC ~line 455/460); the RPC
   itself originally defined in `migrations/create-confirm-checkout-function.sql`,
   re-pointed at `audit_events` via `log_audit_event()` in
   `migrations/replace-audit-logs-with-audit-events.sql` (`action:
-  'checkout_confirmed'`, `category: 'checkout'`, recording the resulting
-  `stock_in_id` and `total_returned_qty`).
+  'checkout_confirmed'`, `category: 'checkout'`, recording
+  `total_returned_qty`; `stock_in_id` was dropped when the stock movement was).
 - **Why audit:** Confirmation is the point the numbers become "official" for
-  the day and inventory is actually updated from the returns. **Already
-  logged.** Note it captures the finalized totals only — the underlying
+  the day and the sheet closes to edits. **Already logged.** Note it captures the finalized totals only — the underlying
   per-item wastage/return detail leading up to it is what F1 still needs to
   cover.
 - **Status:** ✅ Audited, DB-side.

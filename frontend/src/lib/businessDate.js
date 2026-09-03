@@ -55,3 +55,18 @@ export const toBusinessDateString = (value) => {
   if (typeof value === 'string') return value.slice(0, 10)
   return getBusinessDate(value)
 }
+
+/**
+ * The last `days` business days, inclusive of today, as
+ * { startDate, endDate } in YYYY-MM-DD.
+ *
+ * The arithmetic is on UTC dates for the reason this whole module exists: a
+ * range built from local dates would disagree with the `date` columns it is
+ * compared against for anyone working between midnight and 05:30 IST.
+ */
+export const lastBusinessDays = (days) => {
+  const today = new Date()
+  const start = new Date(today)
+  start.setUTCDate(start.getUTCDate() - (Math.max(1, days) - 1))
+  return { startDate: getBusinessDate(start), endDate: getBusinessDate(today) }
+}

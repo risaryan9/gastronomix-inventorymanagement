@@ -1,5 +1,14 @@
 # Supervisor Checkout Feature - Implementation Summary
 
+> **OUT OF DATE IN ONE IMPORTANT RESPECT — confirming a closing form no longer
+> moves stock.** It used to create a `stock_in` and batches from the returned
+> quantities, which is what the inventory passages below describe. That was
+> removed: the dispatch plan and the closing sheet are now records only, and the
+> purchase manager performs the stock-in and stock-out by hand. Everything else
+> here still holds. See
+> [`docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md`](docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md)
+> and `migrations/stop-checkout-confirm-from-creating-stock-in.sql`.
+
 ## Overview
 The Supervisor Checkout feature allows supervisors to create checkout forms for locked dispatch plans, tracking returned materials, wastage, and additional financial information. The feature automatically updates cloud kitchen inventory when checkout forms are confirmed.
 

@@ -182,7 +182,7 @@ export const ACTION_META = {
     label: 'Closing Confirmed',
     family: FAMILY.CHECKOUT,
     glyph: '✔',
-    why: 'Confirming makes the day\u2019s figures official and puts the returned stock back into inventory. After this the sheet can no longer be edited.',
+    why: 'Confirming makes the day\u2019s figures official and closes the sheet to further edits. It does not move stock \u2014 the purchase manager records the returned quantities as a stock-in.',
   },
 
   'reversal:requisition_packing_cancelled': {
@@ -992,7 +992,7 @@ export const describeEvent = (event, lookups) => {
     return {
       ...base,
       contextLine: outlet || 'Outlet closing',
-      detail: `${formatQty(returned)} put back into stock`,
+      detail: `${formatQty(returned)} returned`,
       primary: { value: 'Confirmed', tone: 'positive' },
       totalReturned: returned,
       searchText: [outlet].filter(Boolean).join(' '),

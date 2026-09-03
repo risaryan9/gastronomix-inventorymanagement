@@ -27,20 +27,12 @@
 
 import { supabase } from './supabase'
 import { fetchAllRows } from './fetchAllRows'
-import { getBusinessDate } from './businessDate'
+import { lastBusinessDays } from './businessDate'
 
 const num = (value) => parseFloat(value) || 0
 
-/** The last `days` days inclusive of today, as business days. */
-export const reportRangeForDays = (days) => {
-  const today = new Date()
-  const start = new Date(today)
-  start.setUTCDate(start.getUTCDate() - (Math.max(1, days) - 1))
-  return { startDate: getBusinessDate(start), endDate: getBusinessDate(today) }
-}
-
 /** Last 30 days inclusive of today, as business days. */
-export const defaultReportRange = () => reportRangeForDays(30)
+export const defaultReportRange = () => lastBusinessDays(30)
 
 /**
  * Every requisition raised in the range, with what was asked for and what the

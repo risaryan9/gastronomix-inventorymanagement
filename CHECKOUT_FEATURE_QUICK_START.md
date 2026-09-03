@@ -1,5 +1,14 @@
 # Supervisor Checkout Feature - Quick Start Guide
 
+> **OUT OF DATE IN ONE IMPORTANT RESPECT — confirming a closing form no longer
+> moves stock.** It used to create a `stock_in` and batches from the returned
+> quantities, which is what the inventory passages below describe. That was
+> removed: the dispatch plan and the closing sheet are now records only, and the
+> purchase manager performs the stock-in and stock-out by hand. Everything else
+> here still holds. See
+> [`docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md`](docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md)
+> and `migrations/stop-checkout-confirm-from-creating-stock-in.sql`.
+
 ## What is the Checkout Feature?
 
 The Checkout feature allows supervisors to record the return of unused materials from outlets back to the cloud kitchen at the end of a business day. It also tracks wastage and financial information for analytics.

@@ -81,6 +81,7 @@ against each other.
 | [0007](0007-pdf-money-goes-through-pdfcurrency.md) | Money in a PDF goes through `pdfCurrency` — jsPDF cannot print ₹ | any jsPDF export | Accepted |
 | [0008](0008-no-browser-alerts-or-confirms.md) | No `window.alert` or `window.confirm` — toasts and one dialog | any user-facing message or prompt | Accepted |
 | [0009](0009-paged-queries-need-a-unique-tiebreaker.md) | A paged query needs a unique tiebreaker in its ORDER BY | any query passed to `fetchAllRows` | Accepted |
+| [0010](0010-dispatch-and-closing-do-not-move-stock.md) | The dispatch plan and the closing sheet are records; they do not move stock | dispatch planning, the closing sheet, returns | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

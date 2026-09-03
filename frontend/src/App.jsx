@@ -12,6 +12,7 @@ import StockOut from './pages/purchase-manager/StockOut'
 import Materials from './pages/purchase-manager/Materials'
 import Inventory from './pages/purchase-manager/Inventory'
 import PMOutlets from './pages/purchase-manager/Outlets'
+import PMReturns from './pages/purchase-manager/Returns'
 import PMOutletDetails from './pages/purchase-manager/OutletDetails'
 import SupervisorOutlets from './pages/supervisor/Outlets'
 import SupervisorOutletDetails from './pages/supervisor/OutletDetails'
@@ -165,6 +166,7 @@ function App() {
               <Route path="stock-out" element={<StockOut />} />
               <Route path="materials" element={<Materials />} />
               <Route path="inventory" element={<Inventory />} />
+              <Route path="returns" element={<PMReturns />} />
               <Route path="outlets" element={<PMOutlets />} />
               <Route path="outlets/:outletId" element={<PMOutletDetails />} />
             </Route>

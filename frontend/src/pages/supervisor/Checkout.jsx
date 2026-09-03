@@ -391,18 +391,20 @@ const Checkout = () => {
         
         if (!forms) throw new Error('Failed to create draft before confirming')
         
-        const { data: result, error: confirmError } = await supabase
+        const { error: confirmError } = await supabase
           .rpc('confirm_checkout_form', { p_checkout_form_id: forms.id })
 
         if (confirmError) throw confirmError
       } else {
-        const { data: result, error: confirmError } = await supabase
+        const { error: confirmError } = await supabase
           .rpc('confirm_checkout_form', { p_checkout_form_id: existingForm.id })
 
         if (confirmError) throw confirmError
       }
 
-      setAlert({ type: 'success', message: 'Closing form confirmed successfully! Inventory has been updated.' })
+      // Confirming files the sheet; it does not move stock. The purchase
+      // manager records the returned quantities as a stock-in themselves.
+      setAlert({ type: 'success', message: 'Closing form confirmed. The purchase manager will record the returned stock.' })
       setIsConfirmModalOpen(false)
       closeOutletForm()
       await loadOutletsForBrand(selectedBrand)
@@ -885,7 +887,8 @@ const Checkout = () => {
             <div className="bg-card rounded-lg max-w-md w-full p-6">
               <h2 className="text-xl font-bold text-foreground mb-4">Confirm Closing</h2>
               <p className="text-muted-foreground mb-6">
-                This will alter the cloud kitchen inventory by adding the returned items back to stock.
+                This files the closing sheet and locks it — the figures cannot be edited afterwards.
+                It does not change stock; the purchase manager records the returned items.
                 Please recheck all details before confirming.
               </p>
               <div className="flex gap-3">

@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from 'react'
 import { fetchReportCloudKitchens, fetchReportOutlets, fetchOutletVarianceCounts, fetchOutletRequisitionReportRows, fetchRequisitionVarianceDetails } from '../../lib/allocationRequests'
 import {
   defaultReportRange,
-  reportRangeForDays,
   fetchRequisitionsInRange,
   fetchAverageMaterialCosts,
   buildItemWiseConsumption,
@@ -19,6 +18,7 @@ import {
 import { useToast } from '../../context/toastContext'
 import PaginationControls from '../../components/PaginationControls'
 import SearchableSelect from '../../components/SearchableSelect'
+import { lastBusinessDays } from '../../lib/businessDate'
 
 const RANGE_PRESETS = [
   { days: 7, label: 'Last 7 days' },
@@ -168,7 +168,7 @@ const AdminRequisitionsReports = () => {
   )
 
   const isPresetRange = (days) => {
-    const preset = reportRangeForDays(days)
+    const preset = lastBusinessDays(days)
     return dateRange.startDate === preset.startDate && dateRange.endDate === preset.endDate
   }
 
@@ -458,7 +458,7 @@ const AdminRequisitionsReports = () => {
                 <button
                   key={preset.days}
                   type="button"
-                  onClick={() => setDateRange(reportRangeForDays(preset.days))}
+                  onClick={() => setDateRange(lastBusinessDays(preset.days))}
                   className={`px-3 py-2 text-sm font-semibold border rounded-lg transition-colors ${
                     isPresetRange(preset.days)
                       ? 'border-accent text-accent bg-accent/10'
