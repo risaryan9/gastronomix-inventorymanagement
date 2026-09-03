@@ -40,14 +40,24 @@ const COST_NOTE = [
   ['', 'A material never purchased prices at zero, marked "Never purchased".'],
 ]
 
-const meta = (title, { startDate, endDate, kitchenName }) => [
+const meta = (title, { startDate, endDate, kitchenName, outletName }) => [
   ['Gastronomix Inventory Management'],
   [title],
   [],
   ['Period:', `${formatDay(startDate)} to ${formatDay(endDate)}`],
+  ...(outletName ? [['Outlet:', outletName]] : []),
   ['Cloud kitchen:', scopeLabel(kitchenName)],
   ['Generated:', new Date().toLocaleString()],
 ]
+
+/** Requisitions have no human-readable number, so the id's head stands in. */
+const shortRef = (id) => (id ? String(id).slice(0, 8) : '')
+
+const fileSlug = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'outlet'
 
 /**
  * Report 1 — item-wise consumption per outlet.
@@ -214,4 +224,209 @@ export const exportRequestedVsAllocatedExcel = (report, options) => {
   XLSX.utils.book_append_sheet(workbook, detailSheet, 'Line Detail')
 
   XLSX.writeFile(workbook, `requested-vs-allocated_${options.startDate}_to_${options.endDate}.xlsx`)
+}
+
+// ---------------------------------------------------------------------------
+// Single-outlet workbooks
+//
+// Same numbers, laid out for a reader who already knows which outlet they are
+// looking at. The outlet and kitchen move up into the header instead of being
+// repeated down two columns of every row, and the space that frees is spent on
+// the cuts one outlet actually makes possible: a dated requisition-by-
+// requisition roll-up, and each material's share of the outlet's spend.
+
+/**
+ * Report 1, one outlet — items on one sheet, its requisitions on another.
+ */
+export const exportOutletConsumptionExcel = (report, options) => {
+  const workbook = XLSX.utils.book_new()
+  const meta_ = { ...options, outletName: report.outletName, kitchenName: report.kitchenName }
+
+  const summaryRows = [
+    ...meta('Item-wise Consumption Report — Single Outlet', meta_),
+    [],
+    ['Requisitions raised:', report.requisitionCount],
+    ['Distinct materials:', report.items.length],
+    ['Total value:', round(report.totalAmount)],
+    [],
+    ['What this report counts'],
+    ['Consumed:', 'The quantity this outlet asked for in requisitions raised during the period.'],
+    ['', 'Requisitions still waiting to be packed are included — this is demand, not dispatch.'],
+    ['Outlet:', 'Shown as named, whether or not it is still active.'],
+    [],
+    ...COST_NOTE,
+  ]
+
+  const summarySheet = withColumnWidths(XLSX.utils.aoa_to_sheet(summaryRows), [26, 46])
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+  const shareOf = (amount) => (report.totalAmount > 0 ? round((amount / report.totalAmount) * 100) : 0)
+
+  const itemRows = [
+    ['Material', 'Code', 'Unit', 'Quantity Consumed', 'Requisitions', 'Avg Cost (incl. GST)', 'Total Amount', '% of Outlet Spend', 'Cost Basis'],
+    ...report.items.map((item) => [
+      item.name,
+      item.code,
+      item.unit,
+      round(item.quantity),
+      item.requisitionCount,
+      round(item.avgCost),
+      round(item.amount),
+      shareOf(item.amount),
+      costBasisLabel(item.costBasis),
+    ]),
+  ]
+  if (report.items.length > 0) {
+    itemRows.push([])
+    itemRows.push(['Grand Total', '', '', '', '', '', round(report.totalAmount), 100, ''])
+  }
+
+  const itemSheet = withColumnWidths(XLSX.utils.aoa_to_sheet(itemRows), [30, 14, 10, 18, 14, 20, 16, 18, 20])
+  boldHeaderRow(itemSheet)
+  XLSX.utils.book_append_sheet(workbook, itemSheet, 'Item-wise Consumption')
+
+  const requisitionRows = [
+    ['Request Date', 'Requisition', 'Supervisor', 'Status', 'Lines', 'Value'],
+    ...report.requisitions.map((requisition) => [
+      formatDay(requisition.requestDate),
+      shortRef(requisition.id),
+      requisition.supervisorName,
+      requisition.isPacked ? 'Packed' : 'Pending',
+      requisition.lineCount,
+      round(requisition.amount),
+    ]),
+  ]
+
+  const requisitionSheet = withColumnWidths(XLSX.utils.aoa_to_sheet(requisitionRows), [14, 14, 24, 12, 10, 14])
+  boldHeaderRow(requisitionSheet)
+  XLSX.utils.book_append_sheet(workbook, requisitionSheet, 'By Requisition')
+
+  XLSX.writeFile(
+    workbook,
+    `item-wise-consumption_${fileSlug(report.outletName)}_${options.startDate}_to_${options.endDate}.xlsx`
+  )
+}
+
+/**
+ * Report 2, one outlet — the difference by material, by requisition, and line
+ * by line.
+ */
+export const exportOutletRequestedVsAllocatedExcel = (report, options) => {
+  const workbook = XLSX.utils.book_new()
+  const { totals } = report
+  const meta_ = { ...options, outletName: report.outletName, kitchenName: report.kitchenName }
+
+  const summaryRows = [
+    ...meta('Requested vs Allocated Difference Report — Single Outlet', meta_),
+    [],
+    ['Requisitions compared:', totals.requisitionsCompared],
+    ['Requisitions excluded (not yet packed):', report.pendingExcluded],
+    ['Lines increased:', totals.itemsIncreased],
+    ['Lines decreased:', totals.itemsDecreased],
+    ['Value increased:', round(totals.increaseValue)],
+    ['Value decreased:', round(totals.decreaseValue)],
+    ['Net difference:', round(totals.increaseValue + totals.decreaseValue)],
+    ['Absolute difference:', round(totals.absoluteValue)],
+    [],
+    ['What this report counts'],
+    ['Difference:', 'Allocated quantity minus requested quantity, per material, per requisition.'],
+    ['Increase:', 'The purchase manager sent more than the outlet asked for.'],
+    ['Decrease:', 'The purchase manager sent less, or nothing at all.'],
+    ['Excluded:', 'Requisitions with no stock-out yet. They have no allocation to differ from,'],
+    ['', 'and counting them would read as every line having been cut to zero.'],
+    ['By Material:', 'Period totals per item across every compared requisition, including the'],
+    ['', 'materials that matched exactly — a met ask is part of the picture too.'],
+    ['By Requisition:', 'The same differences dated, so a bad week shows up as a bad week.'],
+    [],
+    ...COST_NOTE,
+  ]
+
+  const summarySheet = withColumnWidths(XLSX.utils.aoa_to_sheet(summaryRows), [40, 46])
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+  const materialRows = [
+    ['Material', 'Code', 'Unit', 'Total Requested', 'Total Allocated', 'Difference', 'Times Increased', 'Times Decreased', 'Avg Cost (incl. GST)', 'Value of Difference', 'Cost Basis'],
+    ...report.materials.map((material) => [
+      material.name,
+      material.code,
+      material.unit,
+      round(material.requested),
+      round(material.allocated),
+      round(material.difference),
+      material.timesIncreased,
+      material.timesDecreased,
+      round(material.avgCost),
+      round(material.value),
+      costBasisLabel(material.costBasis),
+    ]),
+  ]
+
+  const materialSheet = withColumnWidths(XLSX.utils.aoa_to_sheet(materialRows), [30, 14, 10, 16, 16, 12, 16, 16, 20, 20, 20])
+  boldHeaderRow(materialSheet)
+  XLSX.utils.book_append_sheet(workbook, materialSheet, 'By Material')
+
+  const requisitionRows = [
+    ['Request Date', 'Stock Out Date', 'Requisition', 'Supervisor', 'Lines Increased', 'Lines Decreased', 'Value Increased', 'Value Decreased', 'Net Difference', 'Absolute Difference'],
+    ...report.requisitions.map((requisition) => [
+      formatDay(requisition.requestDate),
+      formatDay(requisition.allocationDate),
+      shortRef(requisition.id),
+      requisition.supervisorName,
+      requisition.linesIncreased,
+      requisition.linesDecreased,
+      round(requisition.increaseValue),
+      round(requisition.decreaseValue),
+      round(requisition.netValue),
+      round(requisition.absoluteValue),
+    ]),
+  ]
+  if (report.requisitions.length > 0) {
+    requisitionRows.push([])
+    requisitionRows.push([
+      'Total',
+      '',
+      '',
+      '',
+      totals.itemsIncreased,
+      totals.itemsDecreased,
+      round(totals.increaseValue),
+      round(totals.decreaseValue),
+      round(totals.increaseValue + totals.decreaseValue),
+      round(totals.absoluteValue),
+    ])
+  }
+
+  const requisitionSheet = withColumnWidths(XLSX.utils.aoa_to_sheet(requisitionRows), [14, 14, 14, 24, 16, 16, 16, 16, 16, 18])
+  boldHeaderRow(requisitionSheet)
+  XLSX.utils.book_append_sheet(workbook, requisitionSheet, 'By Requisition')
+
+  const detailRows = [
+    ['Request Date', 'Requisition', 'Material', 'Code', 'Unit', 'Requested', 'Allocated', 'Difference', 'Avg Cost (incl. GST)', 'Value of Difference', 'Cost Basis'],
+  ]
+  report.requisitions.forEach((requisition) => {
+    requisition.details.forEach((detail) => {
+      detailRows.push([
+        formatDay(detail.requestDate),
+        shortRef(detail.requisitionId),
+        detail.name,
+        detail.code,
+        detail.unit,
+        round(detail.requested),
+        round(detail.allocated),
+        round(detail.difference),
+        round(detail.avgCost),
+        round(detail.value),
+        costBasisLabel(detail.costBasis),
+      ])
+    })
+  })
+
+  const detailSheet = withColumnWidths(XLSX.utils.aoa_to_sheet(detailRows), [14, 14, 30, 14, 10, 12, 12, 12, 20, 20, 20])
+  boldHeaderRow(detailSheet)
+  XLSX.utils.book_append_sheet(workbook, detailSheet, 'Line Detail')
+
+  XLSX.writeFile(
+    workbook,
+    `requested-vs-allocated_${fileSlug(report.outletName)}_${options.startDate}_to_${options.endDate}.xlsx`
+  )
 }

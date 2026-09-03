@@ -2,17 +2,28 @@ import { useEffect, useState, useMemo } from 'react'
 import { fetchReportCloudKitchens, fetchReportOutlets, fetchOutletVarianceCounts, fetchOutletRequisitionReportRows, fetchRequisitionVarianceDetails } from '../../lib/allocationRequests'
 import {
   defaultReportRange,
+  reportRangeForDays,
   fetchRequisitionsInRange,
   fetchAverageMaterialCosts,
   buildItemWiseConsumption,
   buildRequestedVsAllocated,
+  buildOutletConsumption,
+  buildOutletRequestedVsAllocated,
 } from '../../lib/requisitionReports'
 import {
   exportItemWiseConsumptionExcel,
   exportRequestedVsAllocatedExcel,
+  exportOutletConsumptionExcel,
+  exportOutletRequestedVsAllocatedExcel,
 } from '../../lib/requisitionReportExports'
 import { useToast } from '../../context/toastContext'
 import PaginationControls from '../../components/PaginationControls'
+import SearchableSelect from '../../components/SearchableSelect'
+
+const RANGE_PRESETS = [
+  { days: 7, label: 'Last 7 days' },
+  { days: 30, label: 'Last 30 days' },
+]
 
 const summarizeRequisitionVariance = (requisition) => {
   const requestedMap = new Map()
@@ -53,6 +64,12 @@ const AdminRequisitionsReports = () => {
   // counts in the table, and the requisitions listed when an outlet is opened.
   const [dateRange, setDateRange] = useState(defaultReportRange)
   const [downloading, setDownloading] = useState('')
+  // The downloads can be narrowed to a single outlet. Its list is fetched
+  // unfiltered and kept apart from the table's outlets below, so choosing a
+  // download scope never depends on where the table's kitchen filter happens
+  // to be sitting.
+  const [reportOutlets, setReportOutlets] = useState([])
+  const [reportOutletId, setReportOutletId] = useState('')
 
   const [selectedOutlet, setSelectedOutlet] = useState(null)
   const [requisitionsModalOpen, setRequisitionsModalOpen] = useState(false)
@@ -71,6 +88,7 @@ const AdminRequisitionsReports = () => {
 
   useEffect(() => {
     loadCloudKitchens()
+    loadReportOutlets()
   }, [])
 
   useEffect(() => {
@@ -84,6 +102,15 @@ const AdminRequisitionsReports = () => {
       setCloudKitchens(data)
     } catch (err) {
       console.error('Error loading cloud kitchens:', err)
+    }
+  }
+
+  const loadReportOutlets = async () => {
+    try {
+      const data = await fetchReportOutlets(null)
+      setReportOutlets(data)
+    } catch (err) {
+      console.error('Error loading outlets for the report picker:', err)
     }
   }
 
@@ -123,12 +150,35 @@ const AdminRequisitionsReports = () => {
     [cloudKitchens, selectedCloudKitchenId]
   )
 
+  const reportOutlet = useMemo(
+    () => reportOutlets.find((outlet) => outlet.id === reportOutletId) || null,
+    [reportOutlets, reportOutletId]
+  )
+
+  const outletOptions = useMemo(
+    () =>
+      reportOutlets.map((outlet) => ({
+        value: outlet.id,
+        label: outlet.name,
+        hint: [outlet.cloud_kitchens?.name, !outlet.is_active || outlet.deleted_at ? 'Inactive' : null]
+          .filter(Boolean)
+          .join(' · '),
+      })),
+    [reportOutlets]
+  )
+
+  const isPresetRange = (days) => {
+    const preset = reportRangeForDays(days)
+    return dateRange.startDate === preset.startDate && dateRange.endDate === preset.endDate
+  }
+
   // Both reports read the same requisitions and the same cost map, so they are
   // fetched together and folded differently. Fetching on click rather than on
   // every change of range keeps a date tweak from re-running the whole thing.
   const loadReportInputs = async () => {
     const requisitions = await fetchRequisitionsInRange({
       cloudKitchenId: selectedCloudKitchenId || null,
+      outletId: reportOutletId || null,
       ...dateRange,
     })
 
@@ -150,6 +200,37 @@ const AdminRequisitionsReports = () => {
     return { requisitions, costs }
   }
 
+  // Narrowed to one outlet the reports keep the same numbers but a different
+  // shape — see buildOutletConsumption for what changes and why.
+  const downloadForOutlet = (report, requisitions, costs) => {
+    const outletName = reportOutlet?.name || 'this outlet'
+
+    if (report === 'consumption') {
+      const built = buildOutletConsumption(requisitions, costs, reportOutletId)
+      if (!built || built.items.length === 0) {
+        toast.warning('Nothing to report', `${outletName} raised no requisitions in this period.`)
+        return
+      }
+      exportOutletConsumptionExcel(built, dateRange)
+      toast.success(
+        'Item-wise consumption downloaded',
+        `${built.requisitionCount} requisitions across ${built.items.length} materials for ${built.outletName}.`
+      )
+      return
+    }
+
+    const built = buildOutletRequestedVsAllocated(requisitions, costs, reportOutletId)
+    if (!built) {
+      toast.warning('Nothing to report', `${outletName} has no packed requisitions in this period.`)
+      return
+    }
+    exportOutletRequestedVsAllocatedExcel(built, dateRange)
+    toast.success(
+      'Difference report downloaded',
+      `${built.totals.requisitionsCompared} requisitions compared for ${built.outletName}.`
+    )
+  }
+
   const handleDownload = async (report) => {
     if (downloading) return
     if (dateRange.startDate > dateRange.endDate) {
@@ -160,6 +241,12 @@ const AdminRequisitionsReports = () => {
     setDownloading(report)
     try {
       const { requisitions, costs } = await loadReportInputs()
+
+      if (reportOutletId) {
+        downloadForOutlet(report, requisitions, costs)
+        return
+      }
+
       const options = { ...dateRange, kitchenName: selectedKitchenName }
 
       if (report === 'consumption') {
@@ -366,15 +453,39 @@ const AdminRequisitionsReports = () => {
                 className="px-4 py-2 border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={() => setDateRange(defaultReportRange())}
-                className="px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                Last 30 days
-              </button>
+            <div className="flex items-end gap-2">
+              {RANGE_PRESETS.map((preset) => (
+                <button
+                  key={preset.days}
+                  type="button"
+                  onClick={() => setDateRange(reportRangeForDays(preset.days))}
+                  className={`px-3 py-2 text-sm font-semibold border rounded-lg transition-colors ${
+                    isPresetRange(preset.days)
+                      ? 'border-accent text-accent bg-accent/10'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
             </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row lg:items-end gap-4 mt-4 pt-4 border-t border-border">
+          <div className="w-full lg:w-80">
+            <label htmlFor="report-outlet" className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+              Outlet
+            </label>
+            <SearchableSelect
+              id="report-outlet"
+              value={reportOutletId}
+              onChange={setReportOutletId}
+              options={outletOptions}
+              emptyLabel="All outlets"
+              searchPlaceholder="Search outlets by name or kitchen…"
+              noResultsLabel="No outlets match that search."
+            />
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 lg:ml-auto">
@@ -400,8 +511,19 @@ const AdminRequisitionsReports = () => {
         <p className="text-xs text-muted-foreground mt-4">
           Consumption counts what outlets asked for, priced at the weighted average of what the
           material cost to buy in this period. The difference report compares those requests against
-          what the purchase manager actually allocated, and covers packed requisitions only.
-          Both cover {selectedKitchenName || 'all cloud kitchens'} and active outlets with at least one requisition.
+          what the purchase manager actually allocated, and covers packed requisitions only.{' '}
+          {reportOutlet ? (
+            <>
+              Both downloads cover <span className="font-semibold text-foreground">{reportOutlet.name}</span>
+              {reportOutlet.cloud_kitchens?.name ? ` (${reportOutlet.cloud_kitchens.name})` : ''} only,
+              and break the period down by requisition and by material rather than by outlet.
+            </>
+          ) : (
+            <>
+              Both cover {selectedKitchenName || 'all cloud kitchens'} and active outlets with at least
+              one requisition. Pick an outlet above to download just that outlet instead.
+            </>
+          )}
         </p>
       </div>
 
