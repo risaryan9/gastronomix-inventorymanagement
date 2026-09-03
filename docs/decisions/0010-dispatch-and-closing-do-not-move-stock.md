@@ -1,7 +1,7 @@
 # 0010. The dispatch plan and the closing sheet are records; they do not move stock
 
 Date: 2026-09-03
-Status: Accepted
+Status: Accepted — **deliberately temporary, see "Where this is going"**
 
 ## Context
 
@@ -52,6 +52,47 @@ Two things about scope worth knowing:
 - **`total_returned_qty`** in the audit payload — still true, still worth
   recording. `stock_in_id` was dropped along with the stock movement; nothing
   consumed it.
+
+## Where this is going
+
+**This is a staging post, not the destination.** The intended end state is that
+the flow moves stock on its own, at both ends:
+
+- **Locking a dispatch plan issues a stock-out** for the planned quantities.
+  That is the moment the material physically leaves the kitchen for the outlets,
+  and it is the event a stock-out already models.
+- **Confirming the closing sheet issues a stock-in** for what came back —
+  roughly what `confirm_checkout_form` used to do, done properly.
+
+The reason it is manual today is not that automation is wrong. It is that the
+automatic half that existed was wrong in ways that made the numbers untrustworthy
+(the GST and zero-cost pricing above), and it was automatic on only one end —
+returns came back in without the dispatch ever having gone out, so the two never
+had to agree. Doing it by hand keeps one person accountable for the figures while
+the flow settles.
+
+**What must be true before the automation comes back:**
+
+- **Both ends land together.** A stock-in for returns without a stock-out for the
+  dispatch counts stock back onto a shelf it never left, which is the shape of
+  the bug being removed here. Ship the pair or neither.
+- **Returns price GST-inclusive**, per
+  [0003](0003-inventory-value-is-gst-inclusive.md). Returned stock is the same
+  stock that went out; it should come back at the cost it left at, not at a bare
+  `unit_cost` with GST dropped and not at zero.
+- **Returning stock is matched against what was dispatched**, not priced off
+  whatever batch happens to be newest. A return is a reversal of a specific
+  issue, and the batch it came from is knowable.
+- **The reversal path is designed first.** A plan unlocked, a sheet corrected, a
+  confirmation cancelled — each has to put the stock back. `pack_allocation_request`
+  and `cancel_allocation_packing` are the pattern to follow.
+- **Wastage stays out of it.** Wasted stock did not return; it should reduce
+  stock, or be reported as loss, but it is not a stock-in and must never be
+  folded into one.
+
+Until all of that is true, this record stands. When it changes, supersede this
+record rather than editing it — the fact that we ran the flow manually for a
+period is part of how the numbers from that period should be read.
 
 ## Alternatives
 

@@ -5,11 +5,16 @@
 // revised (with the version it discarded), plan locked by the kitchen, then the
 // outlet's returns and wastage and the confirmation that makes them official.
 //
-// ⚠️ Known gap in the data, not in this screen: `confirm_checkout_form` records
-// a confirmation without an outlet id or a correlation id, so a confirmed
-// closing cannot be tied back to the draft saves it came from, and does not
-// respond to the outlet filter. Every other event here carries both. Fixing it
-// is a two-line change to that function.
+// The gap this file used to warn about — confirmations written without an
+// outlet id or correlation id, so a confirmed closing answered neither the
+// outlet filter nor the chain of drafts behind it — was closed by
+// migrations/correlate-checkout-confirm-with-its-drafts.sql. Confirmations
+// written before that migration still carry neither and were deliberately not
+// backfilled, so an old row will still sit outside its chain.
+//
+// Note that a confirmation no longer moves stock: it records what was returned
+// and closes the sheet, and the purchase manager performs the stock-in. See
+// docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md.
 
 import AuditSubsectionPage from '../../../components/audits/AuditSubsectionPage'
 import {
