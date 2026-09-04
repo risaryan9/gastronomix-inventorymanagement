@@ -553,7 +553,10 @@ const CATALOG_FIELD_ORDER = [
   ['category', 'Category'],
   ['brand', 'Brand'],
   ['description', 'Description'],
-  ['low_stock_threshold', 'Low stock threshold'],
+  // The default, applying to every kitchen without its own. Per-kitchen
+  // values arrive as threshold_<kitchen code> keys and are labelled by the
+  // fallback below, which turns threshold_CK2 into "Threshold CK2".
+  ['low_stock_threshold', 'Low stock threshold (all kitchens)'],
   ['brand_codes', 'Brand codes'],
   ['is_requisitionable', 'Requisitionable'],
   ['is_active', 'Active'],

@@ -3,6 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 import PaginationControls from '../../components/PaginationControls'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
+import {
+  fetchMaterialThresholds,
+  fetchThresholdKitchens,
+  loadKitchenThresholds,
+  parseThresholdField,
+  saveMaterialThresholds,
+} from '../../lib/stockThresholds'
 
 // Unit options
 const UNITS = ['nos', 'kg', 'gm', 'liter', 'packets', 'btl']
@@ -103,6 +110,14 @@ const Materials = ({ isAdminMode = false }) => {
   const [sortDirection, setSortDirection] = useState('asc')
   const [applyToAllBrands, setApplyToAllBrands] = useState(true)
   const [isInternalProduction, setIsInternalProduction] = useState(false)
+  // Per-kitchen low-stock thresholds. `thresholdKitchens` is the kitchens the
+  // form draws a field for; `kitchenThresholds` holds those fields as strings,
+  // where '' means "follow the All cloud kitchens value" and '0' does not.
+  // `originalKitchenThresholds` is what was stored when the modal opened, kept
+  // only so the audit event can say what actually moved.
+  const [thresholdKitchens, setThresholdKitchens] = useState([])
+  const [kitchenThresholds, setKitchenThresholds] = useState({})
+  const [originalKitchenThresholds, setOriginalKitchenThresholds] = useState({})
 
   // Ensure existing units from DB (even if not in UNITS list)
   // still show up and are selectable when editing a material.
@@ -161,8 +176,24 @@ const Materials = ({ isAdminMode = false }) => {
         }))
       }
 
-      setMaterials(materialsWithLastPrice)
-      setFilteredMaterials(materialsWithLastPrice)
+      // The Low Stock Threshold column shows the number that applies to the
+      // person reading it — their own kitchen's, where the admin has set one.
+      // In admin mode there is no single kitchen to be right about, so the
+      // column falls back to the default and the per-kitchen values are shown
+      // on the material's own form.
+      const thresholds = await loadKitchenThresholds(
+        isAdminMode ? null : session?.cloud_kitchen_id
+      )
+      const materialsWithThresholds = materialsWithLastPrice.map((material) => ({
+        ...material,
+        effective_low_stock_threshold: thresholds.get(
+          material.id,
+          material.low_stock_threshold
+        ),
+      }))
+
+      setMaterials(materialsWithThresholds)
+      setFilteredMaterials(materialsWithThresholds)
     } catch (err) {
       console.error('Error fetching materials:', err)
       setError('Failed to load materials. Please try again.')
@@ -186,9 +217,23 @@ const Materials = ({ isAdminMode = false }) => {
     }
   }
 
+  // Only the admin form draws per-kitchen threshold fields, so only admin mode
+  // pays for the lookup.
+  const fetchKitchens = async () => {
+    if (!isAdminMode) return
+    try {
+      setThresholdKitchens(await fetchThresholdKitchens())
+    } catch (err) {
+      console.error('Error fetching cloud kitchens:', err)
+    }
+  }
+
+  // Mount-once load: the catalog, the vendor list and (in admin mode) the
+  // cloud kitchens the threshold fields are drawn for.
   useEffect(() => {
     fetchMaterials()
     fetchVendors()
+    fetchKitchens()
   }, [])
 
   // Filter materials based on search and filters
@@ -246,8 +291,8 @@ const Materials = ({ isAdminMode = false }) => {
       const nameB = (b.name || '').toLowerCase()
       cmp = nameA.localeCompare(nameB)
     } else if (sortBy === 'low_stock_threshold') {
-      const tA = parseFloat(a.low_stock_threshold || 0)
-      const tB = parseFloat(b.low_stock_threshold || 0)
+      const tA = parseFloat(a.effective_low_stock_threshold || 0)
+      const tB = parseFloat(b.effective_low_stock_threshold || 0)
       cmp = tA - tB
     }
     return sortDirection === 'asc' ? cmp : -cmp
@@ -416,6 +461,8 @@ const Materials = ({ isAdminMode = false }) => {
       brand_codes: null,
       is_requisitionable: false
     })
+    setKitchenThresholds({})
+    setOriginalKitchenThresholds({})
     setError(null)
     setIsModalOpen(true)
     setShowConfirmModal(false)
@@ -424,7 +471,7 @@ const Materials = ({ isAdminMode = false }) => {
   }
 
   // Open modal for editing material
-  const handleEdit = (material) => {
+  const handleEdit = async (material) => {
     if (!isAdminMode) return
     setEditingMaterial(material)
 
@@ -473,6 +520,32 @@ const Materials = ({ isAdminMode = false }) => {
     setShowConfirmModal(false)
     setIsInternalProduction(existingIsInternalProduction)
     setApplyToAllBrands(!existingBrandCodes)
+
+    // The stored per-kitchen overrides, loaded after the modal is on screen so
+    // a click on Edit is never waiting on a query. Blank fields until it
+    // lands, which is also what "follows the default" looks like.
+    //
+    // originalKitchenThresholds is null until the read succeeds, and the save
+    // handler writes no thresholds while it is: honouring blank fields the
+    // admin never filled in — because the read failed, or because they saved
+    // before it landed — would delete every override the material has.
+    setKitchenThresholds({})
+    setOriginalKitchenThresholds(null)
+    try {
+      const storedThresholds = await fetchMaterialThresholds(material.id)
+      const fields = {}
+      Object.entries(storedThresholds).forEach(([kitchenId, value]) => {
+        fields[kitchenId] = String(value)
+      })
+      setKitchenThresholds(fields)
+      setOriginalKitchenThresholds(storedThresholds)
+    } catch (err) {
+      console.error('Error fetching per-kitchen thresholds:', err)
+      setAlert({
+        type: 'warning',
+        message: 'Could not load the per-kitchen thresholds for this material. They are shown blank and will be left untouched when you save.',
+      })
+    }
   }
 
   // Toggle a single brand code, enforcing rules:
@@ -555,6 +628,17 @@ const Materials = ({ isAdminMode = false }) => {
         return
       }
     }
+    // Per-kitchen thresholds: blank is allowed and means "follow the default",
+    // but a value that is not a non-negative number is not.
+    const badKitchen = thresholdKitchens.find(
+      (kitchen) => parseThresholdField(kitchenThresholds[kitchen.id]) === undefined
+    )
+    if (badKitchen) {
+      setError(
+        `The low stock threshold for ${badKitchen.name} must be a number of 0 or more, or left blank to follow the default.`
+      )
+      return
+    }
 
     // For new materials, show confirmation modal
     if (!editingMaterial) {
@@ -577,6 +661,32 @@ const Materials = ({ isAdminMode = false }) => {
       const session = getSession()
       if (!session?.id) {
         throw new Error('Session expired. Please login again.')
+      }
+
+      // Per-kitchen thresholds, as { [kitchenId]: number | null } — null being
+      // a cleared field, which deletes the override and returns the kitchen to
+      // the default. Only kitchens the form drew a field for appear here, so a
+      // kitchen deactivated since the override was set keeps it.
+      const thresholdUpdates = {}
+      thresholdKitchens.forEach((kitchen) => {
+        thresholdUpdates[kitchen.id] = parseThresholdField(kitchenThresholds[kitchen.id])
+      })
+      // Null means the stored overrides could not be read when the form opened
+      // (see handleEdit); write nothing rather than delete what we cannot see.
+      const thresholdsEditable = originalKitchenThresholds !== null
+
+      // The audit payload names kitchens by code, so a reader sees
+      // "Threshold CK2: — → 15" without having to resolve a uuid. A kitchen
+      // that follows the default is logged as null, not as the inherited
+      // number, which would read as a setting nobody made.
+      const thresholdAuditValues = (byKitchen) => {
+        const values = {}
+        thresholdKitchens.forEach((kitchen) => {
+          const value = byKitchen?.[kitchen.id]
+          values[`threshold_${kitchen.code}`] =
+            value === undefined || value === null ? null : value
+        })
+        return values
       }
 
       const brandCodesToSave = isInternalProduction
@@ -616,6 +726,12 @@ const Materials = ({ isAdminMode = false }) => {
 
         if (updateError) throw updateError
 
+        // Thrown errors surface to the admin and leave the form open. Retrying
+        // is safe: the material update is idempotent and so is the upsert.
+        if (thresholdsEditable) {
+          await saveMaterialThresholds(editingMaterial.id, thresholdUpdates)
+        }
+
         // Create audit log entry for material update
         const { error: auditError } = await supabase.rpc('log_raw_material_updated', {
           p_acting_user_id: session.id,
@@ -628,6 +744,7 @@ const Materials = ({ isAdminMode = false }) => {
             brand: editingMaterial.brand,
             description: editingMaterial.description,
             low_stock_threshold: editingMaterial.low_stock_threshold,
+            ...thresholdAuditValues(originalKitchenThresholds),
             brand_codes: editingMaterial.brand_codes || null,
             is_requisitionable: editingMaterial.is_requisitionable === true
           },
@@ -639,6 +756,7 @@ const Materials = ({ isAdminMode = false }) => {
             brand: updateData.brand,
             description: updateData.description,
             low_stock_threshold: updateData.low_stock_threshold,
+            ...thresholdAuditValues(thresholdsEditable ? thresholdUpdates : originalKitchenThresholds),
             brand_codes: updateData.brand_codes,
             is_requisitionable: updateData.is_requisitionable
           }
@@ -678,6 +796,8 @@ const Materials = ({ isAdminMode = false }) => {
 
         if (insertError) throw insertError
 
+        await saveMaterialThresholds(newMaterial.id, thresholdUpdates)
+
         // Create audit log entry for new material
         const { error: auditError } = await supabase.rpc('log_raw_material_created', {
           p_acting_user_id: session.id,
@@ -690,6 +810,7 @@ const Materials = ({ isAdminMode = false }) => {
             brand: newMaterial.brand,
             description: newMaterial.description,
             low_stock_threshold: newMaterial.low_stock_threshold,
+            ...thresholdAuditValues(thresholdUpdates),
             brand_codes: newMaterial.brand_codes || null,
             is_requisitionable: newMaterial.is_requisitionable === true
           }
@@ -899,8 +1020,8 @@ const Materials = ({ isAdminMode = false }) => {
                           : '—'}
                       </td>
                       <td className="px-4 py-3 text-foreground">
-                        {material.low_stock_threshold !== null && material.low_stock_threshold !== undefined
-                          ? parseFloat(material.low_stock_threshold).toFixed(2)
+                        {material.effective_low_stock_threshold !== null && material.effective_low_stock_threshold !== undefined
+                          ? parseFloat(material.effective_low_stock_threshold).toFixed(2)
                           : '0.00'}
                       </td>
                       <td className="px-4 py-3">
@@ -1278,22 +1399,76 @@ const Materials = ({ isAdminMode = false }) => {
                     </div>
                   )}
 
-                  {/* Low Stock Threshold */}
+                  {/* Low Stock Threshold — one default plus one field per cloud kitchen */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
                       Low Stock Threshold ({formData.unit || 'unit'})
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={formData.low_stock_threshold}
-                      onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
-                      className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
-                      disabled={saving}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Alert will trigger when inventory quantity falls below this value
+                    <p className="text-xs text-muted-foreground mb-3">
+                      A material counts as low stock at or below this quantity. Set it once
+                      for all cloud kitchens, and give a kitchen its own number where it
+                      needs one — leave a kitchen blank and it follows the All cloud
+                      kitchens value.
+                    </p>
+
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label
+                          htmlFor="threshold-all"
+                          className="text-sm text-foreground sm:w-56 shrink-0 font-semibold"
+                        >
+                          All cloud kitchens
+                        </label>
+                        <input
+                          id="threshold-all"
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          value={formData.low_stock_threshold}
+                          onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
+                          className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                          disabled={saving}
+                        />
+                      </div>
+
+                      {thresholdKitchens.map((kitchen) => (
+                        <div
+                          key={kitchen.id}
+                          className="flex flex-col sm:flex-row sm:items-center gap-2"
+                        >
+                          <label
+                            htmlFor={`threshold-${kitchen.id}`}
+                            className="text-sm text-muted-foreground sm:w-56 shrink-0"
+                          >
+                            {kitchen.name}
+                          </label>
+                          <input
+                            id={`threshold-${kitchen.id}`}
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={kitchenThresholds[kitchen.id] ?? ''}
+                            onChange={(e) =>
+                              setKitchenThresholds({
+                                ...kitchenThresholds,
+                                [kitchen.id]: e.target.value,
+                              })
+                            }
+                            placeholder={
+                              formData.low_stock_threshold
+                                ? `Follows all — ${formData.low_stock_threshold}`
+                                : 'Follows all cloud kitchens'
+                            }
+                            className="w-full bg-input border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                            disabled={saving}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Entering 0 for a kitchen is not the same as leaving it blank: 0 means
+                      that kitchen never flags this material as low.
                     </p>
                   </div>
 

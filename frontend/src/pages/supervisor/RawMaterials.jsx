@@ -7,6 +7,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { getBusinessDate } from '../../lib/businessDate'
+import { loadKitchenThresholds } from '../../lib/stockThresholds'
 
 // All available categories
 const CATEGORIES = [
@@ -48,6 +49,8 @@ const RawMaterials = () => {
       try {
         setLoading(true)
         
+        const session = getSession()
+
         const { data, error } = await supabase
           .from('raw_materials')
           .select('*')
@@ -60,7 +63,22 @@ const RawMaterials = () => {
           return
         }
 
-        setRawMaterials(data || [])
+        // The threshold shown here is the one that applies to *this* kitchen:
+        // its own override where the admin set one, the catalog default
+        // otherwise. A supervisor reading a company-wide number their own
+        // low-stock badges disagree with would have no way to tell which is
+        // the one their outlet is judged by.
+        const thresholds = await loadKitchenThresholds(session?.cloud_kitchen_id)
+
+        setRawMaterials(
+          (data || []).map((material) => ({
+            ...material,
+            effective_low_stock_threshold: thresholds.get(
+              material.id,
+              material.low_stock_threshold
+            ),
+          }))
+        )
       } catch (err) {
         console.error('Error fetching data:', err)
         setAlert({ type: 'error', message: 'Failed to fetch raw materials' })
@@ -120,7 +138,7 @@ const RawMaterials = () => {
         material.category || 'N/A',
         material.unit || 'N/A',
         material.description || 'N/A',
-        parseFloat(material.low_stock_threshold || 0).toFixed(2),
+        parseFloat(material.effective_low_stock_threshold || 0).toFixed(2),
         material.is_active ? 'Active' : 'Inactive'
       ]
     })
@@ -179,7 +197,7 @@ const RawMaterials = () => {
           material.category || 'N/A',
           material.unit || 'N/A',
           material.description || 'N/A',
-          parseFloat(material.low_stock_threshold || 0).toFixed(2),
+          parseFloat(material.effective_low_stock_threshold || 0).toFixed(2),
           material.is_active ? 'Active' : 'Inactive'
         ]
       })
@@ -257,7 +275,7 @@ const RawMaterials = () => {
           material.category || 'N/A',
           material.unit || 'N/A',
           (material.description || 'N/A').substring(0, 30),
-          parseFloat(material.low_stock_threshold || 0).toFixed(2),
+          parseFloat(material.effective_low_stock_threshold || 0).toFixed(2),
           material.is_active ? 'Active' : 'Inactive'
         ]
       })
@@ -460,7 +478,7 @@ const RawMaterials = () => {
                       <div>
                         <p className="text-xs text-muted-foreground mb-1">Low Stock Threshold</p>
                         <p className="text-base font-semibold text-foreground">
-                          {parseFloat(material.low_stock_threshold || 0).toFixed(2)} {material.unit}
+                          {parseFloat(material.effective_low_stock_threshold || 0).toFixed(2)} {material.unit}
                         </p>
                       </div>
                     </div>
@@ -511,7 +529,7 @@ const RawMaterials = () => {
                           {material.description || 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {parseFloat(material.low_stock_threshold || 0).toFixed(2)} {material.unit}
+                          {parseFloat(material.effective_low_stock_threshold || 0).toFixed(2)} {material.unit}
                         </td>
                         <td className="px-4 py-3">
                           {material.is_active ? (

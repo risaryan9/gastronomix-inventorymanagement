@@ -15,6 +15,7 @@ import {
   gstInclusiveUnitCost,
   onlyActiveMaterials,
 } from '../../lib/inventoryValuation'
+import { loadKitchenThresholds } from '../../lib/stockThresholds'
 
 // All available categories (matching Materials.jsx)
 const CATEGORIES = [
@@ -120,6 +121,12 @@ const Inventory = () => {
         return
       }
 
+      // This kitchen's threshold overrides. Resolved once, below, into
+      // effective_low_stock_threshold on every row — the rest of this page
+      // reads that and never the catalog default, so the badge, the filter,
+      // the sort and all three exports cannot drift apart.
+      const thresholds = await loadKitchenThresholds(session.cloud_kitchen_id)
+
       const rawMaterialIds = inventoryData.map(item => item.raw_material_id)
       const { data: batchesData } = await supabase
         .from('stock_in_batches')
@@ -177,6 +184,10 @@ const Inventory = () => {
 
         return {
           ...item,
+          effective_low_stock_threshold: thresholds.get(
+            item.raw_material_id,
+            item.raw_materials?.low_stock_threshold
+          ),
           fifo_total_value: valuation.totalValue,
           fifo_average_cost: valuation.averageCost,
           last_unit_cost: latestPriceByMaterialId.get(item.raw_material_id) ?? null
@@ -185,7 +196,7 @@ const Inventory = () => {
 
       const stockStatusOrder = (item) => {
         const qty = parseFloat(item.quantity) || 0
-        const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+        const threshold = parseFloat(item.effective_low_stock_threshold || 0)
         if (qty === 0) return 0
         if (qty <= threshold) return 1
         return 2
@@ -349,9 +360,9 @@ const Inventory = () => {
     // Type filter
     const matchesType = typeFilter.includes('all') || typeFilter.includes(material.material_type)
 
-    // Stock level filter - use low_stock_threshold from raw_materials
+    // Stock level filter - this kitchen's effective threshold, resolved in fetchInventory
     let matchesStockLevel = true
-    const lowStockThreshold = parseFloat(material.low_stock_threshold || 0)
+    const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
     const quantity = parseFloat(item.quantity) || 0
 
     if (!stockLevelFilter.includes('all')) {
@@ -368,7 +379,7 @@ const Inventory = () => {
   // Status order for default sort: no stock (0), low stock (1), in stock (2)
   const getStatusOrder = (item) => {
     const qty = parseFloat(item.quantity) || 0
-    const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+    const threshold = parseFloat(item.effective_low_stock_threshold || 0)
     if (qty === 0) return 0
     if (qty <= threshold) return 1
     return 2
@@ -401,8 +412,8 @@ const Inventory = () => {
       const qB = parseFloat(b.quantity) || 0
       cmp = qA - qB
     } else if (sortBy === 'low_stock_threshold') {
-      const tA = parseFloat(a.raw_materials?.low_stock_threshold || 0)
-      const tB = parseFloat(b.raw_materials?.low_stock_threshold || 0)
+      const tA = parseFloat(a.effective_low_stock_threshold || 0)
+      const tB = parseFloat(b.effective_low_stock_threshold || 0)
       cmp = tA - tB
     } else if (sortBy === 'material') {
       const nameA = (a.raw_materials?.name || '').toLowerCase()
@@ -427,7 +438,7 @@ const Inventory = () => {
   const stats = {
     totalItems: inventory.length,
     lowStockItems: inventory.filter(item => {
-      const lowStockThreshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+      const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
       return item.quantity <= lowStockThreshold
     }).length,
     // Total value calculated from FIFO batches (quantity_remaining * unit_cost)
@@ -443,7 +454,7 @@ const Inventory = () => {
     const headers = ['Type', 'Material Name', 'Last Price', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)']
     const rows = sortedInventory.map(item => {
       const material = item.raw_materials
-      const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
+      const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
       const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
       const isOutOfStock = item.quantity === 0
       const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
@@ -528,7 +539,7 @@ const Inventory = () => {
       ['Type', 'Material Name', 'Last Price', 'Category', 'Quantity', 'Unit', 'Low Stock Threshold', 'Status', 'Avg Cost per Unit', 'Total Value (FIFO)'],
       ...sortedInventory.map(item => {
         const material = item.raw_materials
-        const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
+        const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
         const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
         const isOutOfStock = item.quantity === 0
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
@@ -639,7 +650,7 @@ const Inventory = () => {
       // Inventory Table
       const tableData = sortedInventory.map(item => {
         const material = item.raw_materials
-        const lowStockThreshold = parseFloat(material?.low_stock_threshold || 0)
+        const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
         const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
         const isOutOfStock = item.quantity === 0
         const status = isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'
@@ -920,7 +931,7 @@ const Inventory = () => {
                     const material = item.raw_materials
                     if (!material) return null
 
-                    const lowStockThreshold = parseFloat(material.low_stock_threshold || 0)
+                    const lowStockThreshold = parseFloat(item.effective_low_stock_threshold || 0)
                     const isLowStock = item.quantity > 0 && item.quantity <= lowStockThreshold
                     const isOutOfStock = item.quantity === 0
 

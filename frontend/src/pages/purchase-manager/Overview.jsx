@@ -8,6 +8,7 @@ import {
   batchValue,
   onlyActiveMaterials,
 } from '../../lib/inventoryValuation'
+import { loadKitchenThresholds } from '../../lib/stockThresholds'
 
 const Overview = () => {
   const [stats, setStats] = useState({
@@ -61,7 +62,8 @@ const Overview = () => {
         batchesResult,
         pendingAllocationsResult,
         outletsResult,
-        supervisorsResult
+        supervisorsResult,
+        thresholds
       ] = await Promise.all([
         // Inventory data with raw material details (for low stock and total materials count)
         onlyActiveMaterials(
@@ -139,19 +141,25 @@ const Overview = () => {
           .eq('role', 'supervisor')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .eq('is_active', true)
-          .is('deleted_at', null)
+          .is('deleted_at', null),
+
+        // This kitchen's own low-stock thresholds, falling back to the
+        // catalog default per material.
+        loadKitchenThresholds(session.cloud_kitchen_id)
       ])
 
       // Calculate total materials (unique materials in inventory)
       const totalMaterials = inventoryResult.data ? new Set(inventoryResult.data.map(item => item.raw_material_id)).size : 0
 
-      // Calculate low stock items from inventory (using raw_materials.low_stock_threshold)
+      // Calculate low stock items from inventory, using this kitchen's
+      // threshold for each material where one is set and the catalog default
+      // otherwise (see lib/stockThresholds.js).
       // Includes both low-stock (> 0 and <= threshold) and no-stock (quantity === 0) items
       let lowStockItems = 0
       if (inventoryResult.data) {
         inventoryResult.data.forEach(item => {
           const quantity = parseFloat(item.quantity) || 0
-          const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+          const threshold = thresholds.get(item.raw_material_id, item.raw_materials?.low_stock_threshold)
           
           if (quantity === 0) {
             lowStockItems++

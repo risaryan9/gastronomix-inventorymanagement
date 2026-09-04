@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 import { getBusinessDate } from '../lib/businessDate'
 import { onlyActiveMaterials } from '../lib/inventoryValuation'
+import { loadKitchenThresholds } from '../lib/stockThresholds'
 
 const PurchaseManagerDashboard = () => {
   const [session, setSession] = useState(null)
@@ -41,7 +42,7 @@ const PurchaseManagerDashboard = () => {
       try {
         const todayStr = getBusinessDate()
 
-        const [pendingAllocationsResult, inventoryResult] = await Promise.all([
+        const [pendingAllocationsResult, inventoryResult, thresholds] = await Promise.all([
           supabase
             .from('allocation_requests')
             .select('id')
@@ -60,7 +61,10 @@ const PurchaseManagerDashboard = () => {
                 )
               `)
               .eq('cloud_kitchen_id', currentSession.cloud_kitchen_id)
-          )
+          ),
+          // This kitchen's thresholds, not the catalog defaults — the badge has
+          // to agree with the Inventory page the user lands on when they tap it.
+          loadKitchenThresholds(currentSession.cloud_kitchen_id)
         ])
 
         const pendingAllocationsToday = pendingAllocationsResult.data?.length || 0
@@ -71,7 +75,10 @@ const PurchaseManagerDashboard = () => {
         if (inventoryResult.data) {
           inventoryResult.data.forEach(item => {
             const quantity = parseFloat(item.quantity) || 0
-            const threshold = parseFloat(item.raw_materials?.low_stock_threshold || 0)
+            const threshold = thresholds.get(
+              item.raw_material_id,
+              item.raw_materials?.low_stock_threshold
+            )
 
             if (quantity === 0) {
               noStock++

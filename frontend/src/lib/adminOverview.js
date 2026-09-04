@@ -25,6 +25,7 @@ import {
   batchValue,
   onlyActiveMaterials,
 } from './inventoryValuation'
+import { loadAllKitchenThresholds } from './stockThresholds'
 
 // Batches still holding stock this long after receipt are capital sitting idle.
 const DEAD_STOCK_AFTER_DAYS = 60
@@ -168,7 +169,18 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
     Date.now() - DEAD_STOCK_AFTER_DAYS * 24 * 60 * 60 * 1000
   ).toISOString()
 
-  const [kitchens, outlets, users, batches, inventory, stockIns, previousStockIns, stockOuts, pending] =
+  const [
+    kitchens,
+    outlets,
+    users,
+    batches,
+    inventory,
+    stockIns,
+    previousStockIns,
+    stockOuts,
+    pending,
+    thresholds,
+  ] =
     await Promise.all([
       fetchAll(() =>
         supabase
@@ -197,7 +209,9 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
         onlyActiveMaterials(
           supabase
             .from('inventory')
-            .select('cloud_kitchen_id, quantity, raw_materials!inner(low_stock_threshold)')
+            .select(
+              'cloud_kitchen_id, raw_material_id, quantity, raw_materials!inner(low_stock_threshold)'
+            )
         )
       ),
       fetchAll(() =>
@@ -224,6 +238,10 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
       fetchAll(() =>
         supabase.from('allocation_requests').select('cloud_kitchen_id').eq('is_packed', false)
       ),
+      // Every kitchen's threshold overrides at once — this screen counts low
+      // stock for all of them side by side, and each kitchen may answer
+      // differently for the same material.
+      loadAllKitchenThresholds(),
     ])
 
   const byKitchen = new Map()
@@ -242,9 +260,15 @@ export const fetchCloudKitchenOverview = async ({ from, to }) => {
   // Matches the purchase manager dashboard's definition so the two never
   // disagree: nothing on hand is "out", some on hand but at or under the
   // threshold is "low". A material with no threshold set can only ever be out.
+  // The threshold is the one this kitchen was given, which is why two kitchens
+  // can hold the same quantity of the same material and only one count as low.
   inventory.forEach((row) => {
     const quantity = num(row.quantity)
-    const threshold = num(row.raw_materials?.low_stock_threshold)
+    const threshold = thresholds.get(
+      row.raw_material_id,
+      row.cloud_kitchen_id,
+      row.raw_materials?.low_stock_threshold
+    )
     addTo(byKitchen, row.cloud_kitchen_id, (m) => {
       if (quantity <= 0) m.outOfStock += 1
       else if (quantity <= threshold) m.lowStock += 1

@@ -20,6 +20,7 @@ import {
   gstInclusiveUnitCost,
   onlyActiveMaterials,
 } from './inventoryValuation'
+import { loadKitchenThresholds } from './stockThresholds'
 
 const DEAD_STOCK_AFTER_DAYS = 60
 const DAILY_BUCKET_MAX_DAYS = 31
@@ -107,7 +108,7 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
     Date.now() - DEAD_STOCK_AFTER_DAYS * 24 * 60 * 60 * 1000
   ).toISOString()
 
-  const [outlets, batches, inventory, stockIns, stockOuts, pending] = await Promise.all([
+  const [outlets, batches, inventory, stockIns, stockOuts, pending, thresholds] = await Promise.all([
     fetchAllRows(() =>
       supabase
         .from('outlets')
@@ -131,7 +132,7 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
       onlyActiveMaterials(
         supabase
           .from('inventory')
-          .select('quantity, raw_materials!inner(low_stock_threshold)')
+          .select('raw_material_id, quantity, raw_materials!inner(low_stock_threshold)')
           .eq('cloud_kitchen_id', kitchenId)
       )
     ),
@@ -158,6 +159,7 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
         .eq('cloud_kitchen_id', kitchenId)
         .eq('is_packed', false)
     ),
+    loadKitchenThresholds(kitchenId),
   ])
 
   let inventoryValue = 0
@@ -186,8 +188,13 @@ export const fetchKitchenSummary = async (kitchenId, { from, to }) => {
 
   let outOfStock = 0
   let lowStock = 0
+  // This kitchen's own thresholds, which may differ from the catalog default
+  // and from what the kitchen next door counts as low.
   inventory.forEach((row) => {
-    const status = statusOf(num(row.quantity), num(row.raw_materials?.low_stock_threshold))
+    const status = statusOf(
+      num(row.quantity),
+      thresholds.get(row.raw_material_id, row.raw_materials?.low_stock_threshold)
+    )
     if (status === STOCK_STATUS.OUT) outOfStock += 1
     else if (status === STOCK_STATUS.LOW) lowStock += 1
   })
