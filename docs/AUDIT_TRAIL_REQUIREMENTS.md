@@ -824,7 +824,7 @@
   ticket.
 - **Out of scope by design:** all Admin pages
   (`AdminUsers`, `AdminOutlets`, `AdminVendors`, `AdminOperators`,
-  `AdminRecipes`, `AdminBrandDispatch`, `AdminFranchiseCloning`,
+  `AdminServiceKits`, `AdminBrandDispatch`, `AdminFranchiseCloning`,
   `AdminRequisitionsReports`) — these are Admin actions. Also excluded:
   `supervisor/Inventory.jsx`, `supervisor/RawMaterials.jsx`,
   `supervisor/Allocations.jsx` — present in the repo but **not routed or imported**

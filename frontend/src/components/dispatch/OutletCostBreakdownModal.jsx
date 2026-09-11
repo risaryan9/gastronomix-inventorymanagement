@@ -42,7 +42,7 @@ const OutletCostBreakdownModal = ({
               </p>
             ) : null}
             <p className="text-[10px] lg:text-[11px] text-muted-foreground mt-1">
-              Latest batch unit cost × quantity for finished materials only (recipe ingredients excluded).
+              Latest batch unit cost × quantity for finished materials only (service kit materials excluded).
             </p>
           </div>
           <button

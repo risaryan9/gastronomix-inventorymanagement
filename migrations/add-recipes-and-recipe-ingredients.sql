@@ -1,3 +1,11 @@
+-- SUPERSEDED. These tables were renamed by
+-- migrations/rename-recipes-to-service-kits.sql: `recipes` is now
+-- `service_kits` and `recipe_ingredients` is now `service_kit_items`. The
+-- feature never was a bill of materials — it is what an outlet needs alongside
+-- one unit of a finished product to serve it. This file is left as applied, as
+-- the record of what was originally created; do not run it against a database
+-- that already has the rename.
+--
 -- Migration: Add recipes and recipe_ingredients tables
 -- Enables finished products to have recipes that automatically expand into raw/semi-finished ingredients in dispatch plans
 -- =====================================================================

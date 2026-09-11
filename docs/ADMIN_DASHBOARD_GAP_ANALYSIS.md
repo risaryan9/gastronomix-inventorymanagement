@@ -17,7 +17,7 @@ The sidebar has 6 groups and 17 sub-sections. Fourteen are built; **three are st
 | Overview → **Cloud Kitchen Overview** | ✅ built — KPI strip, kitchen cards, cross-kitchen charts |
 | Overview → **Kitchen Wise Overview** | ✅ built — per-kitchen KPIs, analytics, ledgers, outlets |
 | Overview → Outlets | ✅ |
-| Operations → Materials / Vendors / Recipes / Dispatch Brands | ✅ |
+| Operations → Materials / Vendors / Service Kits / Dispatch Brands | ✅ |
 | People → Users / Operators | ✅ |
 | Reports → Requisitions Reports | ✅ |
 | Reports → **Sales** | ❌ placeholder — genuinely blocked, see §4F |

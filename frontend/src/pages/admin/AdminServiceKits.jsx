@@ -1,13 +1,26 @@
+// Admin CRUD for service kits.
+//
+// A service kit is what an outlet needs alongside one unit of a finished
+// product in order to serve it — the butter it is cooked in, the chutney and
+// onions that go out with it. Dispatch planning reads the active kit for a
+// finished product and auto-fills those companion materials at their per-unit
+// quantity (see DispatchExecutiveDashboard.handleQuantityChange).
+//
+// This is deliberately NOT a bill of materials. It says nothing about how the
+// product is made or what it costs to make; it is a packing rule. The table was
+// called `recipes` until migrations/rename-recipes-to-service-kits.sql, which
+// explains the distinction at length.
+
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../context/toastContext'
 import { useConfirm } from '../../context/confirmContext'
 
-const AdminRecipes = () => {
+const AdminServiceKits = () => {
   const toast = useToast()
   const confirm = useConfirm()
 
-  const [recipes, setRecipes] = useState([])
+  const [serviceKits, setServiceKits] = useState([])
   const [finishedProducts, setFinishedProducts] = useState([])
   const [allMaterials, setAllMaterials] = useState([])
   const [loading, setLoading] = useState(true)
@@ -15,23 +28,23 @@ const AdminRecipes = () => {
   const [listSearch, setListSearch] = useState('')
 
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingRecipe, setEditingRecipe] = useState(null)
+  const [editingKit, setEditingKit] = useState(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [formData, setFormData] = useState({
     finished_product_id: '',
-    recipe_name: '',
+    kit_name: '',
     is_active: true,
-    ingredients: []
+    items: []
   })
 
   const resetForm = () => {
-    setEditingRecipe(null)
+    setEditingKit(null)
     setFormData({
       finished_product_id: '',
-      recipe_name: '',
+      kit_name: '',
       is_active: true,
-      ingredients: []
+      items: []
     })
     setFormError('')
   }
@@ -70,108 +83,108 @@ const AdminRecipes = () => {
     }
   }
 
-  const fetchRecipes = async () => {
+  const fetchServiceKits = async () => {
     try {
       setLoading(true)
       setError('')
-      
-      const { data: recipesData, error: recipesError } = await supabase
-        .from('recipes')
+
+      const { data: kitsData, error: kitsError } = await supabase
+        .from('service_kits')
         .select(`
           *,
-          finished_product:raw_materials!recipes_finished_product_fk(id, name, code, unit)
+          finished_product:raw_materials!service_kits_finished_product_fk(id, name, code, unit)
         `)
         .order('created_at', { ascending: false })
 
-      if (recipesError) throw recipesError
+      if (kitsError) throw kitsError
 
-      const { data: ingredientsData, error: ingredientsError } = await supabase
-        .from('recipe_ingredients')
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('service_kit_items')
         .select(`
           *,
-          ingredient:raw_materials!recipe_ingredients_material_fk(id, name, code, unit, material_type)
+          material:raw_materials!service_kit_items_material_fk(id, name, code, unit, material_type)
         `)
         .order('sort_order')
 
-      if (ingredientsError) throw ingredientsError
+      if (itemsError) throw itemsError
 
-      const recipesWithIngredients = (recipesData || []).map(recipe => ({
-        ...recipe,
-        ingredients: (ingredientsData || []).filter(ing => ing.recipe_id === recipe.id)
+      const kitsWithItems = (kitsData || []).map(kit => ({
+        ...kit,
+        items: (itemsData || []).filter(item => item.service_kit_id === kit.id)
       }))
 
-      setRecipes(recipesWithIngredients)
+      setServiceKits(kitsWithItems)
     } catch (err) {
-      console.error('Error fetching recipes:', err)
-      setError('Failed to load recipes. Please try again.')
+      console.error('Error fetching service kits:', err)
+      setError('Failed to load service kits. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchRecipes()
+    fetchServiceKits()
     fetchFinishedProducts()
     fetchAllMaterials()
   }, [])
 
-  const filteredRecipes = useMemo(() => {
-    return recipes.filter((recipe) => {
+  const filteredKits = useMemo(() => {
+    return serviceKits.filter((kit) => {
       if (!listSearch.trim()) return true
       const q = listSearch.toLowerCase()
-      const name = (recipe.recipe_name || '').toLowerCase()
-      const productName = (recipe.finished_product?.name || '').toLowerCase()
-      const productCode = (recipe.finished_product?.code || '').toLowerCase()
+      const name = (kit.kit_name || '').toLowerCase()
+      const productName = (kit.finished_product?.name || '').toLowerCase()
+      const productCode = (kit.finished_product?.code || '').toLowerCase()
       return name.includes(q) || productName.includes(q) || productCode.includes(q)
     })
-  }, [recipes, listSearch])
+  }, [serviceKits, listSearch])
 
   const openCreateModal = () => {
     resetForm()
     setIsModalOpen(true)
   }
 
-  const openEditModal = (recipe) => {
-    setEditingRecipe(recipe)
+  const openEditModal = (kit) => {
+    setEditingKit(kit)
     setFormData({
-      finished_product_id: recipe.finished_product_id || '',
-      recipe_name: recipe.recipe_name || '',
-      is_active: recipe.is_active !== false,
-      ingredients: recipe.ingredients.map(ing => ({
-        id: ing.id,
-        ingredient_material_id: ing.ingredient_material_id,
-        quantity_per_unit: ing.quantity_per_unit
+      finished_product_id: kit.finished_product_id || '',
+      kit_name: kit.kit_name || '',
+      is_active: kit.is_active !== false,
+      items: kit.items.map(item => ({
+        id: item.id,
+        material_id: item.material_id,
+        quantity_per_unit: item.quantity_per_unit
       }))
     })
     setFormError('')
     setIsModalOpen(true)
   }
 
-  const addIngredientRow = () => {
+  const addItemRow = () => {
     setFormData(prev => ({
       ...prev,
-      ingredients: [
-        ...prev.ingredients,
+      items: [
+        ...prev.items,
         {
-          ingredient_material_id: '',
+          material_id: '',
           quantity_per_unit: ''
         }
       ]
     }))
   }
 
-  const removeIngredientRow = (index) => {
+  const removeItemRow = (index) => {
     setFormData(prev => ({
       ...prev,
-      ingredients: prev.ingredients.filter((_, i) => i !== index)
+      items: prev.items.filter((_, i) => i !== index)
     }))
   }
 
-  const updateIngredient = (index, field, value) => {
+  const updateItem = (index, field, value) => {
     setFormData(prev => ({
       ...prev,
-      ingredients: prev.ingredients.map((ing, i) =>
-        i === index ? { ...ing, [field]: value } : ing
+      items: prev.items.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
       )
     }))
   }
@@ -184,23 +197,23 @@ const AdminRecipes = () => {
       setFormError('Finished product is required')
       return
     }
-    if (!formData.recipe_name.trim()) {
-      setFormError('Recipe name is required')
+    if (!formData.kit_name.trim()) {
+      setFormError('Kit name is required')
       return
     }
-    if (formData.ingredients.length === 0) {
-      setFormError('At least one ingredient is required')
+    if (formData.items.length === 0) {
+      setFormError('At least one material is required')
       return
     }
 
-    for (let i = 0; i < formData.ingredients.length; i++) {
-      const ing = formData.ingredients[i]
-      if (!ing.ingredient_material_id) {
-        setFormError(`Ingredient ${i + 1}: Material is required`)
+    for (let i = 0; i < formData.items.length; i++) {
+      const item = formData.items[i]
+      if (!item.material_id) {
+        setFormError(`Material ${i + 1}: Material is required`)
         return
       }
-      if (!ing.quantity_per_unit || parseFloat(ing.quantity_per_unit) <= 0) {
-        setFormError(`Ingredient ${i + 1}: Quantity must be greater than 0`)
+      if (!item.quantity_per_unit || parseFloat(item.quantity_per_unit) <= 0) {
+        setFormError(`Material ${i + 1}: Quantity must be greater than 0`)
         return
       }
     }
@@ -208,70 +221,70 @@ const AdminRecipes = () => {
     try {
       setSaving(true)
 
-      const recipePayload = {
+      const kitPayload = {
         finished_product_id: formData.finished_product_id,
-        recipe_name: formData.recipe_name.trim(),
+        kit_name: formData.kit_name.trim(),
         is_active: formData.is_active,
         updated_at: new Date().toISOString()
       }
 
-      let recipeId = editingRecipe?.id
+      let kitId = editingKit?.id
 
-      if (editingRecipe) {
+      if (editingKit) {
         const { error: updateError } = await supabase
-          .from('recipes')
-          .update(recipePayload)
-          .eq('id', editingRecipe.id)
+          .from('service_kits')
+          .update(kitPayload)
+          .eq('id', editingKit.id)
 
         if (updateError) throw updateError
 
-        const { error: deleteIngredientsError } = await supabase
-          .from('recipe_ingredients')
+        const { error: deleteItemsError } = await supabase
+          .from('service_kit_items')
           .delete()
-          .eq('recipe_id', editingRecipe.id)
+          .eq('service_kit_id', editingKit.id)
 
-        if (deleteIngredientsError) throw deleteIngredientsError
+        if (deleteItemsError) throw deleteItemsError
       } else {
-        const { data: newRecipe, error: insertError } = await supabase
-          .from('recipes')
-          .insert(recipePayload)
+        const { data: newKit, error: insertError } = await supabase
+          .from('service_kits')
+          .insert(kitPayload)
           .select()
           .single()
 
         if (insertError) throw insertError
-        recipeId = newRecipe.id
+        kitId = newKit.id
       }
 
-      const ingredientsPayload = formData.ingredients.map((ing) => ({
-        recipe_id: recipeId,
-        ingredient_material_id: ing.ingredient_material_id,
-        quantity_per_unit: parseFloat(ing.quantity_per_unit)
+      const itemsPayload = formData.items.map((item) => ({
+        service_kit_id: kitId,
+        material_id: item.material_id,
+        quantity_per_unit: parseFloat(item.quantity_per_unit)
       }))
 
-      const { error: ingredientsError } = await supabase
-        .from('recipe_ingredients')
-        .insert(ingredientsPayload)
+      const { error: itemsError } = await supabase
+        .from('service_kit_items')
+        .insert(itemsPayload)
 
-      if (ingredientsError) throw ingredientsError
+      if (itemsError) throw itemsError
 
       setIsModalOpen(false)
-      await fetchRecipes()
+      await fetchServiceKits()
     } catch (err) {
-      console.error('Error saving recipe:', err)
+      console.error('Error saving service kit:', err)
       if (err.code === '23505') {
-        setFormError('A recipe already exists for this finished product. Only one active recipe per product is allowed.')
+        setFormError('A service kit already exists for this finished product. Only one active kit per product is allowed.')
       } else {
-        setFormError(err.message || 'Failed to save recipe. Please try again.')
+        setFormError(err.message || 'Failed to save service kit. Please try again.')
       }
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDeactivate = async (recipe) => {
+  const handleDeactivate = async (kit) => {
     const confirmed = await confirm({
-      title: 'Deactivate this recipe?',
-      message: `"${recipe.recipe_name}" will stop being available for use. You can activate it again later.`,
+      title: 'Deactivate this service kit?',
+      message: `"${kit.kit_name}" will stop being available for use. You can activate it again later.`,
       confirmLabel: 'Deactivate',
       tone: 'danger',
     })
@@ -280,29 +293,29 @@ const AdminRecipes = () => {
     try {
       setSaving(true)
       const { error } = await supabase
-        .from('recipes')
+        .from('service_kits')
         .update({
           is_active: false,
           updated_at: new Date().toISOString()
         })
-        .eq('id', recipe.id)
+        .eq('id', kit.id)
 
       if (error) throw error
-      await fetchRecipes()
-      toast.success('Recipe deactivated', `"${recipe.recipe_name}" is no longer available.`)
+      await fetchServiceKits()
+      toast.success('Service kit deactivated', `"${kit.kit_name}" is no longer available.`)
     } catch (err) {
-      console.error('Error deactivating recipe:', err)
-      setError(err.message || 'Failed to deactivate recipe.')
-      toast.error('Could not deactivate recipe', err.message)
+      console.error('Error deactivating service kit:', err)
+      setError(err.message || 'Failed to deactivate service kit.')
+      toast.error('Could not deactivate service kit', err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleActivate = async (recipe) => {
+  const handleActivate = async (kit) => {
     const confirmed = await confirm({
-      title: 'Activate this recipe?',
-      message: `"${recipe.recipe_name}" will become available for use again.`,
+      title: 'Activate this service kit?',
+      message: `"${kit.kit_name}" will become available for use again.`,
       confirmLabel: 'Activate',
     })
     if (!confirmed) return
@@ -310,20 +323,20 @@ const AdminRecipes = () => {
     try {
       setSaving(true)
       const { error } = await supabase
-        .from('recipes')
+        .from('service_kits')
         .update({
           is_active: true,
           updated_at: new Date().toISOString()
         })
-        .eq('id', recipe.id)
+        .eq('id', kit.id)
 
       if (error) throw error
-      await fetchRecipes()
-      toast.success('Recipe activated', `"${recipe.recipe_name}" is available again.`)
+      await fetchServiceKits()
+      toast.success('Service kit activated', `"${kit.kit_name}" is available again.`)
     } catch (err) {
-      console.error('Error activating recipe:', err)
-      setError(err.message || 'Failed to activate recipe.')
-      toast.error('Could not activate recipe', err.message)
+      console.error('Error activating service kit:', err)
+      setError(err.message || 'Failed to activate service kit.')
+      toast.error('Could not activate service kit', err.message)
     } finally {
       setSaving(false)
     }
@@ -334,16 +347,16 @@ const AdminRecipes = () => {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Recipes</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Service Kits</h1>
             <p className="text-sm text-muted-foreground">
-              Define ingredient compositions for finished products. When a finished product is added to a dispatch plan, its ingredients will be automatically populated.
+              Define what goes out alongside each finished product — companion materials and cooking consumables. When a finished product is added to a dispatch plan, its kit materials are populated automatically.
             </p>
           </div>
           <button
             onClick={openCreateModal}
             className="bg-accent text-background font-black px-5 py-3 text-lg rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all duration-300"
           >
-            + Add Recipe
+            + Add Service Kit
           </button>
         </div>
 
@@ -352,7 +365,7 @@ const AdminRecipes = () => {
             type="text"
             value={listSearch}
             onChange={(e) => setListSearch(e.target.value)}
-            placeholder="Search by recipe name or finished product..."
+            placeholder="Search by kit name or finished product..."
             className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
           />
         </div>
@@ -365,10 +378,10 @@ const AdminRecipes = () => {
 
         <div className="bg-card border border-border rounded-2xl shadow-2xl shadow-black/40 overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading recipes…</div>
-          ) : filteredRecipes.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">Loading service kits…</div>
+          ) : filteredKits.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No recipes found. Try adjusting your search or add a new recipe.
+              No service kits found. Try adjusting your search or add a new kit.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -376,13 +389,13 @@ const AdminRecipes = () => {
                 <thead className="bg-background/60 border-b border-border">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      Recipe Name
+                      Kit Name
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Finished Product
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      Ingredients
+                      Materials
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Status
@@ -393,25 +406,25 @@ const AdminRecipes = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRecipes.map((recipe) => (
+                  {filteredKits.map((kit) => (
                     <tr
-                      key={recipe.id}
+                      key={kit.id}
                       className="border-b border-border/70 hover:bg-background/50 transition-colors"
                     >
                       <td className="px-4 py-3 text-sm">
-                        <div className="font-semibold text-foreground">{recipe.recipe_name}</div>
+                        <div className="font-semibold text-foreground">{kit.kit_name}</div>
                       </td>
                       <td className="px-4 py-3 text-sm text-foreground">
-                        <div className="font-semibold">{recipe.finished_product?.name}</div>
+                        <div className="font-semibold">{kit.finished_product?.name}</div>
                         <div className="text-[11px] text-muted-foreground font-mono">
-                          {recipe.finished_product?.code}
+                          {kit.finished_product?.code}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {recipe.ingredients.length} ingredient{recipe.ingredients.length !== 1 ? 's' : ''}
+                        {kit.items.length} material{kit.items.length !== 1 ? 's' : ''}
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {recipe.is_active ? (
+                        {kit.is_active ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                             Active
                           </span>
@@ -424,14 +437,14 @@ const AdminRecipes = () => {
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
                           <button
-                            onClick={() => openEditModal(recipe)}
+                            onClick={() => openEditModal(kit)}
                             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors"
                           >
                             Edit
                           </button>
-                          {recipe.is_active ? (
+                          {kit.is_active ? (
                             <button
-                              onClick={() => handleDeactivate(recipe)}
+                              onClick={() => handleDeactivate(kit)}
                               disabled={saving}
                               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-destructive/10 text-destructive border border-destructive/40 hover:bg-destructive/20 hover:border-destructive/60 transition-colors disabled:opacity-50"
                             >
@@ -439,7 +452,7 @@ const AdminRecipes = () => {
                             </button>
                           ) : (
                             <button
-                              onClick={() => handleActivate(recipe)}
+                              onClick={() => handleActivate(kit)}
                               disabled={saving}
                               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/20 hover:border-emerald-500/60 transition-colors disabled:opacity-50"
                             >
@@ -462,7 +475,7 @@ const AdminRecipes = () => {
               <div className="p-5 lg:p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl lg:text-2xl font-bold text-foreground">
-                    {editingRecipe ? 'Edit Recipe' : 'Add Recipe'}
+                    {editingKit ? 'Edit Service Kit' : 'Add Service Kit'}
                   </h2>
                   <button
                     onClick={() => !saving && setIsModalOpen(false)}
@@ -487,7 +500,7 @@ const AdminRecipes = () => {
                           setFormData((prev) => ({ ...prev, finished_product_id: e.target.value }))
                         }
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-                        disabled={saving || editingRecipe}
+                        disabled={saving || editingKit}
                       >
                         <option value="">Select finished product</option>
                         {finishedProducts.map((fp) => (
@@ -496,25 +509,25 @@ const AdminRecipes = () => {
                           </option>
                         ))}
                       </select>
-                      {editingRecipe && (
+                      {editingKit && (
                         <p className="text-[11px] text-muted-foreground mt-1">
-                          Cannot change finished product when editing. Create a new recipe instead.
+                          Cannot change finished product when editing. Create a new service kit instead.
                         </p>
                       )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-semibold text-foreground mb-1">
-                        Recipe Name <span className="text-destructive">*</span>
+                        Kit Name <span className="text-destructive">*</span>
                       </label>
                       <input
                         type="text"
-                        value={formData.recipe_name}
+                        value={formData.kit_name}
                         onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, recipe_name: e.target.value }))
+                          setFormData((prev) => ({ ...prev, kit_name: e.target.value }))
                         }
                         className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-                        placeholder="e.g. Peri Peri Kabab Recipe"
+                        placeholder="e.g. Peri Peri Kabab Service Kit"
                         disabled={saving}
                       />
                     </div>
@@ -523,7 +536,7 @@ const AdminRecipes = () => {
 
                   <div className="flex items-center gap-2">
                     <input
-                      id="recipe-is-active"
+                      id="service-kit-is-active"
                       type="checkbox"
                       checked={formData.is_active}
                       onChange={(e) =>
@@ -532,44 +545,44 @@ const AdminRecipes = () => {
                       className="rounded border-border"
                       disabled={saving}
                     />
-                    <label htmlFor="recipe-is-active" className="text-sm text-foreground">
-                      Active (only one active recipe per finished product allowed)
+                    <label htmlFor="service-kit-is-active" className="text-sm text-foreground">
+                      Active (only one active kit per finished product allowed)
                     </label>
                   </div>
 
                   <div className="border-t border-border pt-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-lg font-bold text-foreground">
-                        Ingredients <span className="text-destructive">*</span>
+                        Materials <span className="text-destructive">*</span>
                       </h3>
                       <button
                         type="button"
-                        onClick={addIngredientRow}
+                        onClick={addItemRow}
                         disabled={saving}
                         className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors disabled:opacity-50"
                       >
-                        + Add Ingredient
+                        + Add Material
                       </button>
                     </div>
 
-                    {formData.ingredients.length === 0 ? (
+                    {formData.items.length === 0 ? (
                       <div className="bg-muted/30 border border-border rounded-lg p-4 text-center text-sm text-muted-foreground">
-                        No ingredients added yet. Click &quot;+ Add Ingredient&quot; to start.
+                        No materials added yet. Click &quot;+ Add Material&quot; to start.
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {formData.ingredients.map((ing, idx) => (
+                        {formData.items.map((item, idx) => (
                           <div
                             key={idx}
                             className="bg-muted/30 border border-border rounded-lg p-4"
                           >
                             <div className="flex items-start justify-between mb-3">
                               <span className="text-sm font-semibold text-foreground">
-                                Ingredient {idx + 1}
+                                Material {idx + 1}
                               </span>
                               <button
                                 type="button"
-                                onClick={() => removeIngredientRow(idx)}
+                                onClick={() => removeItemRow(idx)}
                                 disabled={saving}
                                 className="text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50"
                               >
@@ -585,9 +598,9 @@ const AdminRecipes = () => {
                                   Material <span className="text-destructive">*</span>
                                 </label>
                                 <select
-                                  value={ing.ingredient_material_id}
+                                  value={item.material_id}
                                   onChange={(e) =>
-                                    updateIngredient(idx, 'ingredient_material_id', e.target.value)
+                                    updateItem(idx, 'material_id', e.target.value)
                                   }
                                   className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                                   disabled={saving}
@@ -608,9 +621,9 @@ const AdminRecipes = () => {
                                 <input
                                   type="number"
                                   step="0.001"
-                                  value={ing.quantity_per_unit}
+                                  value={item.quantity_per_unit}
                                   onChange={(e) =>
-                                    updateIngredient(idx, 'quantity_per_unit', e.target.value)
+                                    updateItem(idx, 'quantity_per_unit', e.target.value)
                                   }
                                   className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                                   disabled={saving}
@@ -646,7 +659,7 @@ const AdminRecipes = () => {
                       disabled={saving}
                       className="px-5 py-2.5 bg-accent text-background font-black rounded-xl border-3 border-accent shadow-[0.1em_0.1em_0_0_rgba(225,187,7,0.3)] hover:shadow-[0.15em_0.15em_0_0_rgba(225,187,7,0.5)] hover:translate-x-[-0.05em] hover:translate-y-[-0.05em] active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-[0.05em_0.05em_0_0_rgba(225,187,7,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {saving ? 'Saving…' : editingRecipe ? 'Update Recipe' : 'Create Recipe'}
+                      {saving ? 'Saving…' : editingKit ? 'Update Service Kit' : 'Create Service Kit'}
                     </button>
                   </div>
                 </form>
@@ -659,4 +672,4 @@ const AdminRecipes = () => {
   )
 }
 
-export default AdminRecipes
+export default AdminServiceKits

@@ -10,7 +10,7 @@ import AdminCloudKitchenOverview from './AdminCloudKitchenOverview'
 import AdminKitchenWiseOverview from './AdminKitchenWiseOverview'
 import AdminUsers from './AdminUsers'
 import AdminOperators from './AdminOperators'
-import AdminRecipes from './AdminRecipes'
+import AdminServiceKits from './AdminServiceKits'
 import AdminOutlets from './AdminOutlets'
 import AdminVendorManagement from './AdminVendorManagement'
 import AdminBrandDispatch from './AdminBrandDispatch'
@@ -53,7 +53,7 @@ export const ADMIN_NAV = [
     children: [
       { id: 'materials', label: 'Materials', Component: Materials, props: { isAdminMode: true } },
       { id: 'vendors', label: 'Vendor Management', Component: AdminVendorManagement },
-      { id: 'recipes', label: 'Recipes', Component: AdminRecipes },
+      { id: 'service-kits', label: 'Service Kits', Component: AdminServiceKits },
       { id: 'dispatch-brands', label: 'Dispatch Brands', Component: AdminBrandDispatch },
     ],
   },

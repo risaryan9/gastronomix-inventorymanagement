@@ -1,6 +1,6 @@
 /**
  * Finished-material outlet costs for dispatch plans using latest stock-in batch unit_cost
- * per material at the cloud kitchen (recipe ingredient rows are excluded — only material_type === 'finished').
+ * per material at the cloud kitchen (service kit rows are excluded — only material_type === 'finished').
  */
 
 export function formatRupee(amount) {

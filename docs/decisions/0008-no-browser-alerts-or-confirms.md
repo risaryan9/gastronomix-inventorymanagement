@@ -36,7 +36,7 @@ The conventions that came with it:
   not interrupted by routine success.
 - **Destructive prompts open with Cancel focused**, so a stray Enter backs out,
   and their wording says what cannot be undone. Deleting an operator is
-  permanent; deactivating a recipe is not — `window.confirm`'s single line could
+  permanent; deactivating a service kit is not — `window.confirm`'s single line could
   not distinguish them, and the prompts now do.
 
 ## Consequences

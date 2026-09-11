@@ -23,6 +23,7 @@ look like bugs and are not.** Check the index in
 | a query passed to `fetchAllRows` | [0009 — paged queries need a tiebreaker](docs/decisions/0009-paged-queries-need-a-unique-tiebreaker.md) |
 | dispatch planning, the closing sheet, or returns | [0010 — dispatch and closing do not move stock](docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md) |
 | a low-stock threshold, or any "low stock" count | [0011 — thresholds are per cloud kitchen](docs/decisions/0011-stock-thresholds-are-per-cloud-kitchen.md) |
+| service kits, or the dispatch auto-fill | [0012 — a service kit is not a BOM](docs/decisions/0012-service-kits-are-not-bills-of-materials.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

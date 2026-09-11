@@ -89,6 +89,7 @@ against each other.
 | [0009](0009-paged-queries-need-a-unique-tiebreaker.md) | A paged query needs a unique tiebreaker in its ORDER BY | any query passed to `fetchAllRows` | Accepted |
 | [0010](0010-dispatch-and-closing-do-not-move-stock.md) | The dispatch plan and the closing sheet are records; they do not move stock — **for now**; the intended end state is lock-plan → stock-out, return → stock-in | dispatch planning, the closing sheet, returns | Accepted (temporary) |
 | [0011](0011-stock-thresholds-are-per-cloud-kitchen.md) | A low-stock threshold is per cloud kitchen; `raw_materials.low_stock_threshold` is the default | any low-stock figure, the material form | Accepted |
+| [0012](0012-service-kits-are-not-bills-of-materials.md) | A service kit is what goes out *with* a finished product — it is not a bill of materials, and is no longer called a recipe | service kits, dispatch auto-fill, the coming BOM | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

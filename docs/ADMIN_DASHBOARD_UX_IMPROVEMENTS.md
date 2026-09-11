@@ -71,7 +71,7 @@ The eight admin sections were built at different times and do the same jobs diff
 | Pattern | Where |
 |---|---|
 | Custom in-app confirm | `AdminOutlets.jsx` (`confirmDialog` state) |
-| **Raw `window.confirm()`** | `AdminUsers.jsx:283`, `AdminRecipes.jsx:267,289`, `AdminOperators.jsx:112` |
+| **Raw `window.confirm()`** | `AdminUsers.jsx:283`, `AdminServiceKits.jsx:267,289`, `AdminOperators.jsx:112` |
 | Plain overlay `div`, no dialog semantics | `AdminRequisitionsReports.jsx` |
 | Proper accessible modal | `components/admin/kitchen/KitchenRecordModal.jsx` (new) |
 
@@ -81,7 +81,7 @@ The eight admin sections were built at different times and do the same jobs diff
 
 ### B2. Only two of eight sections paginate
 
-`Materials` (in admin mode) and `Requisitions Reports` paginate. Users, Outlets, Vendors, Recipes, Brand Dispatch and Operators render every row.
+`Materials` (in admin mode) and `Requisitions Reports` paginate. Users, Outlets, Vendors, Service Kits, Brand Dispatch and Operators render every row.
 
 Volumes are small today — 72 outlets, 23 users, 11 vendors — so nothing is broken. But Outlets is already a 72-row wall of text with no page breaks, and this gets worse silently as the business grows.
 
@@ -153,7 +153,7 @@ Failures render as a line of red text. There is no Retry button, and the message
 
 ### D3. Destructive actions have no undo
 
-Deactivating a user, outlet or recipe is reversible in the database, but the interface offers no immediate way back — you must find the record and reverse it manually. Operators are worse: `AdminOperators.jsx:112` does a genuine **delete** ("This cannot be undone").
+Deactivating a user, outlet or service kit is reversible in the database, but the interface offers no immediate way back — you must find the record and reverse it manually. Operators are worse: `AdminOperators.jsx:112` does a genuine **delete** ("This cannot be undone").
 
 **Do:** an "Undo" action inside the success toast covers reversible cases cheaply. For the operator delete, consider a soft delete (`deleted_at`) to match every other table in the schema.
 

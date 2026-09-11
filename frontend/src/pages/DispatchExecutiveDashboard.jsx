@@ -95,7 +95,7 @@ const DispatchExecutiveDashboard = () => {
   const [materials, setMaterials] = useState([])
   const [quantities, setQuantities] = useState({})
   const [savingPlan, setSavingPlan] = useState(false)
-  const [recipes, setRecipes] = useState([])
+  const [serviceKits, setServiceKits] = useState([])
   const [manualOverrides, setManualOverrides] = useState({})
 
   const [isMaterialSearchOpen, setIsMaterialSearchOpen] = useState(false)
@@ -307,7 +307,7 @@ const DispatchExecutiveDashboard = () => {
     try {
       const [
         { data: outletsData, error: outletsError },
-        { data: recipesData, error: recipesError }
+        { data: serviceKitsData, error: serviceKitsError }
       ] = await Promise.all([
         supabase
           .from('outlets')
@@ -318,14 +318,14 @@ const DispatchExecutiveDashboard = () => {
           .ilike('code', `${brandMeta.id}%`)
           .order('name', { ascending: true }),
         supabase
-          .from('recipes')
+          .from('service_kits')
           .select(`
             id,
             finished_product_id,
-            recipe_name,
+            kit_name,
             is_active,
-            recipe_ingredients (
-              ingredient_material_id,
+            service_kit_items (
+              material_id,
               quantity_per_unit
             )
           `)
@@ -333,7 +333,7 @@ const DispatchExecutiveDashboard = () => {
       ])
 
       if (outletsError) throw outletsError
-      if (recipesError) throw recipesError
+      if (serviceKitsError) throw serviceKitsError
 
       const { data: brandDispatchData, error: brandDispatchError } = await supabase
         .from('brand_dispatch')
@@ -347,7 +347,7 @@ const DispatchExecutiveDashboard = () => {
       if (!brandDispatchData) {
         setOutlets(outletsData || [])
         setMaterials([])
-        setRecipes(recipesData || [])
+        setServiceKits(serviceKitsData || [])
         setModalError('No dispatch brand configured for this selection. Ask an admin to add the brand and materials under Settings.')
         return
       }
@@ -374,7 +374,7 @@ const DispatchExecutiveDashboard = () => {
       if (!brandItemsData || brandItemsData.length === 0) {
         setOutlets(outletsData || [])
         setMaterials([])
-        setRecipes(recipesData || [])
+        setServiceKits(serviceKitsData || [])
         setModalError('No materials configured for this brand yet. Ask an admin to add materials under Settings.')
         return
       }
@@ -397,7 +397,7 @@ const DispatchExecutiveDashboard = () => {
 
       setOutlets(outletsData || [])
       setMaterials(materials)
-      setRecipes(recipesData || [])
+      setServiceKits(serviceKitsData || [])
       setQuantities(initialQuantities)
       setDeviationMap(deviations)
       setHistoricalQtyMap(historicalQuantities)
@@ -428,7 +428,7 @@ const DispatchExecutiveDashboard = () => {
       const [
         { data: outletsData, error: outletsError },
         { data: itemsData, error: itemsError },
-        { data: recipesData, error: recipesError }
+        { data: serviceKitsData, error: serviceKitsError }
       ] = await Promise.all([
         supabase
           .from('outlets')
@@ -443,14 +443,14 @@ const DispatchExecutiveDashboard = () => {
           .select('raw_material_id, outlet_id, quantity')
           .eq('dispatch_plan_id', plan.id),
         supabase
-          .from('recipes')
+          .from('service_kits')
           .select(`
             id,
             finished_product_id,
-            recipe_name,
+            kit_name,
             is_active,
-            recipe_ingredients (
-              ingredient_material_id,
+            service_kit_items (
+              material_id,
               quantity_per_unit
             )
           `)
@@ -459,7 +459,7 @@ const DispatchExecutiveDashboard = () => {
 
       if (outletsError) throw outletsError
       if (itemsError) throw itemsError
-      if (recipesError) throw recipesError
+      if (serviceKitsError) throw serviceKitsError
 
       const { data: brandDispatchData, error: brandDispatchError } = await supabase
         .from('brand_dispatch')
@@ -529,7 +529,7 @@ const DispatchExecutiveDashboard = () => {
       setOutlets(outletsData || [])
       setMaterials(allMaterials)
       setQuantities(qtyMap)
-      setRecipes(recipesData || [])
+      setServiceKits(serviceKitsData || [])
       setDeviationMap(deviations)
       setHistoricalQtyMap(historicalQuantities)
     } catch (error) {
@@ -563,19 +563,22 @@ const DispatchExecutiveDashboard = () => {
       if (material?.material_type === 'finished' && value) {
         const qty = parseFloat(value)
         if (!isNaN(qty) && qty > 0) {
-          const recipe = recipes.find(r => r.finished_product_id === rawMaterialId && r.is_active)
-          
-          if (recipe && recipe.recipe_ingredients?.length > 0) {
-            recipe.recipe_ingredients.forEach(ingredient => {
-              const overrideKey = `${ingredient.ingredient_material_id}_${outletId}`
-              
+          // The finished product's service kit — what the outlet needs alongside
+          // it to serve it — fills itself in at the kit's per-unit quantity. A
+          // quantity the planner typed by hand is left alone.
+          const kit = serviceKits.find(k => k.finished_product_id === rawMaterialId && k.is_active)
+
+          if (kit && kit.service_kit_items?.length > 0) {
+            kit.service_kit_items.forEach(item => {
+              const overrideKey = `${item.material_id}_${outletId}`
+
               if (!manualOverrides[overrideKey]) {
-                const finalQty = qty * ingredient.quantity_per_unit
-                
-                if (!updated[ingredient.ingredient_material_id]) {
-                  updated[ingredient.ingredient_material_id] = {}
+                const finalQty = qty * item.quantity_per_unit
+
+                if (!updated[item.material_id]) {
+                  updated[item.material_id] = {}
                 }
-                updated[ingredient.ingredient_material_id][outletId] = finalQty.toFixed(3)
+                updated[item.material_id][outletId] = finalQty.toFixed(3)
               }
             })
           }
