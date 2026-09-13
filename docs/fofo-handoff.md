@@ -14,7 +14,9 @@ made in conversation, and the traps.
 3. `docs/fofo-schema-explained.md` — every table in plain words
 4. `docs/fofo-schema.md` — why each table is shaped the way it is
 5. `migrations/fofo/README.md` — run order and status
-6. Decisions `0004` (audit writes, grants) and `0013` (store credit)
+6. Decisions `0004` (audit writes, grants), `0013` (store credit), and the three
+   FOFO records `0014` (GST-inclusive pricing), `0015` (access only through the
+   partner server) and `0016` (invoices never edited)
 
 ## Where things stand
 
@@ -29,33 +31,38 @@ exposed through the API, RLS on with no policies, service_role only.
 - Built: `/api/health`, `api/_lib/razorpay.js` (signature + exact-amount check,
   15 cases verified), and a build step that fails if a secret reaches the bundle.
 
+**Phase 0 done:** the three decision records from spec §14 are written
+(0014–0016).
+
 **Not built:** the pricing module (spec Phase 1), every other API endpoint,
 franchise auth, the admin onboarding endpoints, the accept function (migration
 12), gapless invoice/credit-note numbering, all screens.
 
-**Git:** migrations 10–11 and their doc updates may still be uncommitted — check
-`git status`. Work goes on a branch; the user merges to `master` (pushing
-`master` redeploys the partner app).
+**Git:** work goes on a branch; the user merges to `master` (pushing `master`
+redeploys the partner app).
 
-## Decided in conversation, not yet in the spec
+## Decided in conversation
 
-- **How internal staff reach `fofo`: through the partner app's server, never
-  directly.** The internal app cannot see the `fofo` schema.
-  - **Admins** send their Supabase Auth session; the server checks
-    `public.users` (active, role `admin`). Admins really do log in via Supabase Auth.
-  - **Purchase managers and kitchen staff** log in by key (their browser holds
-    `login_key` in `localStorage.user_session`). The server checks the key
-    **once**, then issues a **temporary pass (~12 h)** used for later requests.
-    - Use a **quiet** key check. Do not call `authenticate_user_by_key` per
-      request — it writes a login audit event every call.
-    - Check the **kitchen** on every action, not just the role: a PM may only
-      act on orders whose `cloud_kitchen_id` is theirs.
-    - Rate-limit wrong keys.
+Now in the spec and decision 0015, kept here as a summary:
+
+- **Internal staff reach `fofo` through the partner app's server, never
+  directly** (spec §12). Admins send their Supabase Auth session. Purchase
+  managers and kitchen staff log in by key (their browser holds `login_key` in
+  `localStorage.user_session`): a quiet key check once — not
+  `authenticate_user_by_key` — then a ~12 h pass; kitchen checked on every
+  action; wrong keys rate-limited.
+- **`yield_quantity` is real** — BOMs are written per production run. Examples
+  come with the BOM seed data (spec §5).
+
+Not in the spec:
+
 - **GST CGST/SGST/IGST split** is being handled by the accounting team; not in
   the schema. HSN codes are optional.
 - **Carts stay in the database**, not localStorage (several users per franchise).
 - **Franchise's own user-management screen** — scope not defined yet. Admins get
   full user management.
+- **Invoice immutability is not enforced by the database** — no `BEFORE UPDATE`
+  trigger on `fofo.invoices`. Worth adding with the numbering work (0016).
 
 ## Traps
 

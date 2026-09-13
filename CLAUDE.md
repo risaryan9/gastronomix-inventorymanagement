@@ -24,6 +24,10 @@ look like bugs and are not.** Check the index in
 | dispatch planning, the closing sheet, or returns | [0010 — dispatch and closing do not move stock](docs/decisions/0010-dispatch-and-closing-do-not-move-stock.md) |
 | a low-stock threshold, or any "low stock" count | [0011 — thresholds are per cloud kitchen](docs/decisions/0011-stock-thresholds-are-per-cloud-kitchen.md) |
 | service kits, or the dispatch auto-fill | [0012 — a service kit is not a BOM](docs/decisions/0012-service-kits-are-not-bills-of-materials.md) |
+| FOFO store credit, or anything settling an invoice | [0013 — store credit is a payment](docs/decisions/0013-store-credit-is-a-payment-not-a-discount.md) |
+| FOFO pricing, or the BOM cost roll-up | [0014 — mark up the GST-inclusive cost](docs/decisions/0014-fofo-prices-mark-up-the-gst-inclusive-cost.md) |
+| a FOFO endpoint, or staff access to `fofo` | [0015 — only through the partner server](docs/decisions/0015-fofo-data-is-reached-only-through-the-partner-server.md) |
+| a FOFO invoice, or a trim | [0016 — an invoice is never edited](docs/decisions/0016-a-fofo-invoice-is-never-edited.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

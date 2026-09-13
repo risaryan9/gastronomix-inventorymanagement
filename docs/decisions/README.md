@@ -91,6 +91,9 @@ against each other.
 | [0011](0011-stock-thresholds-are-per-cloud-kitchen.md) | A low-stock threshold is per cloud kitchen; `raw_materials.low_stock_threshold` is the default | any low-stock figure, the material form | Accepted |
 | [0012](0012-service-kits-are-not-bills-of-materials.md) | A service kit is what goes out *with* a finished product — it is not a bill of materials, and is no longer called a recipe | service kits, dispatch auto-fill, the coming BOM | Accepted |
 | [0013](0013-store-credit-is-a-payment-not-a-discount.md) | **Store credit is a payment, not a discount** — applying it never changes an invoice; it is spent in parts, oldest first, and no balance is ever stored | FOFO store credit, credit notes, anything that settles an invoice | Accepted |
+| [0014](0014-fofo-prices-mark-up-the-gst-inclusive-cost.md) | **FOFO prices mark up the GST-inclusive cost** — reads as tax on tax, and is correct because there is no input tax credit | FOFO pricing, the BOM cost roll-up | Accepted |
+| [0015](0015-fofo-data-is-reached-only-through-the-partner-server.md) | FOFO data is reached only through the partner app's server — no Supabase key in that app, and internal staff go through the server too | any FOFO endpoint, staff access to `fofo`, partner-app env vars | Accepted |
+| [0016](0016-a-fofo-invoice-is-never-edited.md) | A FOFO invoice is never edited — a trim issues a credit note | invoices, the accept flow, trims | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

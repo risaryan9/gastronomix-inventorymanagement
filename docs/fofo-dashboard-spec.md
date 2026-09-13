@@ -162,8 +162,9 @@ app.gastronomix.com          partner app (*.vercel.app for now)
 - **Serverless, not a server.** Traffic is small, and Razorpay signature
   verification needs server code anyway. Vercel functions, because the frontend
   already deploys there and Razorpay's Node SDK works without friction.
-- The PM and kitchen-executive screens go in `frontend/` (the existing app) and
-  use the existing anon-key + RPC pattern.
+- The PM and kitchen-executive screens go in `frontend/` (the existing app), but
+  their FOFO reads and writes go through the partner app's `/api/*`, not the
+  anon key — the internal app cannot see the `fofo` schema (§12, decision 0015).
 - **Do not modify existing RLS policies** unless forced. The internal tool works;
   the blast radius is every screen.
 
@@ -218,10 +219,10 @@ public.recipe_items
   unique (recipe_id, component_material_id)
 ```
 
-> **Assumption to confirm:** `yield_quantity` exists because kitchens make
-> things in batches — a marinade run yields 5 kg, not 1. Per-unit cost is
-> `sum(components) / yield_quantity`. If BOMs are always written per single
-> unit, leave it at 1 and it costs nothing.
+> **Confirmed:** `yield_quantity` is used. Kitchens make things in batches — a
+> marinade run yields 5 kg, not 1 — and BOMs are written per production run.
+> Per-unit cost is `sum(components) / yield_quantity`. Real examples arrive
+> with the BOM seed data.
 
 ### Rules
 
@@ -796,13 +797,20 @@ again:
 | `POST /api/admin/franchises/:id/invitations` | Generates a token, `create_franchise_invitation`, then sends the numbered email |
 | `POST /api/admin/invitations/:id/revoke` | `revoke_franchise_invitation` |
 
-> **Open: how the other internal screens reach `fofo`.** PM accept, KE pack, the
-> logistics invoice and the unpriceable-product report were meant to call
-> Postgres RPCs from `frontend/` the existing way. That cannot work as drawn:
-> the `fofo` schema is deliberately not exposed, so the internal app's client
-> cannot see those functions. Either they get server endpoints like the admin
-> ones above, or thin `public` wrappers that check an authenticated staff role.
-> Decide before building 8.3.
+**Staff endpoints.** PM accept, KE pack, the logistics invoice and the
+unpriceable-product report also go through the partner app's server — the
+internal app cannot see the `fofo` schema, and a `public` wrapper cannot tell a
+key-login purchase manager from an anonymous caller (decision
+[0015](decisions/0015-fofo-data-is-reached-only-through-the-partner-server.md)).
+Purchase managers and kitchen staff log in by key, not Supabase Auth, so:
+
+- The server checks the key **once** with a quiet lookup — not
+  `authenticate_user_by_key`, which audits a login on every call — and issues a
+  temporary pass (~12 h) for later requests. Wrong keys are rate-limited.
+- Every action checks the **kitchen** as well as the role: a PM acts only on
+  orders whose `cloud_kitchen_id` is theirs.
+
+The exact staff endpoint paths are not fixed yet; they are designed with 8.3.
 
 ---
 
@@ -812,7 +820,7 @@ Build in order of what hurts most if it is wrong:
 
 | Phase | What | Gate |
 |---|---|---|
-| 0 | Three decision records (section 14) | — |
+| 0 | Three decision records (section 14) — **done**: 0014, 0015, 0016 | — |
 | 1 | BOM tables + roll-up + pricing module, **no UI** | Accountant signs off a sample invoice and credit note |
 | 2 | `fofo` schema, one endpoint, one domain | No Supabase key or cost price visible in the browser |
 | 3 | Franchise auth | Franchise A provably cannot read B's orders |
@@ -831,18 +839,19 @@ verify pricing by exercising the pure builders directly with real material data.
 
 ## 14. Things that look like bugs and are not
 
-Write these three as records in `docs/decisions/` before writing code — each
-will otherwise be "fixed" back into a bug by someone who was not part of the
-design.
+Each of these is recorded in `docs/decisions/`, because each would otherwise be
+"fixed" back into a bug by someone who was not part of the design.
 
 1. **Margin and output GST apply to the GST-INCLUSIVE cost.** Reads as the
    classic tax-on-tax error. Correct here because there is no input tax credit
-   to claim. Section 6.1.
-2. **The FOFO app holds no Supabase key.** Looks like pointless indirection
-   until you notice that `stock_in_batches` is readable by an unauthenticated
-   caller and the anon key is in the bundle. Section 4.
+   to claim. Section 6.1, decision 0014.
+2. **The FOFO app holds no Supabase key, and staff reach `fofo` through its
+   server.** Looks like pointless indirection until you notice that
+   `stock_in_batches` is readable by an unauthenticated caller and the anon key
+   is in the bundle. Sections 4 and 12, decision 0015.
 3. **An invoice is never edited.** A trim creates a credit note instead, because
-   a GST invoice sequence cannot have holes or rewrites. Section 10.
+   a GST invoice sequence cannot have holes or rewrites. Section 10, decision
+   0016.
 
 Existing decisions this feature leans on, all in `docs/decisions/`:
 
@@ -858,6 +867,7 @@ Existing decisions this feature leans on, all in `docs/decisions/`:
 | 0010 | Dispatch and closing do not move stock. FOFO accept **does** — a deliberate difference. |
 | 0012 | A service kit is not a BOM. Read before touching either. |
 | 0013 | Store credit is a payment, not a discount — and is spent in parts. |
+| 0014–0016 | The three records above. |
 
 ---
 
