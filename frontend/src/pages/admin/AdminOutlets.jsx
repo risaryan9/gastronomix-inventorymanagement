@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
 import { fofoAdminApi } from '../../lib/partnerApi'
-import { useToast } from '../../context/toastContext'
-import { useConfirm } from '../../context/confirmContext'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const BRAND_OPTIONS = [
@@ -32,9 +30,6 @@ const MODEL_OPTIONS = [
 const BRAND_PREFIXES = ['NK', 'EC', 'BP']
 
 const AdminOutlets = () => {
-  const toast = useToast()
-  const confirm = useConfirm()
-
   const [outlets, setOutlets] = useState([])
   const [cloudKitchens, setCloudKitchens] = useState([])
   const [loading, setLoading] = useState(true)
@@ -44,7 +39,6 @@ const AdminOutlets = () => {
   const [brandFilter, setBrandFilter] = useState(['all'])
   const [statusFilter, setStatusFilter] = useState(['all'])
   const [modelFilter, setModelFilter] = useState(['all'])
-  const [modelSavingId, setModelSavingId] = useState(null)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingOutlet, setEditingOutlet] = useState(null)
@@ -54,6 +48,7 @@ const AdminOutlets = () => {
     cloud_kitchen_id: '',
     name: '',
     code: '',
+    ownership_model: 'foco',
   })
 
   const [brandPrefix, setBrandPrefix] = useState('')
@@ -68,6 +63,7 @@ const AdminOutlets = () => {
       cloud_kitchen_id: '',
       name: '',
       code: '',
+      ownership_model: 'foco',
     })
     setBrandPrefix('')
     setCodeSuffix('')
@@ -149,39 +145,6 @@ const AdminOutlets = () => {
     return true
   })
 
-  const handleToggleModel = async (outlet) => {
-    const next = outlet.ownership_model === 'fofo' ? 'foco' : 'fofo'
-    const confirmed = await confirm(
-      next === 'fofo'
-        ? {
-            title: `Mark ${outlet.code} as FOFO?`,
-            message:
-              'The outlet will be treated as franchise-operated. This does not give it to any franchise — add it to one from Franchise → FOFO Franchises.',
-            confirmLabel: 'Mark FOFO',
-          }
-        : {
-            title: `Mark ${outlet.code} as FOCO?`,
-            message:
-              'The outlet will be treated as company-operated. An outlet that still belongs to a FOFO franchise cannot be marked FOCO — remove it from the franchise first.',
-            confirmLabel: 'Mark FOCO',
-          }
-    )
-    if (!confirmed) return
-
-    try {
-      setModelSavingId(outlet.id)
-      const result = await fofoAdminApi.setOutletOwnershipModel(outlet.id, next)
-      setOutlets((prev) =>
-        prev.map((o) => (o.id === outlet.id ? { ...o, ownership_model: result.outlet.ownership_model } : o))
-      )
-      toast.success('Outlet updated', `${outlet.code} is now ${next.toUpperCase()}.`)
-    } catch (err) {
-      toast.error('Could not change the outlet', err.message)
-    } finally {
-      setModelSavingId(null)
-    }
-  }
-
   const openCreateModal = () => {
     resetForm()
     setIsModalOpen(true)
@@ -197,6 +160,7 @@ const AdminOutlets = () => {
       cloud_kitchen_id: outlet.cloud_kitchen_id || '',
       name: outlet.name || '',
       code: outlet.code || '',
+      ownership_model: outlet.ownership_model || 'foco',
     })
     setBrandPrefix(prefix)
     setCodeSuffix(suffix)
@@ -237,6 +201,13 @@ const AdminOutlets = () => {
       }
 
       if (editingOutlet) {
+        // The model goes first, through the partner app's server: it is the
+        // change that can be refused (an outlet a FOFO franchise owns cannot be
+        // FOCO), and a refusal should save nothing else from the form.
+        if (formData.ownership_model !== editingOutlet.ownership_model) {
+          await fofoAdminApi.setOutletOwnershipModel(editingOutlet.id, formData.ownership_model)
+        }
+
         const { error } = await supabase
           .from('outlets')
           .update(payload)
@@ -246,8 +217,29 @@ const AdminOutlets = () => {
       } else {
         payload.is_active = true
         payload.deleted_at = null
-        const { error } = await supabase.from('outlets').insert(payload)
+        // Created as FOCO, the column default, then switched through the server
+        // if FOFO was chosen — so every change of model is audited the same way.
+        const { data: created, error } = await supabase
+          .from('outlets')
+          .insert(payload)
+          .select('id')
+          .single()
         if (error) throw error
+
+        if (formData.ownership_model === 'fofo') {
+          try {
+            await fofoAdminApi.setOutletOwnershipModel(created.id, 'fofo')
+          } catch (modelErr) {
+            // The outlet exists now, so the form must not stay open: a second
+            // click on Create would try to add it again.
+            setIsModalOpen(false)
+            await fetchOutlets() // clears the page error, so it runs first
+            setError(
+              `${payload.code} was created, but as FOCO — it could not be set to FOFO: ${modelErr.message} Edit the outlet to try again.`
+            )
+            return
+          }
+        }
       }
 
       setIsModalOpen(false)
@@ -511,18 +503,6 @@ const AdminOutlets = () => {
                           >
                             Edit
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleModel(outlet)}
-                            disabled={modelSavingId !== null}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-background text-foreground border border-border hover:bg-accent/10 hover:border-accent/40 transition-colors disabled:opacity-50"
-                          >
-                            {modelSavingId === outlet.id
-                              ? 'Saving…'
-                              : outlet.ownership_model === 'fofo'
-                                ? 'Mark FOCO'
-                                : 'Mark FOFO'}
-                          </button>
                           {outlet.is_active && !outlet.deleted_at ? (
                             <button
                               type="button"
@@ -711,6 +691,31 @@ const AdminOutlets = () => {
                         Warning: Changing the code may affect brand-based filtering in dispatch and allocation flows.
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-1">
+                      Ownership Model
+                    </label>
+                    <select
+                      value={formData.ownership_model}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, ownership_model: e.target.value }))
+                      }
+                      className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                      disabled={saving}
+                    >
+                      {MODEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      FOFO does not give the outlet to a franchise — add it to one from Franchise → FOFO
+                      Franchises. An outlet a FOFO franchise owns cannot be set to FOCO, and one with an
+                      active FOCO dashboard code cannot be set to FOFO.
+                    </div>
                   </div>
 
                   {formError && (
