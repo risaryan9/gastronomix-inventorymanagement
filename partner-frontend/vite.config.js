@@ -21,7 +21,7 @@ import react from '@vitejs/plugin-react'
  *      Supabase URL or key shape, whatever they are called. This catches the
  *      case (1) cannot: a value pasted into source, or imported from somewhere.
  *
- * This is the Phase 2 gate in docs/fofo-build-plan.md, made automatic: "no
+ * This is the Phase 2 gate in docs/fofo-dashboard-spec.md §13, made automatic: "no
  * Supabase key or cost price visible in the browser".
  */
 
@@ -96,6 +96,11 @@ function localApi(env) {
         const url = new URL(req.url, 'http://localhost')
         if (!url.pathname.startsWith('/api/')) return next()
         const route = url.pathname.replace(/\/$/, '')
+        // Mirror Vercel: nothing under api/ whose name starts with _ is a route.
+        if (route.split('/').some((part) => part.startsWith('_'))) {
+          res.statusCode = 404
+          return res.end(JSON.stringify({ error: 'Not found' }))
+        }
         try {
           const mod = await server.ssrLoadModule(`${route}.js`)
           req.query = Object.fromEntries(url.searchParams)
