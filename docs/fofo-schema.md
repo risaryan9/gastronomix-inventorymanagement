@@ -5,7 +5,7 @@ Companion to [`fofo-dashboard-spec.md`](fofo-dashboard-spec.md): the spec says
 shorter, plain-English walkthrough of every table, read
 [`fofo-schema-explained.md`](fofo-schema-explained.md) first.
 
-**Status:** everything in `migrations/fofo/` (01–11) was applied to the live database on 2026-09-13.
+**Status:** everything in `migrations/fofo/` (01–12) was applied to the live database on 2026-09-13.
 Facts marked "today" in §1–2 were read from the live database before that, and
 row counts will have moved since.
 
@@ -684,7 +684,7 @@ Things the schema **cannot** enforce, which therefore need code and a test:
 ## 9. Migration order
 
 All of these live in `migrations/fofo/`, numbered in the order they must run.
-**01–11 were applied to the live database on 2026-09-13**, in order, each verified before the next.
+**01–12 were applied to the live database on 2026-09-13**, in order, each verified before the next.
 
 1. `01-add-fofo-sale-columns-to-materials.sql`
 2. `02-add-recipes-and-recipe-items.sql` — the BOM tables
@@ -703,7 +703,9 @@ All of these live in `migrations/fofo/`, numbered in the order they must run.
     users, `log_fofo_audit_event`, `apply_store_credit` naming the user.
 11. `11-add-franchise-registration-invitations.sql` — the welcome email stamp,
     numbered registration links, `franchise_users` reshaped for registration.
-12. `12-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
+12. `12-add-franchise-admin-functions.sql` — create, edit and deactivate
+    franchises; link and unlink outlets.
+13. `13-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
     accept, modelled on `pack_allocation_request`
 
 The pricing module (Phase 1) only reads what 01–02 added, so it can be built

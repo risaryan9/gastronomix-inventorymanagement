@@ -5,7 +5,7 @@ in plain words. For the full reasoning behind each choice, see
 [`fofo-schema.md`](fofo-schema.md). For the order to run the files in, see
 [`migrations/fofo/README.md`](../migrations/fofo/README.md).
 
-**Status:** all of it — `migrations/fofo/` files 01–11 — was applied to the live
+**Status:** all of it — `migrations/fofo/` files 01–12 — was applied to the live
 database on 2026-09-13.
 
 ---
@@ -346,7 +346,7 @@ Razorpay is asked for                          45063 paise
 | Missing | Why it matters |
 |---|---|
 | CGST / SGST / IGST split, kitchen and outlet states | Needed if these invoices become the official GST invoice. Being handled by the accounting team. |
-| The purchase manager's **accept** function (file 12) | Stock-out, trim and credit note in one step. Not written yet. |
+| The purchase manager's **accept** function (file 13) | Stock-out, trim and credit note in one step. Not written yet. |
 | What a franchise's **own user management** screen allows | Admins get full user management; the franchise's limited version isn't defined yet. |
 | Invoice and credit note **numbering** | Must be gapless per financial year. Not built yet. |
 | Invoice **paid / unpaid** status | Needed to block checkout when they owe money. |

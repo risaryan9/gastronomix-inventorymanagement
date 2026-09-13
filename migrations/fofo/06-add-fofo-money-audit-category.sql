@@ -16,7 +16,7 @@
 --
 -- Decision 0004 requires every money-moving write to produce an audit
 -- event, and fofo.apply_store_credit is the first FOFO function to need
--- one. The coming accept RPC (12-create-fofo-accept-order-rpc.sql) will use
+-- one. The coming accept RPC (13-create-fofo-accept-order-rpc.sql) will use
 -- the same category for the stock-out and credit note it writes.
 --
 -- Run this BEFORE 08-create-fofo-store-credit-rpcs.sql. The CHECK is only
