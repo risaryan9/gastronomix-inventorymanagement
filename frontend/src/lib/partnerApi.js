@@ -73,4 +73,8 @@ export const fofoAdminApi = {
   unlinkOutlet: (id, outletId) =>
     request('DELETE', `${franchisePath(id)}/outlets/${encodeURIComponent(outletId)}`),
   listOutlets: () => request('GET', 'outlets'),
+  // 'foco' or 'fofo'. Goes through the server rather than supabase.from('outlets')
+  // because the change is audited and checks franchise ownership (migration 13).
+  setOutletOwnershipModel: (outletId, model) =>
+    request('PUT', `outlets/${encodeURIComponent(outletId)}/ownership-model`, { ownership_model: model }),
 }

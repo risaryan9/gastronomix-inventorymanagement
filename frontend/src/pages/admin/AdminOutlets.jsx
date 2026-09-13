@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getSession } from '../../lib/auth'
+import { fofoAdminApi } from '../../lib/partnerApi'
+import { useToast } from '../../context/toastContext'
+import { useConfirm } from '../../context/confirmContext'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 
 const BRAND_OPTIONS = [
@@ -17,9 +20,21 @@ const STATUS_OPTIONS = [
   { value: 'deactivated', label: 'Deactivated' },
 ]
 
+// Who operates the outlet (outlets.ownership_model). Changed through the
+// partner app's server, not supabase.from('outlets'): the change is audited,
+// and an outlet a FOFO franchise owns cannot be marked FOCO — a rule that needs
+// the fofo schema this app cannot see (migrations/fofo/13).
+const MODEL_OPTIONS = [
+  { value: 'foco', label: 'FOCO (company operated)' },
+  { value: 'fofo', label: 'FOFO (franchise operated)' },
+]
+
 const BRAND_PREFIXES = ['NK', 'EC', 'BP']
 
 const AdminOutlets = () => {
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const [outlets, setOutlets] = useState([])
   const [cloudKitchens, setCloudKitchens] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,6 +43,8 @@ const AdminOutlets = () => {
   const [kitchenFilter, setKitchenFilter] = useState(['all'])
   const [brandFilter, setBrandFilter] = useState(['all'])
   const [statusFilter, setStatusFilter] = useState(['all'])
+  const [modelFilter, setModelFilter] = useState(['all'])
+  const [modelSavingId, setModelSavingId] = useState(null)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingOutlet, setEditingOutlet] = useState(null)
@@ -80,7 +97,7 @@ const AdminOutlets = () => {
       const { data, error } = await supabase
         .from('outlets')
         .select(
-          'id, cloud_kitchen_id, name, code, is_active, created_at, updated_at, deleted_at, cloud_kitchens(name, code)'
+          'id, cloud_kitchen_id, name, code, is_active, ownership_model, created_at, updated_at, deleted_at, cloud_kitchens(name, code)'
         )
         .order('cloud_kitchen_id')
         .order('name', { ascending: true })
@@ -128,8 +145,42 @@ const AdminOutlets = () => {
       const outletBrand = getBrandFromCode(outlet.code)
       if (!brandFilter.includes(outletBrand)) return false
     }
+    if (!modelFilter.includes('all') && !modelFilter.includes(outlet.ownership_model)) return false
     return true
   })
+
+  const handleToggleModel = async (outlet) => {
+    const next = outlet.ownership_model === 'fofo' ? 'foco' : 'fofo'
+    const confirmed = await confirm(
+      next === 'fofo'
+        ? {
+            title: `Mark ${outlet.code} as FOFO?`,
+            message:
+              'The outlet will be treated as franchise-operated. This does not give it to any franchise — add it to one from Franchise → FOFO Franchises.',
+            confirmLabel: 'Mark FOFO',
+          }
+        : {
+            title: `Mark ${outlet.code} as FOCO?`,
+            message:
+              'The outlet will be treated as company-operated. An outlet that still belongs to a FOFO franchise cannot be marked FOCO — remove it from the franchise first.',
+            confirmLabel: 'Mark FOCO',
+          }
+    )
+    if (!confirmed) return
+
+    try {
+      setModelSavingId(outlet.id)
+      const result = await fofoAdminApi.setOutletOwnershipModel(outlet.id, next)
+      setOutlets((prev) =>
+        prev.map((o) => (o.id === outlet.id ? { ...o, ownership_model: result.outlet.ownership_model } : o))
+      )
+      toast.success('Outlet updated', `${outlet.code} is now ${next.toUpperCase()}.`)
+    } catch (err) {
+      toast.error('Could not change the outlet', err.message)
+    } finally {
+      setModelSavingId(null)
+    }
+  }
 
   const openCreateModal = () => {
     resetForm()
@@ -334,13 +385,25 @@ const AdminOutlets = () => {
               options={STATUS_OPTIONS.filter((s) => s.value !== 'all')}
               className="sm:w-40"
             />
-            {(!kitchenFilter.includes('all') || !brandFilter.includes('all') || !statusFilter.includes('all')) && (
+            <MultiSelectFilter
+              label="Model"
+              allLabel="FOCO & FOFO"
+              selectedValues={modelFilter}
+              onChange={setModelFilter}
+              options={MODEL_OPTIONS}
+              className="sm:w-44"
+            />
+            {(!kitchenFilter.includes('all') ||
+              !brandFilter.includes('all') ||
+              !statusFilter.includes('all') ||
+              !modelFilter.includes('all')) && (
               <button
                 type="button"
                 onClick={() => {
                   setKitchenFilter(['all'])
                   setBrandFilter(['all'])
                   setStatusFilter(['all'])
+                  setModelFilter(['all'])
                 }}
                 className="self-start sm:self-center h-9 w-9 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-all"
                 title="Clear filters"
@@ -383,6 +446,9 @@ const AdminOutlets = () => {
                       Code
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      Model
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       Status
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -410,6 +476,23 @@ const AdminOutlets = () => {
                         {outlet.code || '—'}
                       </td>
                       <td className="px-4 py-3 text-sm">
+                        {outlet.ownership_model === 'fofo' ? (
+                          <span
+                            title="Franchise owned, franchise operated"
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/15 text-accent border border-accent/40"
+                          >
+                            FOFO
+                          </span>
+                        ) : (
+                          <span
+                            title="Franchise owned, company operated"
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-background text-muted-foreground border border-border"
+                          >
+                            FOCO
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
                         {outlet.is_active && !outlet.deleted_at ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                             Active
@@ -427,6 +510,18 @@ const AdminOutlets = () => {
                             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors"
                           >
                             Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleModel(outlet)}
+                            disabled={modelSavingId !== null}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-background text-foreground border border-border hover:bg-accent/10 hover:border-accent/40 transition-colors disabled:opacity-50"
+                          >
+                            {modelSavingId === outlet.id
+                              ? 'Saving…'
+                              : outlet.ownership_model === 'fofo'
+                                ? 'Mark FOCO'
+                                : 'Mark FOFO'}
                           </button>
                           {outlet.is_active && !outlet.deleted_at ? (
                             <button

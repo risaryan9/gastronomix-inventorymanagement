@@ -19,6 +19,7 @@
  *   POST   /api/admin/franchises/:id/outlets          { outlet_id }
  *   DELETE /api/admin/franchises/:id/outlets/:outletId
  *   GET    /api/admin/outlets
+ *   PUT    /api/admin/outlets/:id/ownership-model   { ownership_model: 'foco' | 'fofo' }
  */
 import { handleCors } from './_lib/cors.js'
 import { transaction } from './_lib/db.js'
@@ -31,6 +32,7 @@ import {
   listFranchises,
   listOutlets,
   setFranchiseActive,
+  setOutletOwnershipModel,
   unlinkOutlet,
   updateFranchise,
 } from './_lib/franchiseAdmin.js'
@@ -45,6 +47,7 @@ const ROUTES = [
   ['POST', 'franchises/:id/outlets', (db, admin, p, req) => linkOutlet(db, admin.id, p.id, jsonBody(req))],
   ['DELETE', 'franchises/:id/outlets/:outletId', (db, admin, p) => unlinkOutlet(db, admin.id, p.id, p.outletId)],
   ['GET', 'outlets', (db) => listOutlets(db)],
+  ['PUT', 'outlets/:id/ownership-model', (db, admin, p, req) => setOutletOwnershipModel(db, admin.id, p.id, jsonBody(req))],
 ]
 
 function matchPath(pattern, parts) {

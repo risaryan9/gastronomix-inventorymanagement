@@ -206,3 +206,28 @@ export async function unlinkOutlet(db, adminId, franchiseId, outletId) {
   await db.query('SELECT fofo.unlink_franchise_outlet($1, $2, $3)', [franchiseId, outletId, adminId])
   return { changed: true, franchise: await getFranchise(db, franchiseId) }
 }
+
+/* ------------------------------------------------------------------ *
+ * Outlets — migration 13
+ * ------------------------------------------------------------------ */
+
+/**
+ * Marks an outlet company-operated ('foco') or franchise-operated ('fofo').
+ * The function refuses 'foco' for an outlet a FOFO franchise owns, and 'fofo'
+ * for one with an active FOCO dashboard code.
+ */
+export async function setOutletOwnershipModel(db, adminId, outletId, body) {
+  requireUuid(outletId, 'Outlet')
+  if (!['foco', 'fofo'].includes(body.ownership_model)) {
+    throw new HttpError(400, 'ownership_model must be foco or fofo')
+  }
+  const { rows } = await db.query(
+    'SELECT fofo.set_outlet_ownership_model($1, $2, $3) AS changed',
+    [outletId, body.ownership_model, adminId]
+  )
+  const outlet = await db.query(
+    'SELECT id, code, name, ownership_model FROM public.outlets WHERE id = $1',
+    [outletId]
+  )
+  return { changed: rows[0].changed, outlet: outlet.rows[0] }
+}

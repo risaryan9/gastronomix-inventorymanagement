@@ -1,6 +1,6 @@
 # FOFO dashboard — build specification
 
-**Status:** design settled. The database is built — `migrations/fofo/` 01–12,
+**Status:** design settled. The database is built — `migrations/fofo/` 01–13,
 applied to the live database on 2026-09-13, including 10 (franchise users in the
 audit trail) and 11 (onboarding: welcome email and registration links). The partner app on Vercel has a health check and a tested
 Razorpay webhook check; the accept function, invoice numbering, API endpoints
