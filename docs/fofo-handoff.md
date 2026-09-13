@@ -20,7 +20,7 @@ made in conversation, and the traps.
 
 ## Where things stand
 
-**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–11
+**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–12
 applied and verified one by one. All FOFO tables are in the `fofo` schema, not
 exposed through the API, RLS on with no policies, service_role only.
 
@@ -30,6 +30,11 @@ exposed through the API, RLS on with no policies, service_role only.
 - Env vars set: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. No custom domain.
 - Built: `/api/health`, `api/_lib/razorpay.js` (signature + exact-amount check,
   15 cases verified), and a build step that fails if a secret reaches the bundle.
+- Built: `/api/admin/*` (`api/admin.js`) — franchise CRUD and outlet linking for
+  the internal app's FOFO → Franchises screen. Postgres via `DATABASE_URL`, every
+  transaction `SET LOCAL ROLE service_role`; admin checked via Supabase Auth +
+  `public.users`; CORS from `INTERNAL_APP_ORIGINS`. Group routes behind one file
+  and a `vercel.json` rewrite — the free plan allows only 12 functions.
 
 **Phase 0 done:** the three decision records from spec §14 are written
 (0014–0016).
@@ -90,6 +95,11 @@ Not in the spec:
   socket). Pure JS was verified by running it directly with `node`.
 
 ## Sensible next steps
+
+**In progress: onboarding first**, ahead of pricing — tracked in
+`docs/fofo-onboarding-checklist.md`. Migration 12 is now the franchise admin
+functions; the accept function moves to 13.
+
 
 The spec's build order (§13) puts **Phase 1 — the pricing module, no UI** first,
 signed off against a sample invoice. The onboarding endpoints (welcome email,

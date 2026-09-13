@@ -11,9 +11,15 @@ fails if a secret ends up in the browser bundle — see `vite.config.js`.
 ```
 partner-frontend/
   api/          serverless functions — Vercel runs every file here as /api/<name>
+  api/admin.js  every /api/admin/* route, for the internal app's admin screens
+  api/_lib/     shared server code (not routes): database, auth, CORS
   src/          the React app (browser)
-  vercel.json   sends page URLs to index.html, but never /api
+  vercel.json   sends /api/admin/* to api/admin.js, page URLs to index.html
 ```
+
+**Routes that share a function go through one file and a rewrite**, not one
+file each: Vercel's free plan allows 12 functions per deployment, and the FOFO
+API will need more routes than that. Add a group the same way `admin` is done.
 
 `api/` lives **inside** this folder, not at the repo root, because a Vercel
 project only looks for functions inside its own Root Directory.
@@ -24,11 +30,17 @@ project only looks for functions inside its own Root Directory.
 cd partner-frontend
 npm install
 cp .env.example .env     # fill in, or leave blank for now
-npm run dev              # app and /api both on http://localhost:5173
+npm run dev              # app and /api both on http://localhost:5174
 npm run build            # must pass before committing
 ```
 
-`npm run dev` serves `api/` itself, so no Vercel CLI or login is needed.
+`npm run dev` serves `api/` itself, applying the `/api` rewrites from
+`vercel.json`, so no Vercel CLI or login is needed. It runs on **5174** because
+the internal app's dev server takes 5173 and its admin screens call this API.
+
+To use the internal app's **FOFO → Franchises** screen locally, run both dev
+servers. The internal app finds this one at `http://localhost:5174` by default,
+and `INTERNAL_APP_ORIGINS` here must include `http://localhost:5173`.
 
 ## Deploy on Vercel (free `.vercel.app` address)
 
@@ -49,6 +61,10 @@ the site for now.
    `.env.example`. **No `VITE_` prefix on any of them.** Then Deployments →
    ⋯ → Redeploy — variables only apply to deployments made after they are set.
 7. **Check again:** the home page should now show *Server secrets configured*.
+8. **Point the internal app at this one:** in the *internal* app's Vercel
+   project, set `VITE_PARTNER_API_URL` to this project's production address
+   (not secret), and redeploy it. Here, set `INTERNAL_APP_ORIGINS` to the
+   internal app's production address.
 
 ### Things that behave differently on a `.vercel.app` address
 

@@ -16,6 +16,7 @@ import AdminVendorManagement from './AdminVendorManagement'
 import AdminBrandDispatch from './AdminBrandDispatch'
 import AdminRequisitionsReports from './AdminRequisitionsReports'
 import AdminFranchiseCloning from './AdminFranchiseCloning'
+import AdminFofoFranchises from './AdminFofoFranchises'
 import AuditInventoryCatalog from './audits/AuditInventoryCatalog'
 import AuditRequisitionsStockOut from './audits/AuditRequisitionsStockOut'
 import AuditDispatchCheckout from './audits/AuditDispatchCheckout'
@@ -97,6 +98,14 @@ export const ADMIN_NAV = [
     id: 'franchise',
     label: 'Franchise',
     children: [{ id: 'data-cloning', label: 'Data Cloning', Component: AdminFranchiseCloning }],
+  },
+  {
+    // FOFO — franchise-operated outlets that buy from us. Its own group, not
+    // under Franchise above, which is the FOCO programme. Orders and the
+    // unpriceable-products report join it later.
+    id: 'fofo',
+    label: 'FOFO',
+    children: [{ id: 'franchises', label: 'Franchises', Component: AdminFofoFranchises }],
   },
 ]
 

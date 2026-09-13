@@ -25,7 +25,7 @@ import react from '@vitejs/plugin-react'
  * Supabase key or cost price visible in the browser".
  */
 
-const SECRET_NAME = /SUPABASE|SERVICE_ROLE|RAZORPAY|SECRET|PRIVATE/i
+const SECRET_NAME = /SUPABASE|SERVICE_ROLE|RAZORPAY|SECRET|PRIVATE|DATABASE/i
 
 // Shapes that must never appear in anything shipped to a browser.
 const FORBIDDEN_IN_BUNDLE = [
@@ -33,6 +33,7 @@ const FORBIDDEN_IN_BUNDLE = [
   { what: 'a Supabase JWT key', re: /eyJhbGciOi[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*cm9sZS/ },
   { what: 'a Supabase API key', re: /sb_(secret|publishable)_[A-Za-z0-9_-]{10,}/ },
   { what: 'a Razorpay secret', re: /rzp_(test|live)_[A-Za-z0-9]{10,}/ },
+  { what: 'a Postgres connection string', re: /postgres(ql)?:\/\/[^\s'"`]+@/i },
 ]
 
 function walk(dir) {
@@ -79,11 +80,53 @@ function noSecretsInBundle(env) {
 
 /*
  * `npm run dev` serves api/ too, so the functions can be exercised locally
- * without the Vercel CLI or a Vercel login. It wraps Node's response in the two
- * helpers Vercel adds (res.status, res.json) and nothing more — anything a
- * function needs beyond that will fail here first, which is the right place.
- * Production does not use this: Vercel runs api/ itself.
+ * without the Vercel CLI or a Vercel login. It adds what Vercel adds and
+ * nothing more — res.status, res.json, req.query, a JSON-parsed req.body — and
+ * applies the /api rewrites from vercel.json, so a route that only works
+ * through a rewrite works here the same way. Anything a function needs beyond
+ * that will fail here first, which is the right place. Production does not use
+ * this: Vercel runs api/ itself.
  */
+
+// The rewrites in vercel.json that target /api. Only the `:name*` form used
+// there is supported.
+function readApiRewrites() {
+  const { rewrites = [] } = JSON.parse(readFileSync('vercel.json', 'utf8'))
+  return rewrites
+    .filter(({ source }) => source.startsWith('/api/'))
+    .map(({ source, destination }) => {
+      const names = []
+      const pattern = source.replace(/:(\w+)\*/g, (_, name) => { names.push(name); return '(.*)' })
+      return { re: new RegExp(`^${pattern}$`), names, destination }
+    })
+}
+
+function applyRewrite(url, rewrites) {
+  for (const { re, names, destination } of rewrites) {
+    const match = re.exec(url.pathname)
+    if (!match) continue
+    let target = destination
+    names.forEach((name, i) => { target = target.replace(`:${name}*`, match[i + 1]) })
+    const rewritten = new URL(target, 'http://localhost')
+    for (const [key, value] of url.searchParams) rewritten.searchParams.append(key, value)
+    return rewritten
+  }
+  return url
+}
+
+// Like Vercel: a JSON body arrives parsed, anything else as a string.
+async function readBody(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') return undefined
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  const text = Buffer.concat(chunks).toString('utf8')
+  if (!text) return undefined
+  if ((req.headers['content-type'] || '').includes('application/json')) {
+    try { return JSON.parse(text) } catch { return text }
+  }
+  return text
+}
+
 function localApi(env) {
   return {
     name: 'local-api',
@@ -92,9 +135,11 @@ function localApi(env) {
       for (const [name, value] of Object.entries(env)) {
         if (!name.startsWith('VITE_') && process.env[name] === undefined) process.env[name] = value
       }
+      const apiRewrites = readApiRewrites()
       server.middlewares.use(async (req, res, next) => {
-        const url = new URL(req.url, 'http://localhost')
+        let url = new URL(req.url, 'http://localhost')
         if (!url.pathname.startsWith('/api/')) return next()
+        url = applyRewrite(url, apiRewrites)
         const route = url.pathname.replace(/\/$/, '')
         // Mirror Vercel: nothing under api/ whose name starts with _ is a route.
         if (route.split('/').some((part) => part.startsWith('_'))) {
@@ -104,6 +149,7 @@ function localApi(env) {
         try {
           const mod = await server.ssrLoadModule(`${route}.js`)
           req.query = Object.fromEntries(url.searchParams)
+          req.body = await readBody(req)
           res.status = (code) => { res.statusCode = code; return res }
           res.json = (body) => {
             res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -127,5 +173,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [react(), noSecretsInBundle(env), localApi(env)],
+    // Not 5173: the internal app's dev server takes that, and its admin screens
+    // call this API from there.
+    server: { port: 5174 },
   }
 })
