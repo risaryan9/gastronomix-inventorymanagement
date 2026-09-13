@@ -53,6 +53,27 @@ noise.
 by name.** `service_role` is deliberately left with access: that key is
 server-side only.
 
+### FOFO events have their own writer, and can name a franchise user
+
+*Added 2026-09-13, with `migrations/fofo/10-track-franchise-users-in-audit-events.sql`.*
+
+FOFO franchise users are customers and are deliberately **not** in
+`public.users`, so `actor_user_id` cannot name them. `audit_events` gained
+`actor_franchise_user_id`, `franchise_id` and `actor_label`, and a CHECK allows
+at most one of the two actor columns.
+
+FOFO events are written only by **`fofo.log_fofo_audit_event`** — the same rule
+as above, applied to a second kind of actor. It takes a staff actor, a franchise
+user, or neither (system), derives `actor_role` and `actor_label` itself, and
+refuses a franchise user acting for another franchise. It is service_role only.
+
+`log_audit_event` was **not** extended to do this. Adding parameters means
+dropping and recreating it, which re-applies the default grants — the exact way
+it became callable by `anon` before. Leave it alone; FOFO has its own door.
+
+`actor_label` is copied at write time because the internal app's audit screens
+cannot read the `fofo` schema to look a franchise user up.
+
 ## Consequences
 
 - Adding an audited action means a new narrow RPC, not a new client insert.
@@ -73,3 +94,4 @@ server-side only.
 - `migrations/fix-internal-audit-helper-grants.sql` — the grants analysis in full
 - `frontend/src/lib/auditEvents.js` — read side
 - `docs/AUDIT_TRAIL_REQUIREMENTS.md`
+- `migrations/fofo/10-track-franchise-users-in-audit-events.sql` — FOFO actors

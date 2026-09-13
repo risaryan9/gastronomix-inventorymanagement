@@ -5,7 +5,8 @@ in plain words. For the full reasoning behind each choice, see
 [`fofo-schema.md`](fofo-schema.md). For the order to run the files in, see
 [`migrations/fofo/README.md`](../migrations/fofo/README.md).
 
-**Status:** all of it — `migrations/fofo/` files 01–09 — was applied to the live database on 2026-09-13.
+**Status:** all of it — `migrations/fofo/` files 01–11 — was applied to the live
+database on 2026-09-13.
 
 ---
 
@@ -102,13 +103,39 @@ Which outlets each franchise owns. **An outlet has exactly one owner.** Adding a
 outlet to a franchise is just adding a row, and their catalogue grows to match,
 because the brands they can buy are worked out from their outlets.
 
-### `franchise_users` *(file 03)*
+### Onboarding: the welcome email and registration links *(file 11)*
+
+How a franchise gets its logins:
+
+1. The admin creates the franchise, with its **main contact email**.
+2. **Welcome email** — one button, sends a friendly message with no link. Can be
+   sent again; `welcome_email_last_sent_at` shows when it last went.
+3. **Registration emails** — another button, **one email per login**. Every one
+   goes to the franchise's main email, and the franchise hands each link to the
+   right person.
+4. The person opens the link, types **any email they like** and a password, and
+   their login is created and attached to the franchise.
+
+### `franchise_invitations` *(file 11)*
+
+One row per registration email.
+
+- **Numbered per franchise** — #1, #2, #3 — and the number is in the email's
+  subject, so the franchise can tell them apart.
+- **Each link works once**, **expires**, and an admin can **cancel** it before
+  it is used. Sending again means a new email with the next number.
+- The secret part of the link is **never stored** — only a scrambled version of
+  it (a hash) — so nobody reading the database could use it to sign up.
+
+### `franchise_users` *(files 03, 11)*
 
 The people who log in for a franchise. One franchise can have several.
 
-- Email is unique.
-- `auth_user_id` is empty until they accept the invitation and set a password.
-  Empty means "invited, not yet active".
+- A row is created **when someone registers**, not before.
+- Email is unique and stored in lowercase, so the same address can't sign up
+  twice with different capital letters.
+- `invitation_id` says which registration link they used.
+- `is_active` switches a user off when they leave.
 - These people are **not** in the staff `users` table — customers and staff are
   kept apart.
 
@@ -249,10 +276,20 @@ see that 7 kg of chicken left the kitchen, but not why. Stock leaves the shelf
 when the purchase manager **accepts** an order, and what leaves is the finished
 item itself, not its recipe ingredients.
 
-### `audit_events` — 1 new category *(file 06)*
+### `audit_events` — who did it *(files 06, 10)*
 
-Adds `fofo_money` to the list of allowed audit categories, so money actions on
-the FOFO side are recorded in the existing audit trail.
+The existing audit trail records FOFO actions too.
+
+- File 06 adds the `fofo_money` category; file 10 adds `fofo_account` for
+  franchises, emails, links and users.
+- **Every franchise action names the person.** Franchise users aren't staff, so
+  file 10 adds three columns: which franchise user acted, which franchise it was
+  for, and a readable label like *priya@testfoods.in (Test Foods)*. The label is
+  saved on the record itself, because the internal app's audit screens can't
+  look inside the private FOFO tables.
+- Admin actions — sending emails, cancelling a link — are recorded with the
+  admin's name, and automatic ones (a Razorpay payment) as *System*.
+- Store credit spent from the dashboard records which franchise user spent it.
 
 ---
 
@@ -309,7 +346,8 @@ Razorpay is asked for                          45063 paise
 | Missing | Why it matters |
 |---|---|
 | CGST / SGST / IGST split, kitchen and outlet states | Needed if these invoices become the official GST invoice. Being handled by the accounting team. |
-| The purchase manager's **accept** function (file 10) | Stock-out, trim and credit note in one step. Not written yet. |
+| The purchase manager's **accept** function (file 12) | Stock-out, trim and credit note in one step. Not written yet. |
+| What a franchise's **own user management** screen allows | Admins get full user management; the franchise's limited version isn't defined yet. |
 | Invoice and credit note **numbering** | Must be gapless per financial year. Not built yet. |
 | Invoice **paid / unpaid** status | Needed to block checkout when they owe money. |
 | The API and screens | The partner app currently has only a health check. |

@@ -1,7 +1,8 @@
 # FOFO dashboard — build specification
 
-**Status:** design settled. The database is built — `migrations/fofo/` 01–09,
-applied to the live database on 2026-09-13. The partner app on Vercel has a health check and a tested
+**Status:** design settled. The database is built — `migrations/fofo/` 01–11,
+applied to the live database on 2026-09-13, including 10 (franchise users in the
+audit trail) and 11 (onboarding: welcome email and registration links). The partner app on Vercel has a health check and a tested
 Razorpay webhook check; the accept function, invoice numbering, API endpoints
 and screens are not built yet.
 
@@ -409,10 +410,17 @@ fofo.franchise_outlets
   id, franchise_id → franchises, outlet_id → public.outlets (UNIQUE)
   -- the serving kitchen comes from outlets.cloud_kitchen_id; do not duplicate it
 
-fofo.franchise_users
-  id, franchise_id, email (unique), auth_user_id (Supabase Auth),
-  is_active, invited_at, activated_at
+fofo.franchise_invitations                      -- one per registration email
+  id, franchise_id, invitation_number (1, 2, 3 per franchise),
+  sent_to_email, token_hash (SHA-256, never the token),
+  sent_by, sent_at, expires_at, used_at, revoked_at, revoked_by
+
+fofo.franchise_users                            -- created on registration
+  id, franchise_id, email (unique, lowercase), auth_user_id (Supabase Auth),
+  invitation_id (unique), is_active, activated_at
 ```
+
+`fofo.franchises` also carries `welcome_email_last_sent_at`.
 
 **Cart — live, never frozen**
 
@@ -500,13 +508,43 @@ Four things that matter here:
 
 ### 8.1 Onboarding
 
-1. Admin creates a `fofo.franchises` row — name, optional GSTIN, address, city,
-   contact person, phone, email.
-2. Outlets are created in `public.outlets` as normal, with
+1. **Admin creates the franchise** in the admin dashboard — name, optional
+   GSTIN, address, city, contact person, phone, and the **main contact email**.
+2. **Outlets** are created in `public.outlets` as normal, with
    `ownership_model = 'fofo'`, then linked via `fofo.franchise_outlets`.
-3. An invitation email goes out with a single-use, expiring link. Following it
-   lets them set a password, which creates their Supabase Auth user and the
-   `fofo.franchise_users` row.
+3. **Welcome email** — a button. Sends an informational message to the main
+   contact email. No link. Independent of everything else, and can be sent
+   again. `welcome_email_last_sent_at` shows when it last went.
+4. **Registration emails** — a separate button, **one email per login**: a
+   franchise that needs four logins gets four emails. Every one goes to the
+   **main contact email**, never to the person, and the franchise passes each
+   link to whoever should have it.
+   - Each is **numbered per franchise** and says so in the subject —
+     *"User registration #3 for Test Foods"* — so they are not identical.
+   - Each link is **single-use**, **expires** (7 days recommended; the server
+     sets it), and can be **revoked** by an admin until it is used.
+   - A resend is a new email with the next number, never the old link again.
+5. **Registration** — whoever opens a link enters **an email of their choosing**
+   and a password. The server creates the Supabase Auth user, then
+   `claim_franchise_invitation` creates the `fofo.franchise_users` row linked
+   to the franchise and marks the link spent. If the claim fails (used,
+   expired, revoked, email taken) the server deletes the Auth user it created.
+
+**The link is not tied to an email, by decision.** It goes to the franchise's
+own inbox and managing it is their responsibility. What limits the damage from
+a forwarded or leaked link is that it registers at most one person, expires,
+and can be cancelled.
+
+**Everything a user does is on behalf of their franchise**, and the audit trail
+names the person: `audit_events.actor_franchise_user_id`, `franchise_id`, and a
+readable `actor_label` such as *priya@testfoods.in (Test Foods)*. Admin sends
+and revokes are audited too, under category `fofo_account`.
+
+**User management.** Admins get a complete user management dashboard; a
+franchise gets a limited one. What "limited" allows — seeing their users,
+deactivating one, requesting another registration email — is **not settled
+yet**. Deactivation uses `franchise_users.is_active`, and login must refuse an
+inactive user.
 
 Adding outlets later is just more `franchise_outlets` rows. Their catalogue
 widens automatically, because brands are derived from the outlets they own.
@@ -712,7 +750,14 @@ credit-note numbers must be **gapless and sequential per financial year**.
 7. **Any new internal function must revoke `anon` and `authenticated` by name.**
    `REVOKE ... FROM PUBLIC` does **not** work in this database — see decision
    0004. Check `pg_proc.proacl`, do not assume.
-8. **Franchise isolation is tested, not assumed.** Two test franchises; log in
+8. **Registration tokens are never stored.** The server generates a random
+   token, puts it in the link, and stores only its SHA-256 hash — a CHECK
+   rejects anything that is not a 64-character hex digest. Links are
+   single-use, expiring and revocable.
+9. **Every franchise action names the person.** FOFO audit events go through
+   `fofo.log_fofo_audit_event`, which derives the actor's role and label itself
+   and refuses a franchise user acting for a different franchise.
+10. **Franchise isolation is tested, not assumed.** Two test franchises; log in
    as A and attempt to read B's orders by guessing IDs and tampering with
    bodies. All attempts must fail, and the attempts should be written down.
 
@@ -726,7 +771,8 @@ except the webhook.
 | Endpoint | Does |
 |---|---|
 | `GET /api/health` | Proves the `vercel.json` catch-all rewrite does not swallow `/api` |
-| `POST /api/auth/*` | Invite acceptance, login, password reset |
+| `POST /api/auth/register` | Registration through a link: creates the Auth user, then claims the invitation; deletes the Auth user if the claim fails |
+| `POST /api/auth/*` | Login, logout, password reset. Refuses an inactive franchise user |
 | `GET /api/outlets` | The outlets this franchise owns |
 | `GET /api/catalog?outlet_id=` | Sellable materials with **final prices**, cost and margin stripped |
 | `GET/PUT /api/cart` | Live cart contents, priced on read |
@@ -737,9 +783,26 @@ except the webhook.
 | `GET /api/credit/balance` | Earned less applied, plus the per-credit statement behind it |
 | `POST /api/credit/redeem` | Applies credit to one invoice, oldest first, up to what is still owed. Returns the amount applied; repeating it is a no-op |
 
-Internal screens (PM accept, KE pack, logistics invoice, the unpriceable-product
-report) are **not** API endpoints — they live in `frontend/` and call Postgres
-RPCs the existing way.
+**Admin onboarding endpoints.** The admin dashboard lives in the internal app,
+but sending email and generating tokens need server code, and the internal app
+cannot reach the `fofo` schema through its public API. So the admin's buttons
+call these, authenticated with the admin's **Supabase Auth session** and checked
+against `public.users` (active, role `admin`) — the database functions check
+again:
+
+| Endpoint | Does |
+|---|---|
+| `POST /api/admin/franchises/:id/welcome-email` | Sends the welcome email, then `record_welcome_email_sent` |
+| `POST /api/admin/franchises/:id/invitations` | Generates a token, `create_franchise_invitation`, then sends the numbered email |
+| `POST /api/admin/invitations/:id/revoke` | `revoke_franchise_invitation` |
+
+> **Open: how the other internal screens reach `fofo`.** PM accept, KE pack, the
+> logistics invoice and the unpriceable-product report were meant to call
+> Postgres RPCs from `frontend/` the existing way. That cannot work as drawn:
+> the `fofo` schema is deliberately not exposed, so the internal app's client
+> cannot see those functions. Either they get server endpoints like the admin
+> ones above, or thin `public` wrappers that check an authenticated staff role.
+> Decide before building 8.3.
 
 ---
 

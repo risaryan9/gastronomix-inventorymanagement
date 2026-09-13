@@ -5,7 +5,7 @@ Companion to [`fofo-dashboard-spec.md`](fofo-dashboard-spec.md): the spec says
 shorter, plain-English walkthrough of every table, read
 [`fofo-schema-explained.md`](fofo-schema-explained.md) first.
 
-**Status:** everything in `migrations/fofo/` (01–09) was applied to the live database on 2026-09-13.
+**Status:** everything in `migrations/fofo/` (01–11) was applied to the live database on 2026-09-13.
 Facts marked "today" in §1–2 were read from the live database before that, and
 row counts will have moved since.
 
@@ -117,7 +117,30 @@ ALTER TABLE public.outlets
 Says whether an outlet is company-operated or franchise-operated. Default
 `'foco'` is correct for all 77 existing rows.
 
-### 3.3 `stock_out` — one column
+### 3.3 `audit_events` — three columns *(migration 10)*
+
+| Column | Plain meaning |
+|---|---|
+| `actor_franchise_user_id` | The franchise login that acted. Never set together with `actor_user_id`, which is staff. |
+| `franchise_id` | The franchise the event concerns — on franchise-user, staff and system events alike, so one filter finds everything that happened to a franchise. |
+| `actor_label` | Who acted, readably, copied at the time: *priya@testfoods.in (Test Foods)*. |
+
+Franchise users are not in `public.users`, so the existing `actor_user_id`
+cannot name them. `actor_label` is stored rather than looked up because the audit
+screens live in the internal app, which cannot read the `fofo` schema — and
+because an audit record should say who the actor was when they acted.
+
+FOFO events are written only by **`fofo.log_fofo_audit_event`**. It takes a staff
+actor, a franchise-user actor, or neither (a system event such as a Razorpay
+webhook), derives the role and label itself, and refuses a franchise user acting
+for another franchise. `public.log_audit_event` is left untouched: every internal
+flow calls it, and changing its signature would reset its grants. Categories gain
+`fofo_account` for franchises, welcome emails, invitations and users.
+
+`store_credit_applications` gains `applied_by_franchise_user_id` the same way,
+and `apply_store_credit` takes the acting franchise user.
+
+### 3.4 `stock_out` — one column
 
 ```sql
 ALTER TABLE public.stock_out
@@ -225,20 +248,66 @@ on `outlets.cloud_kitchen_id`, and copying it here would create two answers to
 the same question that can drift apart.
 
 ```sql
-fofo.franchise_users
+fofo.franchise_invitations                         -- migration 11
+  id                uuid primary key
+  franchise_id      uuid not null → fofo.franchises(id)
+  invitation_number integer not null     -- 1, 2, 3 per franchise
+  sent_to_email     text not null        -- the franchise contact email, copied
+  token_hash        text not null unique -- SHA-256 hex; the token is never stored
+  sent_by           uuid → public.users(id)
+  sent_at           timestamptz not null default now()
+  expires_at        timestamptz not null
+  used_at           timestamptz
+  revoked_at        timestamptz
+  revoked_by        uuid → public.users(id)
+  unique (franchise_id, invitation_number)
+```
+
+One **registration email**. Every one goes to the franchise's main contact
+email, carries a link that registers **one** login, and is numbered so the
+franchise can tell them apart (*"User registration #3 for Test Foods"*). A link
+is single-use, expires, and can be revoked until it is used. The link is not
+tied to any email — whoever holds it chooses their own — which is a deliberate
+choice; the single use and the expiry are what bound it.
+
+The number is allocated as `max + 1` with the franchise row locked, so two
+admins sending at once get #5 and #6, not two #5s. Only the token's hash is
+stored, and a CHECK refuses anything that is not a 64-character hex digest, so
+nothing read from the database can register an account.
+
+```sql
+fofo.franchise_users                               -- reshaped in migration 11
   id            uuid primary key
   franchise_id  uuid not null → fofo.franchises(id)
-  email         text not null unique
-  auth_user_id  uuid                      -- Supabase Auth, set on activation
+  email         text not null unique  -- lowercase, trimmed (CHECK)
+  auth_user_id  uuid not null unique  -- Supabase Auth
+  invitation_id uuid unique → fofo.franchise_invitations(id)
   is_active     boolean not null default true
-  invited_at    timestamptz
-  activated_at  timestamptz
+  activated_at  timestamptz not null default now()
   created_at, updated_at
 ```
 
-The login. A franchise can have more than one person. `auth_user_id` is null
-between sending the invitation and them setting a password — that gap *is* the
-"invited but not yet activated" state, so it needs no separate flag.
+The login. A franchise can have more than one person. **A row exists only once
+someone has registered**, so every column that describes the account is
+required. `invitation_id` records which link it came from — one link, one login.
+The email is theirs to choose, and is kept lowercase so `Priya@x.in` and
+`priya@x.in` cannot both register. `is_active = false` is how a user is
+deactivated; login must refuse them.
+
+`fofo.franchises` also gains `welcome_email_last_sent_at` — the welcome email is
+a separate, repeatable button with no link.
+
+**Functions** (migration 11, all server-only):
+
+| Function | Does |
+|---|---|
+| `record_welcome_email_sent(franchise, admin)` | Stamps the welcome email and audits it |
+| `create_franchise_invitation(franchise, token_hash, expires_at, admin)` | Allocates the next number, stores the hash, audits; returns the number and address |
+| `claim_franchise_invitation(token_hash, auth_user_id, email, ip, user_agent)` | Spends a link exactly once and creates the franchise user; audits as that user |
+| `revoke_franchise_invitation(invitation, admin)` | Cancels an unused link; repeating it is harmless |
+
+Each admin function checks that the caller is an active admin, even though the
+API has already checked.
 
 **These people are not in `public.users`.** That table is staff, its `role`
 CHECK lists only staff roles, and its rows are tied to a cloud kitchen. Mixing
@@ -574,6 +643,12 @@ rather than merely discouraged:
 | A credit is never overdrawn | trigger on `store_credit_applications`: applied ≤ credit, under a row lock |
 | An invoice never absorbs more credit than it is worth | same trigger: applied ≤ `invoices.total` |
 | One franchise's credit cannot settle another's bill | same trigger, comparing both owners |
+| An audit event has at most one actor | CHECK on `audit_events`: staff or franchise user, not both |
+| A franchise-user event says which franchise | CHECK on `audit_events` |
+| A registration link registers one login | `used_at` under a row lock; `UNIQUE (invitation_id)` on `franchise_users` |
+| Registration emails are numbered per franchise | `UNIQUE (franchise_id, invitation_number)` |
+| A raw token is never stored | CHECK on `token_hash`: 64 lowercase hex characters |
+| One email, one login, regardless of case | CHECK lowercase + `UNIQUE (email)` on `franchise_users` |
 | A webhook retry is not a second payment | `UNIQUE (razorpay_payment_id)` on `payments` |
 | A material appears once per cart | `UNIQUE (cart_id, raw_material_id)` |
 | A component appears once per recipe | `UNIQUE (recipe_id, component_material_id)` |
@@ -609,7 +684,7 @@ Things the schema **cannot** enforce, which therefore need code and a test:
 ## 9. Migration order
 
 All of these live in `migrations/fofo/`, numbered in the order they must run.
-**01–09 were applied to the live database on 2026-09-13**, in order, each verified before the next.
+**01–11 were applied to the live database on 2026-09-13**, in order, each verified before the next.
 
 1. `01-add-fofo-sale-columns-to-materials.sql`
 2. `02-add-recipes-and-recipe-items.sql` — the BOM tables
@@ -624,7 +699,11 @@ All of these live in `migrations/fofo/`, numbered in the order they must run.
 8. `08-create-fofo-store-credit-rpcs.sql` — the balance, and applying credit to an
    invoice oldest-first
 9. `09-link-stock-out-to-fofo-orders.sql` — needs `fofo.orders` to exist first
-10. `10-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
+10. `10-track-franchise-users-in-audit-events.sql` — audit actors for franchise
+    users, `log_fofo_audit_event`, `apply_store_credit` naming the user.
+11. `11-add-franchise-registration-invitations.sql` — the welcome email stamp,
+    numbered registration links, `franchise_users` reshaped for registration.
+12. `12-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
     accept, modelled on `pack_allocation_request`
 
 The pricing module (Phase 1) only reads what 01–02 added, so it can be built
