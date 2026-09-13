@@ -49,3 +49,15 @@ next-env.d.ts
 skills-lock.json
 promptest.md
 
+
+# Report screenshots and exported PDFs under docs/
+# Generated artefacts of a management update — the source is the Markdown and
+# the app itself, and these are large (the 2026-09-04 update alone is ~1.4 MB
+# of JPG, PNG and PDF). The app's own images live under frontend/ and are
+# tracked deliberately; this rule is scoped to docs/ so it never catches them.
+docs/**/*.png
+docs/**/*.jpg
+docs/**/*.jpeg
+docs/**/*.gif
+docs/**/*.webp
+docs/**/*.pdf
