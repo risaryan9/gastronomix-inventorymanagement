@@ -38,7 +38,7 @@ npm run build            # must pass before committing
 `vercel.json`, so no Vercel CLI or login is needed. It runs on **5174** because
 the internal app's dev server takes 5173 and its admin screens call this API.
 
-To use the internal app's **FOFO → Franchises** screen locally, run both dev
+To use the internal app's **Franchise → FOFO Franchises** screen locally, run both dev
 servers. The internal app finds this one at `http://localhost:5174` by default,
 and `INTERNAL_APP_ORIGINS` here must include `http://localhost:5173`.
 

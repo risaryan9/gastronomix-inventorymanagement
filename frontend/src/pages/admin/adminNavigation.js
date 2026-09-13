@@ -97,15 +97,12 @@ export const ADMIN_NAV = [
   {
     id: 'franchise',
     label: 'Franchise',
-    children: [{ id: 'data-cloning', label: 'Data Cloning', Component: AdminFranchiseCloning }],
-  },
-  {
-    // FOFO — franchise-operated outlets that buy from us. Its own group, not
-    // under Franchise above, which is the FOCO programme. Orders and the
-    // unpriceable-products report join it later.
-    id: 'fofo',
-    label: 'FOFO',
-    children: [{ id: 'franchises', label: 'Franchises', Component: AdminFofoFranchises }],
+    children: [
+      { id: 'data-cloning', label: 'Data Cloning', Component: AdminFranchiseCloning },
+      // FOFO — franchise-operated outlets that buy supplies from us. Data
+      // Cloning above is the FOCO programme; the label keeps the two apart.
+      { id: 'fofo-franchises', label: 'FOFO Franchises', Component: AdminFofoFranchises },
+    ],
   },
 ]
 

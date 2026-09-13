@@ -9,7 +9,7 @@ In build order. Design: spec §8.1 and §12. Tick as done.
 - [ ] **You:** internal app's Vercel project — `VITE_PARTNER_API_URL` = the partner app's address
 - [x] Server: DB connection (as service_role), admin-session check, CORS for the internal app only
 - [x] Endpoints: list, create, edit, (de)activate franchises; link/unlink outlets — `partner-frontend/api/admin.js`
-- [x] Internal app: FOFO → Franchises — list, create/edit form, outlet linking
+- [x] Internal app: Franchise → FOFO Franchises — list, create/edit form, outlet linking
 - [ ] Try it against the live database once the env vars are set
 - [x] Welcome and registration buttons, disabled ("Email not set up yet")
 

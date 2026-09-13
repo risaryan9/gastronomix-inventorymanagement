@@ -31,7 +31,7 @@ exposed through the API, RLS on with no policies, service_role only.
 - Built: `/api/health`, `api/_lib/razorpay.js` (signature + exact-amount check,
   15 cases verified), and a build step that fails if a secret reaches the bundle.
 - Built: `/api/admin/*` (`api/admin.js`) — franchise CRUD and outlet linking for
-  the internal app's FOFO → Franchises screen. Postgres via `DATABASE_URL`, every
+  the internal app's Franchise → FOFO Franchises screen. Postgres via `DATABASE_URL`, every
   transaction `SET LOCAL ROLE service_role`; admin checked via Supabase Auth +
   `public.users`; CORS from `INTERNAL_APP_ORIGINS`. Group routes behind one file
   and a `vercel.json` rewrite — the free plan allows only 12 functions.

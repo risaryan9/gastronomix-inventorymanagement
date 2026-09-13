@@ -1,12 +1,12 @@
-// Admin ▸ FOFO ▸ Franchises
+// Admin ▸ Franchise ▸ FOFO Franchises
 //
 // FOFO franchises — franchise owned, franchise operated — buy supplies from us
 // through the partner app (docs/fofo-dashboard-spec.md). This screen is step 1
 // of onboarding one: create the franchise, give it its outlets, and later send
 // its welcome and registration emails.
 //
-// Not the Franchise ▸ Data Cloning section, which belongs to the FOCO
-// dashboard, a different programme.
+// Its neighbour Franchise ▸ Data Cloning belongs to the FOCO dashboard, a
+// different programme.
 //
 // Everything here goes through the partner app's server (lib/partnerApi.js),
 // because the fofo schema is not reachable with this app's Supabase key.
