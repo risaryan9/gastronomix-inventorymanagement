@@ -94,6 +94,7 @@ against each other.
 | [0014](0014-fofo-prices-mark-up-the-gst-inclusive-cost.md) | **FOFO prices mark up the GST-inclusive cost** — reads as tax on tax, and is correct because there is no input tax credit | FOFO pricing, the BOM cost roll-up | Accepted |
 | [0015](0015-fofo-data-is-reached-only-through-the-partner-server.md) | FOFO data is reached only through the partner app's server — no Supabase key in that app, and internal staff go through the server too | any FOFO endpoint, staff access to `fofo`, partner-app env vars | Accepted |
 | [0016](0016-a-fofo-invoice-is-never-edited.md) | A FOFO invoice is never edited — a trim issues a credit note | invoices, the accept flow, trims | Accepted |
+| [0017](0017-staff-login-keys-are-not-readable-through-the-api.md) | **Staff login keys are not readable through the API** — column privilege, not RLS; `select('*')` on `users` fails on purpose | `public.users` queries, login keys, new `users` columns | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

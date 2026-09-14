@@ -56,10 +56,11 @@ Now in the spec and decision 0015, kept here as a summary:
 
 - **Internal staff reach `fofo` through the partner app's server, never
   directly** (spec §12). Admins send their Supabase Auth session. Purchase
-  managers and kitchen staff log in by key (their browser holds `login_key` in
-  `localStorage.user_session`): a quiet key check once — not
+  managers and kitchen staff log in by key: a quiet key check once — not
   `authenticate_user_by_key` — then a ~12 h pass; kitchen checked on every
-  action; wrong keys rate-limited.
+  action; wrong keys rate-limited. **Correction:** the browser session does
+  *not* keep `login_key` (checked in `Login.jsx`), so the pass must be issued
+  at login or the key asked for again — see decision 0017.
 - **`yield_quantity` is real** — BOMs are written per production run. Examples
   come with the BOM seed data (spec §5).
 

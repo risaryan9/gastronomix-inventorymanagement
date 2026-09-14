@@ -51,4 +51,5 @@ In build order. Design: spec §8.1 and §12. Tick as done.
 - [ ] Registered emails are marked confirmed without a confirmation email (by decision the address is the registrant's choice; confirmation would need Supabase SMTP). Revisit with step 3
 - [ ] Delete the stray `docs/prod-ca-2021.crt` (not committed; the server reads `DATABASE_CA_CERT`)
 - [ ] FOFO audit events have no labels in the internal app's audit screens yet (`lib/auditEvents.js`)
+- [ ] **Staff login keys were readable by anyone with the internal app's public key** (decision 0017). Deploy the internal app, run `migrations/stop-exposing-staff-login-keys.sql`, verify, then **rotate all 23 login keys**
 - [ ] Pre-existing: the RLS policy on `public.outlets` lets any caller without a Supabase session write outlets (`is_supervisor_or_admin()` returns true for them) — fix separately

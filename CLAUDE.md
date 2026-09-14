@@ -28,6 +28,7 @@ look like bugs and are not.** Check the index in
 | FOFO pricing, or the BOM cost roll-up | [0014 — mark up the GST-inclusive cost](docs/decisions/0014-fofo-prices-mark-up-the-gst-inclusive-cost.md) |
 | a FOFO endpoint, or staff access to `fofo` | [0015 — only through the partner server](docs/decisions/0015-fofo-data-is-reached-only-through-the-partner-server.md) |
 | a FOFO invoice, or a trim | [0016 — an invoice is never edited](docs/decisions/0016-a-fofo-invoice-is-never-edited.md) |
+| a query on `public.users`, or login keys | [0017 — login keys are not readable through the API](docs/decisions/0017-staff-login-keys-are-not-readable-through-the-api.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

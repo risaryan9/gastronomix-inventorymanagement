@@ -29,10 +29,11 @@ const Login = () => {
 
       if (signInError) throw signInError
 
-      // Verify user is admin in our users table
+      // Verify user is admin in our users table. Columns are named, not '*':
+      // login_key is not readable through the API (migrations/stop-exposing-staff-login-keys.sql).
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('*')
+        .select('id, full_name, role, cloud_kitchen_id, email')
         .eq('id', data.user.id)
         .eq('role', 'admin')
         .single()
@@ -120,12 +121,6 @@ const Login = () => {
     }
 
     try {
-      console.log('Attempting login with:', {
-        loginKey: loginKey.trim(),
-        role: loginType,
-        selectedCloudKitchenId: effectiveCloudKitchenId
-      })
-      
       // Use RPC function to authenticate user (bypasses RLS)
       const { data: userDataArray, error: userError } = await supabase.rpc(
         'authenticate_user_by_key',
@@ -135,8 +130,6 @@ const Login = () => {
           p_cloud_kitchen_id: effectiveCloudKitchenId
         }
       )
-
-      console.log('RPC result:', { userDataArray, userError })
 
       if (userError) {
         console.error('Login error:', userError)
@@ -153,17 +146,8 @@ const Login = () => {
       const userData = userDataArray && userDataArray.length > 0 ? userDataArray[0] : null
 
       if (!userData) {
-        console.error('No user found with login_key:', loginKey.trim(), 'for cloud kitchen:', effectiveCloudKitchenId)
         throw new Error('Invalid login key or user not found for this cloud kitchen')
       }
-
-      console.log('User found:', {
-        id: userData.id,
-        full_name: userData.full_name,
-        role: userData.role,
-        cloud_kitchen_id: userData.cloud_kitchen_id,
-        login_key: userData.login_key
-      })
 
       // Fetch cloud kitchen name separately (join might fail due to RLS)
       let cloudKitchenName = null

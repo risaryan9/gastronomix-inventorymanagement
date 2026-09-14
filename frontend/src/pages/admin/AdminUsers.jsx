@@ -74,14 +74,28 @@ const AdminUsers = () => {
     try {
       setLoading(true)
       setError('')
-      const { data, error } = await supabase
-        .from('users')
-        .select('*, cloud_kitchens(name, code), outlets(id, code, name)')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
+      // Columns are named, not '*': login_key is not readable through the
+      // API, so the keys come from admin_list_login_keys(), which only an
+      // active admin may call (migrations/stop-exposing-staff-login-keys.sql).
+      const [usersResult, keysResult] = await Promise.all([
+        supabase
+          .from('users')
+          .select(
+            'id, email, full_name, role, cloud_kitchen_id, is_active, created_at, updated_at, deleted_at, phone_number, outlet_map, cloud_kitchens(name, code), outlets(id, code, name)'
+          )
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }),
+        supabase.rpc('admin_list_login_keys'),
+      ])
 
-      if (error) throw error
-      setUsers(data || [])
+      if (usersResult.error) throw usersResult.error
+      // Users still load if the keys cannot — they are shown without them.
+      if (keysResult.error) {
+        console.error('Error fetching login keys:', keysResult.error)
+        setError('Users loaded, but their login keys could not be. Sign out and sign in again if this persists.')
+      }
+      const keyByUser = new Map((keysResult.data || []).map((row) => [row.user_id, row.login_key]))
+      setUsers((usersResult.data || []).map((u) => ({ ...u, login_key: keyByUser.get(u.id) || null })))
     } catch (err) {
       console.error('Error fetching users:', err)
       setError('Failed to load users. Please try again.')

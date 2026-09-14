@@ -134,10 +134,12 @@ const Overview = () => {
           .eq('is_active', true)
           .is('deleted_at', null),
 
-        // Supervisors for this cloud kitchen (for count and modal)
+        // Supervisors for this cloud kitchen (for count and modal). Not their
+        // login keys: those are not readable with this app's key, and only
+        // admins manage them (migrations/stop-exposing-staff-login-keys.sql).
         supabase
           .from('users')
-          .select('id, full_name, login_key, phone_number')
+          .select('id, full_name, phone_number')
           .eq('role', 'supervisor')
           .eq('cloud_kitchen_id', session.cloud_kitchen_id)
           .eq('is_active', true)
@@ -880,7 +882,6 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                   <thead className="bg-background border-b border-border">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Full Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Login Key</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Phone Number</th>
                     </tr>
                   </thead>
@@ -889,9 +890,6 @@ onClick={() => navigate('/invmanagement/dashboard/purchase_manager/materials')}
                       <tr key={sup.id} className="border-b border-border">
                         <td className="px-4 py-3 text-sm text-foreground">
                           {sup.full_name}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                          {sup.login_key || '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-foreground">
                           {sup.phone_number || '—'}
