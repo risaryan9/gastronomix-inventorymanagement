@@ -50,7 +50,7 @@ record: whenever the invoice is issued, it is never edited afterwards.
   credited. `orders.subtotal`/`grand_total` stay at the ordered amounts after a
   trim.
 - A credit note must never exceed what is left of its invoice. No constraint
-  enforces that yet; the accept function (migration 15) must check it.
+  enforces that yet; the accept function (migration 16) must check it.
 - **Immutability is a rule, not yet a guard.** Nothing in the database refuses an
   `UPDATE` on `fofo.invoices` today. Only the server's service_role connection can
   write there, but a `BEFORE UPDATE OR DELETE` trigger would make the rule

@@ -136,8 +136,12 @@ export async function getFranchise(db, franchiseId) {
 }
 
 /**
- * Every outlet, with who owns it and whether it can be linked. The internal app
- * could read outlets itself, but not the owner — that lives in fofo.
+ * Every outlet, with who owns it and its FOCO portal code. The internal app
+ * could read outlets itself, but not the owner — that lives in fofo — nor an
+ * inactive portal code, which the anon key cannot see (migration 15).
+ *
+ *   has_foco_portal_code      a portal code exists for the outlet
+ *   foco_portal_code_active   and it is on (null when there is none)
  */
 export async function listOutlets(db) {
   const { rows } = await db.query(`
@@ -145,12 +149,13 @@ export async function listOutlets(db) {
            ck.name AS cloud_kitchen_name,
            fo.franchise_id AS owner_franchise_id,
            f.name AS owner_franchise_name,
-           EXISTS (SELECT 1 FROM public.franchise_outlet_codes c
-                    WHERE c.outlet_id = o.id AND c.is_active = true) AS has_foco_code
+           (c.id IS NOT NULL) AS has_foco_portal_code,
+           c.is_active AS foco_portal_code_active
       FROM public.outlets o
       LEFT JOIN public.cloud_kitchens ck ON ck.id = o.cloud_kitchen_id
       LEFT JOIN fofo.franchise_outlets fo ON fo.outlet_id = o.id
       LEFT JOIN fofo.franchises f ON f.id = fo.franchise_id
+      LEFT JOIN public.franchise_outlet_codes c ON c.outlet_id = o.id
      WHERE o.deleted_at IS NULL
      ORDER BY o.code, o.id
   `)
@@ -208,13 +213,13 @@ export async function unlinkOutlet(db, adminId, franchiseId, outletId) {
 }
 
 /* ------------------------------------------------------------------ *
- * Outlets — migration 13
+ * Outlets — migrations 13 and 15
  * ------------------------------------------------------------------ */
 
 /**
  * Marks an outlet company-operated ('foco') or franchise-operated ('fofo').
- * The function refuses 'foco' for an outlet a FOFO franchise owns, and 'fofo'
- * for one with an active FOCO dashboard code.
+ * Becoming FOFO turns its FOCO portal code off; returning to FOCO turns it back
+ * on. Refuses 'foco' for an outlet a FOFO franchise owns.
  */
 export async function setOutletOwnershipModel(db, adminId, outletId, body) {
   requireUuid(outletId, 'Outlet')
@@ -226,7 +231,12 @@ export async function setOutletOwnershipModel(db, adminId, outletId, body) {
     [outletId, body.ownership_model, adminId]
   )
   const outlet = await db.query(
-    'SELECT id, code, name, ownership_model FROM public.outlets WHERE id = $1',
+    `SELECT o.id, o.code, o.name, o.ownership_model,
+            (c.id IS NOT NULL) AS has_foco_portal_code,
+            c.is_active AS foco_portal_code_active
+       FROM public.outlets o
+       LEFT JOIN public.franchise_outlet_codes c ON c.outlet_id = o.id
+      WHERE o.id = $1`,
     [outletId]
   )
   return { changed: rows[0].changed, outlet: outlet.rows[0] }

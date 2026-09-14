@@ -20,7 +20,7 @@ made in conversation, and the traps.
 
 ## Where things stand
 
-**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–14
+**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–15
 applied and verified one by one. All FOFO tables are in the `fofo` schema, not
 exposed through the API, RLS on with no policies, service_role only.
 
@@ -103,8 +103,8 @@ Not in the spec:
 
 **In progress: onboarding first**, ahead of pricing — tracked in
 `docs/fofo-onboarding-checklist.md`. Migration 12 is the franchise admin
-functions, 13 the outlet FOCO/FOFO controls, 14 franchise sessions; the accept function
-moves to 15.
+functions, 13 the outlet FOCO/FOFO controls, 14 franchise sessions, 15 FOCO portal codes
+following the ownership model; the accept function moves to 16.
 
 
 The spec's build order (§13) puts **Phase 1 — the pricing module, no UI** first,

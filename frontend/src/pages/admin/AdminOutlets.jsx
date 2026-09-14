@@ -22,6 +22,11 @@ const STATUS_OPTIONS = [
 // partner app's server, not supabase.from('outlets'): the change is audited,
 // and an outlet a FOFO franchise owns cannot be marked FOCO — a rule that needs
 // the fofo schema this app cannot see (migrations/fofo/13).
+//
+// An outlet's FOCO portal code follows its model (migrations/fofo/15): becoming
+// FOFO turns the code off, returning to FOCO turns it back on. An inactive code
+// is invisible to this app's key, so the portal code's state comes from the
+// partner app's outlets list, not from franchise_outlet_codes directly.
 const MODEL_OPTIONS = [
   { value: 'foco', label: 'FOCO (company operated)' },
   { value: 'fofo', label: 'FOFO (franchise operated)' },
@@ -39,6 +44,8 @@ const AdminOutlets = () => {
   const [brandFilter, setBrandFilter] = useState(['all'])
   const [statusFilter, setStatusFilter] = useState(['all'])
   const [modelFilter, setModelFilter] = useState(['all'])
+  // outlet id → { has_foco_portal_code, foco_portal_code_active }
+  const [portalCodes, setPortalCodes] = useState(new Map())
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingOutlet, setEditingOutlet] = useState(null)
@@ -86,6 +93,16 @@ const AdminOutlets = () => {
     }
   }
 
+  // Best effort: the form still works without it, showing no portal code state.
+  const fetchPortalCodes = async () => {
+    try {
+      const rows = await fofoAdminApi.listOutlets()
+      setPortalCodes(new Map(rows.map((row) => [row.id, row])))
+    } catch (err) {
+      console.error('Error fetching FOCO portal codes:', err)
+    }
+  }
+
   const fetchOutlets = async () => {
     try {
       setLoading(true)
@@ -111,6 +128,7 @@ const AdminOutlets = () => {
   useEffect(() => {
     fetchOutlets()
     fetchCloudKitchens()
+    fetchPortalCodes()
   }, [])
 
   const getBrandFromCode = (code) => {
@@ -234,6 +252,7 @@ const AdminOutlets = () => {
             // click on Create would try to add it again.
             setIsModalOpen(false)
             await fetchOutlets() // clears the page error, so it runs first
+            fetchPortalCodes()
             setError(
               `${payload.code} was created, but as FOCO — it could not be set to FOFO: ${modelErr.message} Edit the outlet to try again.`
             )
@@ -244,6 +263,7 @@ const AdminOutlets = () => {
 
       setIsModalOpen(false)
       await fetchOutlets()
+      fetchPortalCodes()
     } catch (err) {
       console.error('Error saving outlet:', err)
       if (err.code === '42501') {
@@ -713,9 +733,31 @@ const AdminOutlets = () => {
                     </select>
                     <div className="mt-1 text-xs text-muted-foreground">
                       FOFO does not give the outlet to a franchise — add it to one from Franchise → FOFO
-                      Franchises. An outlet a FOFO franchise owns cannot be set to FOCO, and one with an
-                      active FOCO dashboard code cannot be set to FOFO.
+                      Franchises, which accepts FOFO outlets only. An outlet a FOFO franchise owns cannot be
+                      set back to FOCO.
                     </div>
+                    {editingOutlet &&
+                      editingOutlet.ownership_model === 'foco' &&
+                      formData.ownership_model === 'fofo' &&
+                      portalCodes.get(editingOutlet.id)?.foco_portal_code_active && (
+                        <div className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 rounded px-2 py-1">
+                          Saving turns off this outlet&apos;s FOCO portal code — its owners will no longer be able
+                          to open the portal. Switching back to FOCO turns it on again.
+                        </div>
+                      )}
+                    {editingOutlet && formData.ownership_model === 'fofo' && (
+                      <label className="mt-3 flex items-center gap-2 text-sm text-foreground cursor-not-allowed">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(portalCodes.get(editingOutlet.id)?.has_foco_portal_code)}
+                          readOnly
+                          disabled
+                          className="h-4 w-4 accent-[hsl(49,95%,46%)]"
+                        />
+                        FOCO portal code on file
+                        <span className="text-xs text-muted-foreground">(read-only)</span>
+                      </label>
+                    )}
                   </div>
 
                   {formError && (

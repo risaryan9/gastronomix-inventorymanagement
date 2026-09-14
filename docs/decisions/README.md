@@ -96,6 +96,7 @@ against each other.
 | [0016](0016-a-fofo-invoice-is-never-edited.md) | A FOFO invoice is never edited — a trim issues a credit note | invoices, the accept flow, trims | Accepted |
 | [0017](0017-staff-login-keys-are-not-readable-through-the-api.md) | **Staff login keys are not readable through the API** — column privilege, not RLS; `select('*')` on `users` fails on purpose | `public.users` queries, login keys, new `users` columns | Accepted |
 | [0018](0018-franchise-sessions-are-server-side.md) | Franchise sessions are the partner app's own (HttpOnly cookie, hashed in the database), not Supabase tokens in the browser | partner-app sign-in, `/api/franchise/*`, anything scoped to a franchise | Accepted |
+| [0019](0019-foco-portal-codes-follow-the-ownership-model.md) | An outlet's FOCO portal code follows its ownership model — FOFO turns it off, FOCO back on; only FOFO outlets can be linked to a franchise | `outlets.ownership_model`, `franchise_outlet_codes`, franchise outlet linking | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

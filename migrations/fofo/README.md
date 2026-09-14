@@ -4,10 +4,10 @@ Everything the FOFO franchise dashboard adds to the database. Kept in its own
 folder because it is one feature that must be applied as a set, in order — the
 rest of `migrations/` is a flat history and does not work that way.
 
-**Status: 01–14 were applied to the live database** (01–13 on 2026-09-13, 14 on 2026-09-14), in number order, each verified
+**Status: 01–15 were applied to the live database** (01–13 on 2026-09-13, 14–15 on 2026-09-14), in number order, each verified
 against the live schema before the next was run. For a fresh environment, run
 them the same way — in order, on a branch or backup first, running each file's
-verification block before moving on. 15 is not written yet.
+verification block before moving on. 16 is not written yet.
 
 | # | File | Adds | Needs |
 |---|---|---|---|
@@ -25,7 +25,8 @@ verification block before moving on. 15 is not written yet.
 | 12 | `12-add-franchise-admin-functions.sql` | create/edit/deactivate franchises, link/unlink outlets; `contact_email` required | 03, 04, 05, 10, 11 |
 | 13 | `13-add-outlet-ownership-model-controls.sql` | admins mark outlets FOCO/FOFO; trigger keeps a franchise-owned outlet FOFO | 03, 04, 10, 11 |
 | 14 | `14-add-franchise-sessions.sql` | partner-app sessions, sign-in throttling, sign-in/out and reset audit | 03, 10, 11 |
-| 15 | `15-create-fofo-accept-order-rpc.sql` | **not written yet** — the purchase manager's atomic accept | 07, 09, 10 |
+| 15 | `15-tie-foco-portal-codes-to-ownership-model.sql` | FOFO turns an outlet's FOCO portal code off, FOCO back on; linking accepts FOFO outlets only. Replaces `set_outlet_ownership_model` (13) and `link_franchise_outlet` (12) | 12, 13 |
+| 16 | `16-create-fofo-accept-order-rpc.sql` | **not written yet** — the purchase manager's atomic accept | 07, 09, 10 |
 
 01 and 02 are all Phase 1 of the build plan needs. Two rules that apply to every
 file here: do **not** add `fofo` to Supabase's exposed schemas, and check any

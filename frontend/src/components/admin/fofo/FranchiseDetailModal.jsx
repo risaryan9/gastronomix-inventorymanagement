@@ -1,8 +1,8 @@
 // One FOFO franchise: its details, its outlets, and onboarding.
 //
-// Outlets are linked and unlinked here. The server refuses an outlet owned by
-// another franchise or one with an active FOCO dashboard code; the picker shows
-// those as disabled with the reason, so the refusal is seldom needed.
+// Outlets are linked and unlinked here. Only an outlet already marked FOFO on
+// the Outlets page can be linked (migration 15); the picker shows the rest as
+// disabled with the reason, so the server's refusal is seldom needed.
 //
 // ONBOARDING EMAILS go to the franchise's main contact address, never to a
 // person (spec §8.1). The welcome email has no link and can be resent. Each
@@ -47,7 +47,7 @@ const DetailRow = ({ label, value, mono }) => (
 const outletBlocker = (outlet) => {
   if (!outlet.is_active) return 'inactive'
   if (outlet.owner_franchise_id) return `owned by ${outlet.owner_franchise_name}`
-  if (outlet.has_foco_code) return 'FOCO outlet'
+  if (outlet.ownership_model !== 'fofo') return 'FOCO — mark it FOFO on the Outlets page first'
   return null
 }
 
@@ -117,7 +117,7 @@ const FranchiseDetailModal = ({ franchiseId, onClose, onChanged }) => {
     const ok = await runWrite(
       () => fofoAdminApi.linkOutlet(franchise.id, outlet.id),
       'Outlet added',
-      `${outlet.code} now belongs to ${franchise.name} and is marked franchise-operated.`
+      `${outlet.code} now belongs to ${franchise.name}.`
     )
     if (ok) setSelectedOutletId('')
   }
@@ -366,7 +366,14 @@ const FranchiseDetailModal = ({ franchiseId, onClose, onChanged }) => {
                       Add outlet
                     </button>
                   </div>
-                ) : (
+                ) : null}
+                {franchise.is_active && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Only FOFO outlets can be added. Mark an outlet FOFO on the Outlets page first — that also
+                    turns off its FOCO portal code.
+                  </p>
+                )}
+                {franchise.is_active ? null : (
                   <p className="text-xs text-muted-foreground">Reactivate the franchise to add outlets.</p>
                 )}
               </section>

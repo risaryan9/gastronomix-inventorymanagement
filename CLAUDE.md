@@ -30,6 +30,7 @@ look like bugs and are not.** Check the index in
 | a FOFO invoice, or a trim | [0016 — an invoice is never edited](docs/decisions/0016-a-fofo-invoice-is-never-edited.md) |
 | a query on `public.users`, or login keys | [0017 — login keys are not readable through the API](docs/decisions/0017-staff-login-keys-are-not-readable-through-the-api.md) |
 | partner-app sign-in, or a franchise endpoint | [0018 — franchise sessions are server-side](docs/decisions/0018-franchise-sessions-are-server-side.md) |
+| an outlet's ownership model, or FOCO portal codes | [0019 — portal codes follow the ownership model](docs/decisions/0019-foco-portal-codes-follow-the-ownership-model.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal
