@@ -12,9 +12,10 @@ fails if a secret ends up in the browser bundle — see `vite.config.js`.
 partner-frontend/
   api/          serverless functions — Vercel runs every file here as /api/<name>
   api/admin.js  every /api/admin/* route, for the internal app's admin screens
-  api/_lib/     shared server code (not routes): database, auth, CORS
+  api/auth.js   every /api/auth/* route, for franchise users (registration so far)
+  api/_lib/     shared server code (not routes): database, auth, CORS, email
   src/          the React app (browser)
-  vercel.json   sends /api/admin/* to api/admin.js, page URLs to index.html
+  vercel.json   sends /api/admin/* and /api/auth/* to their files, page URLs to index.html
 ```
 
 **Routes that share a function go through one file and a rewrite**, not one

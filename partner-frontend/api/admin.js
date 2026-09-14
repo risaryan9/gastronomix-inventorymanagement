@@ -11,6 +11,10 @@
  * one transaction as service_role that checks the caller is an active admin and
  * then does the work. The admin check and the change commit together.
  *
+ * The email routes are the exception (`ownTransactions`): they call Resend
+ * between database steps, and no transaction may stay open across that call
+ * (_lib/onboarding.js), so they check the admin inside each step themselves.
+ *
  *   GET    /api/admin/franchises
  *   POST   /api/admin/franchises
  *   GET    /api/admin/franchises/:id
@@ -20,11 +24,15 @@
  *   DELETE /api/admin/franchises/:id/outlets/:outletId
  *   GET    /api/admin/outlets
  *   PUT    /api/admin/outlets/:id/ownership-model   { ownership_model: 'foco' | 'fofo' }
+ *   POST   /api/admin/franchises/:id/welcome-email
+ *   POST   /api/admin/franchises/:id/invitations       sends a numbered registration email
+ *   POST   /api/admin/invitations/:id/revoke
  */
 import { handleCors } from './_lib/cors.js'
 import { transaction } from './_lib/db.js'
 import { HttpError, jsonBody, sendError } from './_lib/http.js'
 import { authUserIdFromRequest, requireActiveAdmin } from './_lib/adminAuth.js'
+import { revokeInvitation, sendRegistrationEmail, sendWelcomeEmail } from './_lib/onboarding.js'
 import {
   createFranchise,
   getFranchise,
@@ -37,7 +45,7 @@ import {
   updateFranchise,
 } from './_lib/franchiseAdmin.js'
 
-// [method, path pattern, handler(db, admin, params, req)]
+// Routes that run in one request transaction: handler(db, admin, params, req).
 const ROUTES = [
   ['GET', 'franchises', (db) => listFranchises(db)],
   ['POST', 'franchises', (db, admin, _p, req) => createFranchise(db, admin.id, jsonBody(req))],
@@ -48,6 +56,13 @@ const ROUTES = [
   ['DELETE', 'franchises/:id/outlets/:outletId', (db, admin, p) => unlinkOutlet(db, admin.id, p.id, p.outletId)],
   ['GET', 'outlets', (db) => listOutlets(db)],
   ['PUT', 'outlets/:id/ownership-model', (db, admin, p, req) => setOutletOwnershipModel(db, admin.id, p.id, jsonBody(req))],
+  ['POST', 'invitations/:id/revoke', (db, admin, p) => revokeInvitation(db, admin.id, p.id)],
+]
+
+// Routes that manage their own transactions: handler(authUserId, params, req).
+const OWN_TRANSACTION_ROUTES = [
+  ['POST', 'franchises/:id/welcome-email', (authUserId, p) => sendWelcomeEmail(authUserId, p.id)],
+  ['POST', 'franchises/:id/invitations', (authUserId, p) => sendRegistrationEmail(authUserId, p.id)],
 ]
 
 function matchPath(pattern, parts) {
@@ -64,11 +79,15 @@ function matchPath(pattern, parts) {
 function resolve(method, path) {
   const parts = String(path || '').split('/').filter(Boolean)
   let pathMatched = false
-  for (const [routeMethod, pattern, handler] of ROUTES) {
+  const candidates = [
+    ...ROUTES.map((route) => [...route, false]),
+    ...OWN_TRANSACTION_ROUTES.map((route) => [...route, true]),
+  ]
+  for (const [routeMethod, pattern, handler, ownTransactions] of candidates) {
     const params = matchPath(pattern, parts)
     if (!params) continue
     pathMatched = true
-    if (routeMethod === method) return { handler, params }
+    if (routeMethod === method) return { handler, params, ownTransactions }
   }
   throw pathMatched ? new HttpError(405, 'Method not allowed') : new HttpError(404, 'Not found')
 }
@@ -78,12 +97,14 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
 
   try {
-    const { handler: route, params } = resolve(req.method, req.query?.path)
+    const { handler: route, params, ownTransactions } = resolve(req.method, req.query?.path)
     const authUserId = await authUserIdFromRequest(req)
-    const result = await transaction(async (db) => {
-      const admin = await requireActiveAdmin(db, authUserId)
-      return route(db, admin, params, req)
-    })
+    const result = ownTransactions
+      ? await route(authUserId, params, req)
+      : await transaction(async (db) => {
+          const admin = await requireActiveAdmin(db, authUserId)
+          return route(db, admin, params, req)
+        })
     return res.status(req.method === 'POST' ? 201 : 200).json(result)
   } catch (err) {
     return sendError(res, err)

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Register from './Register.jsx'
 
 /*
  * Placeholder until Phase 5 builds the real dashboard.
@@ -10,6 +11,12 @@ import { useEffect, useState } from 'react'
  * comes from /api (docs/fofo-dashboard-spec.md §4).
  */
 export default function App() {
+  // No router yet: /register is the only other page, and it needs no navigation.
+  if (window.location.pathname.replace(/\/$/, '') === '/register') return <Register />
+  return <DeploymentCheck />
+}
+
+function DeploymentCheck() {
   const [health, setHealth] = useState({ state: 'loading' })
 
   useEffect(() => {

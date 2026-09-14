@@ -4,11 +4,12 @@
 // another franchise or one with an active FOCO dashboard code; the picker shows
 // those as disabled with the reason, so the refusal is seldom needed.
 //
-// ONBOARDING EMAILS ARE NOT WIRED UP YET. The welcome and registration buttons
-// are shown disabled until an email provider is set up
-// (docs/fofo-onboarding-checklist.md §2). They deliberately do not create
-// registration links in the meantime: an unsent link would still take a number
-// and show as open.
+// ONBOARDING EMAILS go to the franchise's main contact address, never to a
+// person (spec §8.1). The welcome email has no link and can be resent. Each
+// registration email carries one single-use link, numbered per franchise; an
+// open link can be cancelled here. If a registration email fails to send, the
+// server cancels its link itself, so it never shows as open
+// (partner-frontend/api/_lib/onboarding.js).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fofoAdminApi } from '../../../lib/partnerApi'
@@ -153,6 +154,62 @@ const FranchiseDetailModal = ({ franchiseId, onClose, onChanged }) => {
       () => fofoAdminApi.setFranchiseActive(franchise.id, activating),
       activating ? 'Franchise reactivated' : 'Franchise deactivated',
       franchise.name
+    )
+  }
+
+  const handleSendWelcome = async () => {
+    const confirmed = await confirm({
+      title: 'Send the welcome email?',
+      message: `An informational email with no link goes to ${franchise.contact_email}.${
+        franchise.welcome_email_last_sent_at
+          ? ` It was last sent ${formatIstDateTime(franchise.welcome_email_last_sent_at)}.`
+          : ''
+      }`,
+      confirmLabel: 'Send welcome email',
+    })
+    if (!confirmed) return
+    await runWrite(
+      () => fofoAdminApi.sendWelcomeEmail(franchise.id),
+      'Welcome email sent',
+      `Sent to ${franchise.contact_email}.`
+    )
+  }
+
+  const handleSendRegistration = async () => {
+    const next = (franchise.invitations[0]?.invitation_number || 0) + 1
+    const confirmed = await confirm({
+      title: `Send registration email #${next}?`,
+      message: `It goes to ${franchise.contact_email} and carries a link that creates one login for ${franchise.name}. The link works once and expires in 7 days. Send one per person who needs a login.`,
+      confirmLabel: 'Send registration email',
+    })
+    if (!confirmed) return
+    try {
+      setBusy(true)
+      const result = await fofoAdminApi.sendRegistrationEmail(franchise.id)
+      setFranchise(result.franchise)
+      onChanged()
+      toast.success(`Registration email #${result.invitation_number} sent`, `Sent to ${result.sent_to}.`)
+    } catch (err) {
+      toast.error('Registration email not sent', err.message)
+      // A failed send can still have cancelled a link — show it.
+      fofoAdminApi.getFranchise(franchise.id).then(setFranchise).catch(() => {})
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRevoke = async (inv) => {
+    const confirmed = await confirm({
+      title: `Cancel registration link #${inv.invitation_number}?`,
+      message: 'Nobody will be able to register with it. This cannot be undone — send a new registration email if a login is still needed.',
+      confirmLabel: 'Cancel link',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+    await runWrite(
+      () => fofoAdminApi.revokeInvitation(inv.id),
+      'Registration link cancelled',
+      `Link #${inv.invitation_number} can no longer be used.`
     )
   }
 
@@ -323,20 +380,24 @@ const FranchiseDetailModal = ({ franchiseId, onClose, onChanged }) => {
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <button
-                    disabled
-                    title="Email not set up yet"
-                    className={`${smallButton} bg-muted text-muted-foreground border-border`}
+                    onClick={handleSendWelcome}
+                    disabled={busy || !franchise.is_active}
+                    className={`${smallButton} bg-accent/10 text-accent border-accent/40 hover:bg-accent/20`}
                   >
-                    Send welcome email
+                    {franchise.welcome_email_last_sent_at ? 'Resend welcome email' : 'Send welcome email'}
                   </button>
                   <button
-                    disabled
-                    title="Email not set up yet"
-                    className={`${smallButton} bg-muted text-muted-foreground border-border`}
+                    onClick={handleSendRegistration}
+                    disabled={busy || !franchise.is_active}
+                    className={`${smallButton} bg-accent/10 text-accent border-accent/40 hover:bg-accent/20`}
                   >
                     Send registration email
                   </button>
-                  <span className="text-xs font-semibold text-muted-foreground">Email not set up yet</span>
+                  {!franchise.is_active && (
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      Reactivate the franchise to send emails
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Welcome email last sent:{' '}
@@ -394,7 +455,18 @@ const FranchiseDetailModal = ({ franchiseId, onClose, onChanged }) => {
                                 Sent {formatIstDate(inv.sent_at)} · expires {formatIstDate(inv.expires_at)}
                               </p>
                             </div>
-                            <Badge className={state.className}>{state.label}</Badge>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge className={state.className}>{state.label}</Badge>
+                              {inv.state === 'open' && (
+                                <button
+                                  onClick={() => handleRevoke(inv)}
+                                  disabled={busy}
+                                  className={`${smallButton} bg-destructive/10 text-destructive border-destructive/40 hover:bg-destructive/20`}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
                           </li>
                         )
                       })}

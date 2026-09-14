@@ -3,6 +3,7 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/api/admin/:path*", "destination": "/api/admin?path=:path*" },
+    { "source": "/api/auth/:path*", "destination": "/api/auth?path=:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

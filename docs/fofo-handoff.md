@@ -35,6 +35,10 @@ exposed through the API, RLS on with no policies, service_role only.
   transaction `SET LOCAL ROLE service_role`; admin checked via Supabase Auth +
   `public.users`; CORS from `INTERNAL_APP_ORIGINS`. Group routes behind one file
   and a `vercel.json` rewrite — the free plan allows only 12 functions.
+- Built: onboarding email — Resend (`api/_lib/email.js`), welcome and numbered
+  registration emails, link cancelling, and the `/register` page with
+  `/api/auth/*` (`api/_lib/onboarding.js`). `EMAIL_FROM` is still Resend's test
+  sender, which delivers only to the Resend account's own address.
 
 **Phase 0 done:** the three decision records from spec §14 are written
 (0014–0016).

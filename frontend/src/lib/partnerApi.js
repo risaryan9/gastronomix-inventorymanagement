@@ -73,6 +73,12 @@ export const fofoAdminApi = {
   unlinkOutlet: (id, outletId) =>
     request('DELETE', `${franchisePath(id)}/outlets/${encodeURIComponent(outletId)}`),
   listOutlets: () => request('GET', 'outlets'),
+  // Onboarding emails. Each sends a real email to the franchise's contact
+  // address; a registration email also creates a numbered, single-use link.
+  sendWelcomeEmail: (id) => request('POST', `${franchisePath(id)}/welcome-email`),
+  sendRegistrationEmail: (id) => request('POST', `${franchisePath(id)}/invitations`),
+  revokeInvitation: (invitationId) =>
+    request('POST', `invitations/${encodeURIComponent(invitationId)}/revoke`),
   // 'foco' or 'fofo'. Goes through the server rather than supabase.from('outlets')
   // because the change is audited and checks franchise ownership (migration 13).
   setOutletOwnershipModel: (outletId, model) =>

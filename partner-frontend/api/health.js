@@ -19,7 +19,10 @@ export default function handler(req, res) {
   const configured = Boolean(
     process.env.SUPABASE_URL &&
     process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    process.env.DATABASE_URL
+    process.env.DATABASE_URL &&
+    process.env.RESEND_API_KEY &&
+    process.env.EMAIL_FROM &&
+    process.env.PARTNER_APP_URL
   )
 
   res.setHeader('Cache-Control', 'no-store')

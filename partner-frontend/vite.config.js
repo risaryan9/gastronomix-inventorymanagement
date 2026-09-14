@@ -25,7 +25,7 @@ import react from '@vitejs/plugin-react'
  * Supabase key or cost price visible in the browser".
  */
 
-const SECRET_NAME = /SUPABASE|SERVICE_ROLE|RAZORPAY|SECRET|PRIVATE|DATABASE/i
+const SECRET_NAME = /SUPABASE|SERVICE_ROLE|RAZORPAY|SECRET|PRIVATE|DATABASE|RESEND/i
 
 // Shapes that must never appear in anything shipped to a browser.
 const FORBIDDEN_IN_BUNDLE = [
@@ -34,6 +34,7 @@ const FORBIDDEN_IN_BUNDLE = [
   { what: 'a Supabase API key', re: /sb_(secret|publishable)_[A-Za-z0-9_-]{10,}/ },
   { what: 'a Razorpay secret', re: /rzp_(test|live)_[A-Za-z0-9]{10,}/ },
   { what: 'a Postgres connection string', re: /postgres(ql)?:\/\/[^\s'"`]+@/i },
+  { what: 'a Resend API key', re: /\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}/ },
 ]
 
 function walk(dir) {
