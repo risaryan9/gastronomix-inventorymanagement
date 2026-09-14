@@ -1,70 +1,42 @@
-import { useEffect, useState } from 'react'
-import Register from './Register.jsx'
-import AuthShell from './components/AuthShell.jsx'
-
-export default function App() {
-  // No router yet: /register is the only other page, and it needs no navigation.
-  if (window.location.pathname.replace(/\/$/, '') === '/register') return <Register />
-  return <DeploymentCheck />
-}
-
-const Row = ({ tone, children }) => (
-  <li className="flex items-start gap-2 text-sm">
-    <span className={`mt-0.5 font-bold ${tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-destructive' : 'text-accent-text'}`}>
-      {tone === 'good' ? '✓' : '!'}
-    </span>
-    <span className="text-foreground">{children}</span>
-  </li>
-)
+import { Route, Routes } from 'react-router-dom'
+import RequireAuth from './auth/RequireAuth.jsx'
+import DashboardLayout from './dashboard/DashboardLayout.jsx'
+import { ACCOUNT_NAV, DASHBOARD_EXTRA_ROUTES, DASHBOARD_NAV } from './dashboard/navigation.js'
+import Login from './pages/auth/Login.jsx'
+import ForgotPassword from './pages/auth/ForgotPassword.jsx'
+import ResetPassword from './pages/auth/ResetPassword.jsx'
+import Register from './pages/auth/Register.jsx'
+import Status from './pages/Status.jsx'
+import NotFound from './pages/NotFound.jsx'
 
 /*
- * Placeholder until Phase 5 builds the real dashboard.
+ * Every page of the partner app.
  *
- * The status panel calls /api/health from the browser — the same path a real
- * screen will take — so opening the deployed site shows at a glance whether
- * the API is reachable and whether the server has its secrets. It fetches
- * nothing else, and this app will never import a Supabase client: all data
- * comes from /api (docs/fofo-dashboard-spec.md §4).
+ *   Signed out   /login  /forgot-password  /reset-password  /register  /status
+ *   Signed in    the dashboard sections in dashboard/navigation.js
+ *
+ * vercel.json sends every non-/api path to index.html, so a refresh or a
+ * bookmarked link lands here and is routed in the browser.
  */
-function DeploymentCheck() {
-  const [health, setHealth] = useState({ state: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/health', { headers: { Accept: 'application/json' } })
-      .then(async (response) => {
-        const type = response.headers.get('content-type') || ''
-        // HTML back from /api means the SPA rewrite swallowed the route.
-        if (!type.includes('application/json')) {
-          throw new Error('/api/health returned a web page instead of JSON — the rewrite in vercel.json is catching /api.')
-        }
-        if (!response.ok) throw new Error(`/api/health returned ${response.status}`)
-        return response.json()
-      })
-      .then((body) => { if (!cancelled) setHealth({ state: 'ok', body }) })
-      .catch((err) => { if (!cancelled) setHealth({ state: 'error', message: err.message }) })
-    return () => { cancelled = true }
-  }, [])
-
+export default function App() {
   return (
-    <AuthShell title="Coming soon" subtitle="The franchise ordering dashboard is on its way.">
-      <section aria-live="polite" className="rounded-xl border border-border bg-background/60 p-4">
-        <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Deployment check</h2>
-        {health.state === 'loading' && <p className="text-sm text-muted-foreground">Checking the API…</p>}
-        {health.state === 'error' && (
-          <ul><Row tone="bad"><strong>API unreachable.</strong> {health.message}</Row></ul>
-        )}
-        {health.state === 'ok' && (
-          <ul className="space-y-2">
-            <Row tone="good">API reachable</Row>
-            <Row tone={health.body.configured ? 'good' : 'warn'}>
-              {health.body.configured
-                ? 'Server secrets configured'
-                : 'Server secrets not set yet — add them in Vercel → Settings → Environment Variables'}
-            </Row>
-          </ul>
-        )}
-      </section>
-    </AuthShell>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/status" element={<Status />} />
+
+      <Route element={<RequireAuth />}>
+        <Route element={<DashboardLayout />}>
+          {[...DASHBOARD_NAV, ACCOUNT_NAV, ...DASHBOARD_EXTRA_ROUTES].map(({ path, Component }) =>
+            path === ''
+              ? <Route key="index" index element={<Component />} />
+              : <Route key={path} path={path} element={<Component />} />
+          )}
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Route>
+    </Routes>
   )
 }

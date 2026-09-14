@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import AuthShell from './components/AuthShell.jsx'
-import { inputClass, labelClass, primaryButton } from './components/styles.js'
+import { Link } from 'react-router-dom'
+import AuthShell from '../../components/AuthShell.jsx'
+import Alert from '../../components/Alert.jsx'
+import { inputClass, labelClass, primaryButton } from '../../components/styles.js'
+import { MIN_PASSWORD_LENGTH } from '../../lib/passwords.js'
 
 /*
  * /register#token=… — where a registration email's link lands.
@@ -14,7 +17,6 @@ import { inputClass, labelClass, primaryButton } from './components/styles.js'
  * the server — the checks here are for a quicker, clearer answer.
  */
 
-const MIN_PASSWORD_LENGTH = 8
 
 function readTokenFromUrl() {
   const token = new URLSearchParams(window.location.hash.slice(1)).get('token')
@@ -49,12 +51,6 @@ const formatExpiry = (value) =>
     hour: 'numeric',
     minute: '2-digit',
   })
-
-const Alert = ({ children }) => (
-  <div role="alert" className="rounded-lg border border-destructive bg-destructive/15 p-3 text-sm text-foreground">
-    {children}
-  </div>
-)
 
 const NeedNewLink = () => (
   <p className="mt-4 text-sm text-muted-foreground">
@@ -129,13 +125,14 @@ export default function Register() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
           <p className="text-sm text-foreground">
-            You can sign in to Gastronomix Partners as <strong>{done.email}</strong> for{' '}
-            <strong>{done.franchise_name}</strong> once ordering opens.
+            You can now sign in to Gastronomix Partners as <strong>{done.email}</strong> for{' '}
+            <strong>{done.franchise_name}</strong>.
           </p>
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
           Keep your password safe — Gastronomix will never ask you for it.
         </p>
+        <Link to="/login" className={`${primaryButton} mt-6 block text-center`}>Sign in</Link>
       </AuthShell>
     )
   }

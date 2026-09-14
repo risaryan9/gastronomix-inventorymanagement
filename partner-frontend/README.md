@@ -25,6 +25,20 @@ API will need more routes than that. Add a group the same way `admin` is done.
 `api/` lives **inside** this folder, not at the repo root, because a Vercel
 project only looks for functions inside its own Root Directory.
 
+## Pages
+
+| Signed out | Signed in (dashboard) |
+|---|---|
+| `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` Overview, `/order`, `/cart`, `/orders`, `/orders/:orderId`, `/invoices`, `/store-credit`, `/account` |
+
+The dashboard sections are placeholders. `src/dashboard/navigation.js` is the one
+list both the sidebar and the router are built from — add a section there.
+
+Signing in: the server checks the password with Supabase Auth and keeps its own
+session in an HttpOnly cookie; the browser never holds a Supabase token
+(decision 0018). `src/auth/` asks `/api/auth/session` who is signed in, and any
+401 from `/api/franchise/*` sends the person back to `/login`.
+
 ## Look and feel
 
 The same design as the internal app — Poppins, the dark navy background, brand
