@@ -1,6 +1,6 @@
 # FOFO dashboard — build specification
 
-**Status:** design settled. The database is built — `migrations/fofo/` 01–13,
+**Status:** design settled. The database is built — `migrations/fofo/` 01–14,
 applied to the live database on 2026-09-13, including 10 (franchise users in the
 audit trail) and 11 (onboarding: welcome email and registration links). The partner app on Vercel has a health check and a tested
 Razorpay webhook check; the accept function, invoice numbering, API endpoints
@@ -772,9 +772,11 @@ except the webhook.
 | Endpoint | Does |
 |---|---|
 | `GET /api/health` | Proves the `vercel.json` catch-all rewrite does not swallow `/api` |
+| `POST /api/auth/registration-link` | What a registration link is for (franchise, number, expiry) |
 | `POST /api/auth/register` | Registration through a link: creates the Auth user, then claims the invitation; deletes the Auth user if the claim fails |
-| `POST /api/auth/*` | Login, logout, password reset. Refuses an inactive franchise user |
-| `GET /api/outlets` | The outlets this franchise owns |
+| `POST /api/auth/login` · `logout` · `GET /api/auth/session` | Partner-app session in an HttpOnly cookie; refuses an inactive user or franchise; throttled (decision 0018) |
+| `POST /api/auth/password-reset` · `/complete` | Supabase recovery email to `/reset-password`; ends every session of that user |
+| `GET /api/franchise/outlets` | The outlets this franchise owns. **Franchise endpoints live under `/api/franchise/*`** and scope every query to the session's franchise |
 | `GET /api/catalog?outlet_id=` | Sellable materials with **final prices**, cost and margin stripped |
 | `GET/PUT /api/cart` | Live cart contents, priced on read |
 | `POST /api/checkout` | Freezes prices, creates the order + Razorpay order, returns what the popup needs |

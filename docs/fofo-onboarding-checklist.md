@@ -38,6 +38,16 @@ In build order. Design: spec §8.1 and §12. Tick as done.
 - [x] All of it tested locally against fake Resend and Supabase Auth (47 checks)
 - [ ] Deploy, then try it live
 
+## 4b. Franchise sign-in (spec Phase 3) and dashboard shell
+- [x] Migration 14 written and tested locally: sessions, sign-in throttling, audited sign-in/out and reset
+- [x] Migration 14 applied and verified
+- [x] `/api/auth/login`, `logout`, `session`, `password-reset`, `password-reset/complete`; `/api/franchise/outlets` scoped to the session's franchise (decision 0018)
+- [x] Partner app pages: `/login`, `/forgot-password`, `/reset-password`; dashboard shell with placeholder sections (Overview, Order supplies, Cart, Orders, Invoices, Store credit, Account)
+- [x] Tested locally: 52 API checks + a real-browser sign-in/refresh/sign-out run
+- [ ] **You:** Supabase → Authentication → URL Configuration: add the partner app's `/reset-password` URLs to Redirect URLs
+- [ ] **You:** Supabase → Authentication: turn off public sign-ups
+- [ ] Live: register, sign in, sign out, reset a password
+
 ## 5. Test end to end
 - [ ] Create franchise, link outlet, send welcome
 - [ ] Send two registration emails; register with each
@@ -51,5 +61,6 @@ In build order. Design: spec §8.1 and §12. Tick as done.
 - [ ] Registered emails are marked confirmed without a confirmation email (by decision the address is the registrant's choice; confirmation would need Supabase SMTP). Revisit with step 3
 - [ ] Delete the stray `docs/prod-ca-2021.crt` (not committed; the server reads `DATABASE_CA_CERT`)
 - [ ] FOFO audit events have no labels in the internal app's audit screens yet (`lib/auditEvents.js`)
-- [ ] **Staff login keys were readable by anyone with the internal app's public key** (decision 0017). Deploy the internal app, run `migrations/stop-exposing-staff-login-keys.sql`, verify, then **rotate all 23 login keys**
+- [x] **Staff login keys were readable by anyone with the internal app's public key** (decision 0017) — fixed: internal app deployed, `migrations/stop-exposing-staff-login-keys.sql` applied, verified against the live REST API with the public key
+- [ ] **Rotate all 23 login keys** — they were readable before the fix
 - [ ] Pre-existing: the RLS policy on `public.outlets` lets any caller without a Supabase session write outlets (`is_supervisor_or_admin()` returns true for them) — fix separately

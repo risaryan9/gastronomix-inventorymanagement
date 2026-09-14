@@ -95,6 +95,7 @@ against each other.
 | [0015](0015-fofo-data-is-reached-only-through-the-partner-server.md) | FOFO data is reached only through the partner app's server — no Supabase key in that app, and internal staff go through the server too | any FOFO endpoint, staff access to `fofo`, partner-app env vars | Accepted |
 | [0016](0016-a-fofo-invoice-is-never-edited.md) | A FOFO invoice is never edited — a trim issues a credit note | invoices, the accept flow, trims | Accepted |
 | [0017](0017-staff-login-keys-are-not-readable-through-the-api.md) | **Staff login keys are not readable through the API** — column privilege, not RLS; `select('*')` on `users` fails on purpose | `public.users` queries, login keys, new `users` columns | Accepted |
+| [0018](0018-franchise-sessions-are-server-side.md) | Franchise sessions are the partner app's own (HttpOnly cookie, hashed in the database), not Supabase tokens in the browser | partner-app sign-in, `/api/franchise/*`, anything scoped to a franchise | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

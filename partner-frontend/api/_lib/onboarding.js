@@ -30,20 +30,15 @@
  * Auth: a slow answer must not hold a pooled connection or the franchise's
  * row lock.
  */
-import { createHash, randomBytes } from 'node:crypto'
-import { isIP } from 'node:net'
 import { transaction } from './db.js'
 import { HttpError, isUuid } from './http.js'
 import { requireActiveAdmin } from './adminAuth.js'
 import { partnerAppUrl, registrationEmail, sendEmail, welcomeEmail } from './email.js'
 import { getFranchise } from './franchiseAdmin.js'
+import { clientIp, hashToken, newToken, requireEmail, requireNewPassword, TOKEN_PATTERN, userAgent } from './request.js'
+import { createUser, deleteUser } from './supabaseAuth.js'
 
 const LINK_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000   // spec §8.1: 7 days
-const TOKEN = /^[A-Za-z0-9_-]{43}$/                  // 32 bytes, base64url, no padding
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
-const MIN_PASSWORD_LENGTH = 8
-
-const hashToken = (token) => createHash('sha256').update(token, 'utf8').digest('hex')
 
 /* ------------------------------------------------------------------ *
  * Admin: welcome email
@@ -89,7 +84,7 @@ export async function sendRegistrationEmail(authUserId, franchiseId) {
   if (!isUuid(franchiseId)) throw new HttpError(404, 'Franchise not found')
   const appUrl = partnerAppUrl()   // fail before creating anything if unset
 
-  const token = randomBytes(32).toString('base64url')
+  const token = newToken()
   const expiresAt = new Date(Date.now() + LINK_LIFETIME_MS)
 
   const created = await transaction(async (db) => {
@@ -149,7 +144,7 @@ export async function revokeInvitation(db, adminId, invitationId) {
  * ------------------------------------------------------------------ */
 
 function requireToken(token) {
-  if (typeof token !== 'string' || !TOKEN.test(token)) {
+  if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) {
     throw new HttpError(400, 'This registration link is not valid')
   }
   return token
@@ -194,71 +189,11 @@ export async function describeRegistrationLink(body) {
   }
 }
 
-function supabaseAdminHeaders() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!process.env.SUPABASE_URL || !key) throw new Error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set')
-  return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }
-}
-
-const authAdminUrl = (path) => `${process.env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/admin/${path}`
-
-async function createAuthUser(email, password) {
-  const response = await fetch(authAdminUrl('users'), {
-    method: 'POST',
-    headers: supabaseAdminHeaders(),
-    // email_confirm: the address is the registrant's own choice and is not
-    // verified by email — by decision, a link is not tied to an address
-    // (migration 11). Confirmation mail would also need Supabase SMTP, which
-    // is not set up yet.
-    body: JSON.stringify({ email, password, email_confirm: true, app_metadata: { kind: 'fofo_franchise_user' } }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  const body = await response.json().catch(() => null)
-  if (response.ok && body?.id) return body.id
-
-  const code = body?.error_code || body?.code
-  const message = body?.msg || body?.message || body?.error_description || ''
-  if (code === 'email_exists' || code === 'user_already_exists' || /already (been )?registered|already exists/i.test(message)) {
-    throw new HttpError(409, 'An account with this email already exists')
-  }
-  if (code === 'weak_password' || /password/i.test(message)) {
-    throw new HttpError(400, message || 'Choose a stronger password')
-  }
-  console.error('Supabase Auth refused to create a user:', response.status, body)
-  throw new Error(`Supabase Auth answered ${response.status}`)
-}
-
-async function deleteAuthUser(authUserId) {
-  try {
-    const response = await fetch(authAdminUrl(`users/${authUserId}`), {
-      method: 'DELETE',
-      headers: supabaseAdminHeaders(),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) throw new Error(`status ${response.status}`)
-  } catch (err) {
-    // Loud: a login with no franchise user behind it. It cannot reach any FOFO
-    // data, but it holds the email address and should be removed by hand.
-    console.error(`ORPHANED AUTH USER ${authUserId} — delete it in Supabase → Authentication:`, err.message)
-  }
-}
-
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-  const ip = forwarded || req.headers['x-real-ip'] || ''
-  return isIP(ip) ? ip : null
-}
-
 export async function register(req, body) {
   const tokenHash = hashToken(requireToken(body.token))
 
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-  const password = typeof body.password === 'string' ? body.password : ''
-  if (!EMAIL.test(email) || email.length > 320) throw new HttpError(400, 'Enter a valid email address')
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new HttpError(400, `Choose a password of at least ${MIN_PASSWORD_LENGTH} characters`)
-  }
-  if (password.length > 72) throw new HttpError(400, 'Choose a password of at most 72 characters')
+  const email = requireEmail(body.email)
+  const password = requireNewPassword(body.password)
 
   // Checked before creating a login, so a dead link or a taken email never
   // makes one. The claim below checks both again, under a lock.
@@ -271,7 +206,7 @@ export async function register(req, body) {
   )
   if (taken) throw new HttpError(409, 'An account with this email already exists')
 
-  const authUserId = await createAuthUser(email, password)
+  const authUserId = await createUser(email, password)
 
   try {
     await transaction((db) =>
@@ -280,11 +215,11 @@ export async function register(req, body) {
         authUserId,
         email,
         clientIp(req),
-        String(req.headers['user-agent'] || '').slice(0, 500) || null,
+        userAgent(req),
       ])
     )
   } catch (err) {
-    await deleteAuthUser(authUserId)
+    await deleteUser(authUserId)
     throw err
   }
 
