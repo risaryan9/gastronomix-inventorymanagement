@@ -3,12 +3,15 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import NavIcon from './NavIcon.jsx'
-import { ACCOUNT_NAV, DASHBOARD_NAV } from './navigation.js'
+import { ACCOUNT_NAV, CART_ROUTE, DASHBOARD_NAV } from './navigation.js'
 
 /*
- * The signed-in frame: a sidebar of sections, a top bar with the franchise and
- * the person signed in, and the section's page beside them. On a phone the
- * sidebar becomes a drawer behind the menu button.
+ * The signed-in frame: a sidebar of sections, a top bar with the franchise,
+ * the person signed in and the cart, and the section's page beside them. On a
+ * phone the sidebar becomes a drawer behind the menu button.
+ *
+ * The cart is a highlighted gold icon at the top right, beside the theme
+ * toggle, rather than a sidebar entry — one click away from every page.
  *
  * Built like the internal app's admin dashboard — cards on the navy ground,
  * the active section in gold — on the partner app's theme tokens.
@@ -97,6 +100,18 @@ export default function DashboardLayout() {
               <p className="truncate text-xs text-muted-foreground">{session?.user?.email}</p>
             </div>
 
+            <NavLink
+              to={`/${CART_ROUTE.path}`}
+              aria-label="Cart"
+              title="Cart"
+              className={({ isActive }) =>
+                `inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-accent bg-accent text-accent-foreground shadow-button transition-all hover:shadow-button-hover hover:brightness-110 ${
+                  isActive ? 'ring-2 ring-ring ring-offset-2 ring-offset-card' : ''
+                }`
+              }
+            >
+              <NavIcon name="cart" />
+            </NavLink>
             <ThemeToggle />
             <button
               type="button"

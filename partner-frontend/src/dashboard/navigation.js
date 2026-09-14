@@ -4,24 +4,29 @@
 //
 // `path` is relative to the dashboard root. Sections are placeholders until
 // each is built (docs/fofo-dashboard-spec.md §12–13).
+//
+// Invoices have no section of their own: they belong to the order they bill
+// and are shown with it. The cart is not in the sidebar either — it is the
+// highlighted icon in the top bar (CART_ROUTE), always one click away.
 
 import Overview from '../pages/dashboard/Overview.jsx'
 import OrderSupplies from '../pages/dashboard/OrderSupplies.jsx'
 import Cart from '../pages/dashboard/Cart.jsx'
 import Orders from '../pages/dashboard/Orders.jsx'
 import OrderDetail from '../pages/dashboard/OrderDetail.jsx'
-import Invoices from '../pages/dashboard/Invoices.jsx'
+import PendingPayments from '../pages/dashboard/PendingPayments.jsx'
 import StoreCredit from '../pages/dashboard/StoreCredit.jsx'
 import Account from '../pages/dashboard/Account.jsx'
 
 export const DASHBOARD_NAV = [
   { path: '', label: 'Overview', icon: 'home', Component: Overview },
   { path: 'order', label: 'Order supplies', icon: 'catalog', Component: OrderSupplies },
-  { path: 'cart', label: 'Cart', icon: 'cart', Component: Cart },
   { path: 'orders', label: 'Orders', icon: 'orders', Component: Orders },
-  { path: 'invoices', label: 'Invoices', icon: 'invoice', Component: Invoices },
+  { path: 'payments', label: 'Pending payments', icon: 'payments', Component: PendingPayments },
   { path: 'store-credit', label: 'Store credit', icon: 'credit', Component: StoreCredit },
 ]
+
+export const CART_ROUTE = { path: 'cart', label: 'Cart', Component: Cart }
 
 export const ACCOUNT_NAV = { path: 'account', label: 'Account', icon: 'account', Component: Account }
 

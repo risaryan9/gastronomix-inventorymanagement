@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth.jsx'
 import DashboardLayout from './dashboard/DashboardLayout.jsx'
-import { ACCOUNT_NAV, DASHBOARD_EXTRA_ROUTES, DASHBOARD_NAV } from './dashboard/navigation.js'
+import { ACCOUNT_NAV, CART_ROUTE, DASHBOARD_EXTRA_ROUTES, DASHBOARD_NAV } from './dashboard/navigation.js'
 import Login from './pages/auth/Login.jsx'
 import ForgotPassword from './pages/auth/ForgotPassword.jsx'
 import ResetPassword from './pages/auth/ResetPassword.jsx'
@@ -29,7 +29,7 @@ export default function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<DashboardLayout />}>
-          {[...DASHBOARD_NAV, ACCOUNT_NAV, ...DASHBOARD_EXTRA_ROUTES].map(({ path, Component }) =>
+          {[...DASHBOARD_NAV, ACCOUNT_NAV, CART_ROUTE, ...DASHBOARD_EXTRA_ROUTES].map(({ path, Component }) =>
             path === ''
               ? <Route key="index" index element={<Component />} />
               : <Route key={path} path={path} element={<Component />} />
