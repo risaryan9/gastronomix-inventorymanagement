@@ -4,7 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/gastronomix-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Gastronomix Partners</title>
+    <!-- Apply the saved theme before first paint (src/theme.js). -->
+    <script>
+      try {
+        if (localStorage.getItem('gastronomix-partners-theme') === 'light') {
+          document.documentElement.dataset.theme = 'light'
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

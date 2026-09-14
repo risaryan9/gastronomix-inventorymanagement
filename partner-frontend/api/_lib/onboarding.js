@@ -62,12 +62,16 @@ async function sendableFranchise(db, franchiseId) {
 }
 
 export async function sendWelcomeEmail(authUserId, franchiseId) {
+  partnerAppUrl()   // fail before anything else if unset — the email's logo comes from it
   const franchise = await transaction(async (db) => {
     await requireActiveAdmin(db, authUserId)
     return sendableFranchise(db, franchiseId)
   })
 
-  await sendEmail({ to: franchise.contact_email, ...welcomeEmail({ franchiseName: franchise.name }) })
+  await sendEmail({
+    to: franchise.contact_email,
+    ...welcomeEmail({ franchiseName: franchise.name, appUrl: partnerAppUrl() }),
+  })
 
   // Checks the admin and the franchise again, stamps it, audits it.
   return transaction(async (db) => {
@@ -104,6 +108,7 @@ export async function sendRegistrationEmail(authUserId, franchiseId) {
     invitationNumber: created.invitation_number,
     link: `${appUrl}/register#token=${token}`,
     expiresAt,
+    appUrl,
   })
 
   try {

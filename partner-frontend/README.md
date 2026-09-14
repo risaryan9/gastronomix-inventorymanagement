@@ -25,6 +25,21 @@ API will need more routes than that. Add a group the same way `admin` is done.
 `api/` lives **inside** this folder, not at the repo root, because a Vercel
 project only looks for functions inside its own Root Directory.
 
+## Look and feel
+
+The same design as the internal app — Poppins, the dark navy background, brand
+gold — built with Tailwind on the same token names (`bg-card`, `border-border`,
+`bg-accent`). Dark is the default; people can switch to light with the toggle,
+and the choice is remembered in their browser (`src/theme.js`).
+
+The difference from the internal app: colours are CSS variables
+(`src/index.css`), so one set of classes serves both themes. Gold has two
+tokens — `accent` for gold shapes (buttons, borders) and `accent-text` for gold
+words, which is darker in light mode so it stays readable on white.
+
+Emails (`api/_lib/email.js`) use the dark design too, with the light palette for
+mail apps that follow the reader's system theme.
+
 ## Run it locally
 
 ```bash

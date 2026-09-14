@@ -1,64 +1,77 @@
-:root {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: #1f2328;
-  background: #f6f7f9;
-  line-height: 1.5;
-}
-body { margin: 0; }
-.page {
-  max-width: 34rem;
-  margin: 0 auto;
-  padding: 4rem 1rem;
-  text-align: center;
-}
-.logo { width: 72px; height: 72px; object-fit: contain; }
-h1 { margin: 1rem 0 0.25rem; font-size: 1.75rem; }
-.lede { margin: 0 0 2.5rem; color: #59636e; }
-.status {
-  text-align: left;
-  background: #fff;
-  border: 1px solid #d1d9e0;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-}
-.status h2 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #59636e; }
-.status p, .status ul { margin: 0; }
-.status ul { padding: 0; list-style: none; }
-.status li { padding: 0.2rem 0; }
-.good::before { content: '✓ '; color: #1a7f37; font-weight: 700; }
-.warn::before { content: '! '; color: #9a6700; font-weight: 700; }
-.bad { color: #cf222e; }
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-.muted { color: #59636e; font-size: 0.9rem; }
-.card {
-  text-align: left;
-  background: #fff;
-  border: 1px solid #d1d9e0;
-  border-radius: 8px;
-  padding: 1.25rem;
+/*
+ * THEME. Dark is the default and matches the internal app exactly
+ * (frontend/tailwind.config.js); light is the partner app's addition.
+ * <html data-theme="light"> switches it — set before first paint by the script
+ * in index.html, and by the toggle (src/theme.js).
+ *
+ * Values are "H S% L%" without hsl(), so Tailwind can add opacity.
+ *
+ * GOLD HAS TWO TOKENS. --accent is the brand gold for fills and borders — a
+ * gold button looks the same in both themes, with dark text on it (10:1).
+ * --accent-text is gold used AS text: the brand gold in dark mode, but a
+ * deeper gold in light mode, because #E1BB07 on white is about 1.9:1 and
+ * unreadable. Use text-accent-text for gold words, bg-accent for gold shapes.
+ */
+:root {
+  --radius: 0.75rem;
+  color-scheme: dark;
+
+  --background: 222 15% 8%;
+  --foreground: 0 0% 95%;
+  --card: 222 14% 12%;
+  --muted: 222 12% 18%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 49 95% 46%;
+  --accent-foreground: 222 15% 8%;
+  --accent-text: 49 95% 46%;
+  --destructive: 0 70% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 60% 55%;
+  --border: 222 10% 20%;
+  --input: 222 12% 16%;
+  --ring: 49 95% 46%;
+  --card-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
-.card p { margin: 0 0 0.75rem; }
-.card p:last-child { margin-bottom: 0; }
-.form { display: flex; flex-direction: column; gap: 1rem; }
-.form label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; font-size: 0.95rem; }
-.form input {
-  font: inherit;
-  font-weight: 400;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d9e0;
-  border-radius: 6px;
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --background: 220 20% 97%;
+  --foreground: 222 22% 12%;
+  --card: 0 0% 100%;
+  --muted: 220 14% 93%;
+  --muted-foreground: 220 9% 38%;
+  --accent: 49 95% 46%;
+  --accent-foreground: 222 22% 12%;
+  --accent-text: 43 92% 30%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 70% 28%;
+  --border: 220 13% 85%;
+  --input: 0 0% 100%;
+  --ring: 43 92% 30%;
+  --card-shadow: 0 20px 40px -16px rgba(24, 28, 37, 0.18);
 }
-.form input:focus { outline: 2px solid #e1bb07; outline-offset: 1px; }
-.form .hint { font-weight: 400; font-size: 0.85rem; color: #59636e; }
-.form button {
-  font: inherit;
-  font-weight: 700;
-  padding: 0.7rem 1rem;
-  border: 0;
-  border-radius: 6px;
-  background: #e1bb07;
-  color: #111;
-  cursor: pointer;
+
+html {
+  scroll-behavior: smooth;
+  font-size: 85%; /* the internal app's scale */
 }
-.form button:disabled { opacity: 0.6; cursor: not-allowed; }
-.form .bad { margin: 0; }
+
+body {
+  margin: 0;
+  font-family: 'Poppins', system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar { width: 12px; }
+::-webkit-scrollbar-track { background: hsl(var(--background)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--accent)); border-radius: 6px; }
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--accent)) hsl(var(--background)); }

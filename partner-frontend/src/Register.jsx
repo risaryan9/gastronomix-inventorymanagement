@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import AuthShell from './components/AuthShell.jsx'
+import { inputClass, labelClass, primaryButton } from './components/styles.js'
 
 /*
  * /register#token=… — where a registration email's link lands.
@@ -48,6 +50,19 @@ const formatExpiry = (value) =>
     minute: '2-digit',
   })
 
+const Alert = ({ children }) => (
+  <div role="alert" className="rounded-lg border border-destructive bg-destructive/15 p-3 text-sm text-foreground">
+    {children}
+  </div>
+)
+
+const NeedNewLink = () => (
+  <p className="mt-4 text-sm text-muted-foreground">
+    Each link works once and expires after a week. Ask your franchise&apos;s main contact to request a new
+    registration email from Gastronomix.
+  </p>
+)
+
 export default function Register() {
   const [token] = useState(readTokenFromUrl)
   const [link, setLink] = useState({ state: token ? 'loading' : 'invalid' })
@@ -85,66 +100,117 @@ export default function Register() {
     }
   }
 
-  return (
-    <main className="page">
-      <img src="/gastronomix-logo.png" alt="" className="logo" />
-      <h1>Create your login</h1>
+  if (link.state === 'loading') {
+    return (
+      <AuthShell title="Create your login">
+        <p className="text-muted-foreground">Checking your registration link…</p>
+      </AuthShell>
+    )
+  }
 
-      {link.state === 'loading' && <p className="lede">Checking your registration link…</p>}
+  if (link.state === 'invalid' || link.state === 'error') {
+    return (
+      <AuthShell title="This link can't be used">
+        <Alert>
+          {link.state === 'invalid'
+            ? 'This page needs the link from your registration email.'
+            : link.message.replace(/\.?$/, '.')}
+        </Alert>
+        <NeedNewLink />
+      </AuthShell>
+    )
+  }
 
-      {link.state === 'invalid' && (
-        <section className="card">
-          <p className="bad"><strong>This page needs a registration link.</strong></p>
-          <p>Open the link from your registration email. If it does not work, ask your franchise&apos;s main contact to request a new registration email from Gastronomix.</p>
-        </section>
-      )}
-
-      {link.state === 'error' && (
-        <section className="card">
-          <p className="bad"><strong>{link.message.replace(/\.?$/, '.')}</strong></p>
-          <p>Each link works once and expires after a week. Ask your franchise&apos;s main contact to request a new registration email from Gastronomix.</p>
-        </section>
-      )}
-
-      {link.state === 'ok' && done && (
-        <section className="card">
-          <p className="good"><strong>Your login is ready.</strong></p>
-          <p>You can sign in to Gastronomix Partners as <strong>{done.email}</strong> for {done.franchise_name} once ordering opens. Keep your password safe — Gastronomix will never ask you for it.</p>
-        </section>
-      )}
-
-      {link.state === 'ok' && !done && (
-        <>
-          <p className="lede">
-            For <strong>{link.details.franchise_name}</strong> · registration #{link.details.invitation_number}
-            <br />
-            <span className="muted">This link works once and expires {formatExpiry(link.details.expires_at)} IST.</span>
+  if (done) {
+    return (
+      <AuthShell title="Your login is ready">
+        <div className="flex items-start gap-3 rounded-lg border border-success/40 bg-success/10 p-4">
+          <svg className="mt-0.5 h-5 w-5 shrink-0 text-success" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <p className="text-sm text-foreground">
+            You can sign in to Gastronomix Partners as <strong>{done.email}</strong> for{' '}
+            <strong>{done.franchise_name}</strong> once ordering opens.
           </p>
+        </div>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Keep your password safe — Gastronomix will never ask you for it.
+        </p>
+      </AuthShell>
+    )
+  }
 
-          <form className="card form" onSubmit={handleSubmit} noValidate>
-            <label>
-              Your email
-              <input type="email" autoComplete="email" value={form.email} onChange={set('email')} required disabled={submitting} />
-              <span className="hint">Use your own address — you will sign in with it.</span>
-            </label>
-            <label>
-              Password
-              <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={MIN_PASSWORD_LENGTH} disabled={submitting} />
-              <span className="hint">At least {MIN_PASSWORD_LENGTH} characters.</span>
-            </label>
-            <label>
-              Confirm password
-              <input type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} required disabled={submitting} />
-            </label>
+  const { franchise_name: franchiseName, invitation_number: number, expires_at: expiresAt } = link.details
 
-            {formError && <p className="bad" role="alert">{formError}</p>}
-
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Creating your login…' : 'Create login'}
-            </button>
-          </form>
+  return (
+    <AuthShell
+      title="Create your login"
+      subtitle={
+        <>
+          For <span className="font-semibold text-foreground">{franchiseName}</span>
+          <span className="mx-2 text-muted-foreground/60">•</span>
+          Registration #{number}
         </>
-      )}
-    </main>
+      }
+    >
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <div>
+          <label htmlFor="email" className={labelClass}>Your email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={form.email}
+            onChange={set('email')}
+            required
+            disabled={submitting}
+            className={inputClass}
+            placeholder="you@example.com"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">Use your own address — you will sign in with it.</p>
+        </div>
+
+        <div>
+          <label htmlFor="password" className={labelClass}>Password</label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={set('password')}
+            required
+            minLength={MIN_PASSWORD_LENGTH}
+            disabled={submitting}
+            className={inputClass}
+            placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="confirm" className={labelClass}>Confirm password</label>
+          <input
+            id="confirm"
+            type="password"
+            autoComplete="new-password"
+            value={form.confirm}
+            onChange={set('confirm')}
+            required
+            disabled={submitting}
+            className={inputClass}
+            placeholder="Type it again"
+          />
+        </div>
+
+        {formError && <Alert>{formError}</Alert>}
+
+        <button type="submit" disabled={submitting} className={primaryButton}>
+          {submitting ? 'Creating your login…' : 'Create login'}
+        </button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          This link works once and expires {formatExpiry(expiresAt)} IST.
+        </p>
+      </form>
+    </AuthShell>
   )
 }

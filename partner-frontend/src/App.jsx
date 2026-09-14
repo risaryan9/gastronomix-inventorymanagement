@@ -1,5 +1,21 @@
 import { useEffect, useState } from 'react'
 import Register from './Register.jsx'
+import AuthShell from './components/AuthShell.jsx'
+
+export default function App() {
+  // No router yet: /register is the only other page, and it needs no navigation.
+  if (window.location.pathname.replace(/\/$/, '') === '/register') return <Register />
+  return <DeploymentCheck />
+}
+
+const Row = ({ tone, children }) => (
+  <li className="flex items-start gap-2 text-sm">
+    <span className={`mt-0.5 font-bold ${tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-destructive' : 'text-accent-text'}`}>
+      {tone === 'good' ? '✓' : '!'}
+    </span>
+    <span className="text-foreground">{children}</span>
+  </li>
+)
 
 /*
  * Placeholder until Phase 5 builds the real dashboard.
@@ -10,12 +26,6 @@ import Register from './Register.jsx'
  * nothing else, and this app will never import a Supabase client: all data
  * comes from /api (docs/fofo-dashboard-spec.md §4).
  */
-export default function App() {
-  // No router yet: /register is the only other page, and it needs no navigation.
-  if (window.location.pathname.replace(/\/$/, '') === '/register') return <Register />
-  return <DeploymentCheck />
-}
-
 function DeploymentCheck() {
   const [health, setHealth] = useState({ state: 'loading' })
 
@@ -37,28 +47,24 @@ function DeploymentCheck() {
   }, [])
 
   return (
-    <main className="page">
-      <img src="/gastronomix-logo.png" alt="" className="logo" />
-      <h1>Gastronomix Partners</h1>
-      <p className="lede">The franchise ordering dashboard is on its way.</p>
-
-      <section className="status" aria-live="polite">
-        <h2>Deployment check</h2>
-        {health.state === 'loading' && <p>Checking the API…</p>}
+    <AuthShell title="Coming soon" subtitle="The franchise ordering dashboard is on its way.">
+      <section aria-live="polite" className="rounded-xl border border-border bg-background/60 p-4">
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Deployment check</h2>
+        {health.state === 'loading' && <p className="text-sm text-muted-foreground">Checking the API…</p>}
         {health.state === 'error' && (
-          <p className="bad"><strong>API unreachable.</strong> {health.message}</p>
+          <ul><Row tone="bad"><strong>API unreachable.</strong> {health.message}</Row></ul>
         )}
         {health.state === 'ok' && (
-          <ul>
-            <li className="good">API reachable</li>
-            <li className={health.body.configured ? 'good' : 'warn'}>
+          <ul className="space-y-2">
+            <Row tone="good">API reachable</Row>
+            <Row tone={health.body.configured ? 'good' : 'warn'}>
               {health.body.configured
                 ? 'Server secrets configured'
                 : 'Server secrets not set yet — add them in Vercel → Settings → Environment Variables'}
-            </li>
+            </Row>
           </ul>
         )}
       </section>
-    </main>
+    </AuthShell>
   )
 }

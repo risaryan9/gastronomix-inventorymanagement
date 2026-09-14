@@ -92,34 +92,82 @@ const istDateTime = (date) =>
     minute: '2-digit',
   })
 
-function layout({ heading, paragraphs, button, footer }) {
-  const body = paragraphs.map((p) => `<p style="margin:0 0 16px">${p}</p>`).join('')
-  const cta = button
-    ? `<p style="margin:24px 0">
-         <a href="${escapeHtml(button.href)}"
-            style="background:#e1bb07;color:#111;font-weight:700;text-decoration:none;padding:12px 20px;border-radius:8px;display:inline-block">
-           ${escapeHtml(button.label)}
-         </a>
-       </p>
-       <p style="margin:0 0 16px;font-size:13px;color:#59636e">
-         If the button does not work, copy this address into your browser:<br>
-         <span style="word-break:break-all">${escapeHtml(button.href)}</span>
-       </p>`
-    : ''
-  return `<!doctype html>
-<html><body style="margin:0;background:#f6f7f9;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1f2328;line-height:1.5">
-  <div style="max-width:560px;margin:0 auto;padding:32px 16px">
-    <div style="background:#fff;border:1px solid #d1d9e0;border-radius:12px;padding:28px">
-      <p style="margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#59636e">Gastronomix Partners</p>
-      <h1 style="margin:0 0 20px;font-size:22px">${heading}</h1>
-      ${body}${cta}
-    </div>
-    <p style="margin:16px 0 0;font-size:12px;color:#59636e;text-align:center">${footer}</p>
-  </div>
-</body></html>`
+/*
+ * THE EMAIL DESIGN follows the internal app and the partner app: dark by
+ * default — the same navy, card and brand gold — with Poppins where the mail
+ * client allows web fonts.
+ *
+ * Email cannot have a theme switch, so light is left to the reader's system:
+ * clients that honour prefers-color-scheme (Apple Mail, iOS, some others) get
+ * the partner app's light palette through the <style> block. Everything is
+ * inline first, because Gmail and Outlook ignore much of <style>; those show
+ * the dark design. Colours are hex, not hsl(), for the same reason.
+ */
+const DARK = {
+  page: '#111317', card: '#1a1d23', border: '#2e3138', text: '#f2f2f2',
+  muted: '#a6a6a6', gold: '#e1bb07', onGold: '#111317',
 }
 
-export function welcomeEmail({ franchiseName }) {
+function layout({ heading, paragraphs, button, footer, appUrl }) {
+  const c = DARK
+  const body = paragraphs
+    .map((p) => `<p class="gx-text" style="margin:0 0 16px;color:${c.text};font-size:15px;line-height:1.6">${p}</p>`)
+    .join('')
+  const cta = button
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 20px"><tr><td style="border-radius:12px;background:${c.gold}">
+         <a href="${escapeHtml(button.href)}" class="gx-button"
+            style="display:inline-block;padding:14px 26px;border-radius:12px;background:${c.gold};color:${c.onGold};font-weight:800;font-size:16px;text-decoration:none">
+           ${escapeHtml(button.label)}
+         </a>
+       </td></tr></table>
+       <p class="gx-muted" style="margin:0 0 4px;color:${c.muted};font-size:12px">If the button does not work, copy this address into your browser:</p>
+       <p style="margin:0;font-size:12px;word-break:break-all"><a href="${escapeHtml(button.href)}" class="gx-link" style="color:${c.gold};text-decoration:underline">${escapeHtml(button.href)}</a></p>`
+    : ''
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="supported-color-schemes" content="dark light">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body, table, td, p, a, h1 { font-family: 'Poppins', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    @media (prefers-color-scheme: light) {
+      .gx-page { background: #f6f7f9 !important; }
+      .gx-card { background: #ffffff !important; border-color: #d4d7de !important; }
+      .gx-text, .gx-heading { color: #181c25 !important; }
+      .gx-muted { color: #585e6a !important; }
+      .gx-eyebrow { color: #936b06 !important; }
+      .gx-link { color: #936b06 !important; }
+      .gx-button { color: #181c25 !important; }
+    }
+  </style>
+</head>
+<body class="gx-page" style="margin:0;padding:0;background:${c.page}">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="gx-page" style="background:${c.page}">
+    <tr><td align="center" style="padding:32px 16px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px">
+        <tr><td align="center" style="padding-bottom:20px">
+          <img src="${escapeHtml(appUrl)}/gastronomix-logo.png" width="64" height="64" alt="Gastronomix" style="display:block;border:0;width:64px;height:64px">
+          <p class="gx-eyebrow" style="margin:10px 0 0;color:${c.muted};font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase">Gastronomix Partners</p>
+        </td></tr>
+        <tr><td class="gx-card" style="background:${c.card};border:2px solid ${c.border};border-radius:16px;padding:32px">
+          <h1 class="gx-heading" style="margin:0 0 20px;color:${c.text};font-size:22px;font-weight:700;line-height:1.3">${heading}</h1>
+          ${body}${cta}
+        </td></tr>
+        <tr><td style="padding:18px 8px 0">
+          <p class="gx-muted" style="margin:0;color:${c.muted};font-size:12px;line-height:1.5;text-align:center">${footer}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+export function welcomeEmail({ franchiseName, appUrl }) {
   const name = escapeHtml(franchiseName)
   return {
     subject: `Welcome to Gastronomix Partners, ${franchiseName}`,
@@ -131,6 +179,7 @@ export function welcomeEmail({ franchiseName }) {
         `This email needs no action.`,
       ],
       footer: 'You are receiving this because this address is the main contact for your franchise with Gastronomix.',
+      appUrl,
     }),
     text: [
       `Welcome to Gastronomix Partners, ${franchiseName}.`,
@@ -144,7 +193,7 @@ export function welcomeEmail({ franchiseName }) {
   }
 }
 
-export function registrationEmail({ franchiseName, invitationNumber, link, expiresAt }) {
+export function registrationEmail({ franchiseName, invitationNumber, link, expiresAt, appUrl }) {
   const name = escapeHtml(franchiseName)
   const expires = istDateTime(expiresAt)
   return {
@@ -159,6 +208,7 @@ export function registrationEmail({ franchiseName, invitationNumber, link, expir
       ],
       button: { label: 'Create my login', href: link },
       footer: `Registration #${invitationNumber}. If you were not expecting this email, you can ignore it — without the link, nothing happens.`,
+      appUrl,
     }),
     text: [
       `User registration #${invitationNumber} for ${franchiseName}`,
