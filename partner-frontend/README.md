@@ -29,9 +29,9 @@ project only looks for functions inside its own Root Directory.
 
 | Signed out | Signed in (dashboard) |
 |---|---|
-| `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` Overview, `/order`, `/orders`, `/orders/:orderId`, `/payments` (pending payments), `/store-credit`, `/account`, and `/cart` from the gold icon in the top bar |
+| `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` Overview, `/order` → `/order/:outletId` (catalogue), `/orders`, `/orders/:orderId`, `/payments` (pending payments), `/store-credit`, `/account`, and `/cart` from the gold icon in the top bar |
 
-The dashboard sections are placeholders. Invoices have no section: they are shown with the order they bill. `src/dashboard/navigation.js` is the one
+The dashboard sections are placeholders, except **Order supplies**, which is designed on dummy data (`src/dummy/orderSupplies.js` — real names and categories, prices deliberately not real) until its API exists. Invoices have no section: they are shown with the order they bill. `src/dashboard/navigation.js` is the one
 list both the sidebar and the router are built from — add a section there.
 
 Signing in: the server checks the password with Supabase Auth and keeps its own

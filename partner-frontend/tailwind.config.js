@@ -48,11 +48,37 @@ export default {
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',
+        'rise-in': 'riseIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'sheet-up': 'sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'sheet-left': 'sheetLeft 0.32s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'backdrop-in': 'backdropIn 0.2s ease-out both',
+        pop: 'pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0', transform: 'translateY(-10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        riseIn: {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        sheetUp: {
+          '0%': { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        sheetLeft: {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        backdropIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        pop: {
+          '0%': { transform: 'scale(1)' },
+          '40%': { transform: 'scale(1.18)' },
+          '100%': { transform: 'scale(1)' },
         },
       },
     },

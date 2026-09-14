@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext.js'
+import { useCart } from '../cart/cartContext.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import NavIcon from './NavIcon.jsx'
 import { ACCOUNT_NAV, CART_ROUTE, DASHBOARD_NAV } from './navigation.js'
@@ -56,6 +57,7 @@ function Sidebar({ onNavigate }) {
 
 export default function DashboardLayout() {
   const { session, signOut } = useAuth()
+  const { totalItems } = useCart()
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -102,15 +104,23 @@ export default function DashboardLayout() {
 
             <NavLink
               to={`/${CART_ROUTE.path}`}
-              aria-label="Cart"
+              aria-label={totalItems ? `Cart, ${totalItems} item${totalItems === 1 ? '' : 's'}` : 'Cart'}
               title="Cart"
               className={({ isActive }) =>
-                `inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-accent bg-accent text-accent-foreground shadow-button transition-all hover:shadow-button-hover hover:brightness-110 ${
+                `relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-accent bg-accent text-accent-foreground shadow-button transition-all hover:shadow-button-hover hover:brightness-110 ${
                   isActive ? 'ring-2 ring-ring ring-offset-2 ring-offset-card' : ''
                 }`
               }
             >
               <NavIcon name="cart" />
+              {totalItems > 0 && (
+                <span
+                  key={totalItems}
+                  className="absolute -right-2 -top-2 inline-flex h-5 min-w-5 animate-pop items-center justify-center rounded-full border-2 border-card bg-foreground px-1 text-[10px] font-black text-background"
+                >
+                  {totalItems}
+                </span>
+              )}
             </NavLink>
             <ThemeToggle />
             <button

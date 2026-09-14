@@ -75,3 +75,12 @@ body {
 ::-webkit-scrollbar-track { background: hsl(var(--background)); }
 ::-webkit-scrollbar-thumb { background: hsl(var(--accent)); border-radius: 6px; }
 * { scrollbar-width: thin; scrollbar-color: hsl(var(--accent)) hsl(var(--background)); }
+
+/* Horizontal chip rows scroll without a visible bar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Respect a reduced-motion preference: keep the layout, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
