@@ -12,7 +12,8 @@ against the live database's audit trail, not assumed.
 - [x] Endpoints: list, create, edit, (de)activate franchises; link/unlink outlets — `partner-frontend/api/admin.js`
 - [x] Internal app: Franchise → FOFO Franchises — list, create/edit form, outlet linking
 - [x] Live: franchise created and edited from the screen, audited
-- [ ] Live: link and unlink an outlet from the screen — no outlet linked yet
+- [x] Live: outlet linked from the screen — EC1027 to Testing franchise, audited (2026-09-14)
+- [ ] Live: unlink an outlet from the screen
 
 ## 1b. Outlet FOCO/FOFO model
 - [x] Migration 13: `set_outlet_ownership_model` (audited; refuses FOFO with an active FOCO code) + trigger refusing FOCO for a franchise-owned outlet — applied and verified
@@ -22,7 +23,12 @@ against the live database's audit trail, not assumed.
 - [x] Migration 15 applied and verified
 - [x] Outlets edit form: read-only "FOCO portal code on file" box when the model is FOFO; warning before saving FOCO → FOFO on an outlet whose code is on
 - [x] Franchise picker: FOFO outlets only
-- [ ] Live: mark an outlet FOFO and confirm its portal code is off; link it; confirm it cannot be set back to FOCO while linked; unlink, back to FOCO, code on again — all 34 outlets still FOCO
+- [x] Live: EC1027 marked FOFO from the edit form — its active portal code turned off (`deactivated_for_fofo_at` set), audited with the code's state before and after
+- [x] Live: that code is no longer visible to the public key the portal uses (checked through the REST API; 63 of 64 codes still visible)
+- [x] Live: EC1027 then linked to Testing franchise
+- [ ] Live: confirm EC1027 cannot be set back to FOCO while linked
+- [ ] Live: unlink it, set it back to FOCO, confirm its portal code is on again
+- [ ] Live: confirm with a FOCO owner (or the portal itself) that EC1027's code no longer opens the portal
 
 ## 2. Email
 - [x] Provider: Resend. `RESEND_API_KEY`, `EMAIL_FROM`, `PARTNER_APP_URL` in the partner app's Vercel project
@@ -53,7 +59,7 @@ against the live database's audit trail, not assumed.
 
 ## 5. Test end to end
 - [x] Create franchise, send welcome
-- [ ] Link an outlet to it
+- [x] Link an outlet to it
 - [x] Send two registration emails; register with one
 - [ ] Register with the second (still open)
 - [ ] Reused, expired and revoked links are refused — tested locally, not yet live (no link has been cancelled live)
