@@ -13,6 +13,31 @@
 // credit-note numbers, quantities and PRICES ARE INVENTED: this file ships in
 // the public bundle, and real costs must never reach a browser (spec §11).
 //
+// EVERY FIELD SHOWN MAPS TO A COLUMN, or is worked out from columns:
+//   orders          order_number, status, placed_at, accepted_at … delivered_at,
+//                   expires_at, shipping_carrier / _tracking_ref / _notes,
+//                   subtotal, gst_total, grand_total, store_credit_to_apply,
+//                   cloud_kitchen_id (the kitchen name)
+//   order_items     quantity_ordered, quantity_accepted, unit_price_ex_gst,
+//                   unit_price_inc_gst, gst_percent, hsn_code; code, name and
+//                   unit from raw_materials
+//   invoices        invoice_number, invoice_type, issued_at, taxable_value,
+//                   gst_amount, total; a logistics description from
+//                   invoice_items.description
+//   payments        amount, created_at (status captured)
+//   credit_notes    credit_note_number, invoice, amount, reason, issued_at
+//   store_credits + store_credit_applications
+//                   amount, reason, created_at; applied_by_franchise_user_id
+//                   → franchise_users.email
+// Worked out, not stored: line totals, what an invoice has had paid and still
+// has due (payments + credit applications; nothing stores a paid status), a
+// credit's remaining amount and the balance (decision 0013), and credit held
+// by a checkout (store_credit_held).
+//
+// NOT DECIDED YET, so invented here and not to be read as design: the formats
+// of order, invoice and credit-note numbers (numbering is not built), and the
+// logistics invoice's GST rate (fofo-accounting-review.md §11).
+//
 // The money follows the real rules so the design shows them honestly:
 //   - each line is rounded to the paisa, then lines are added (05, 07)
 //   - one goods invoice per order, issued when the payment lands, at full value
@@ -82,11 +107,13 @@ const sum = (rows, pick) => round2(rows.reduce((s, r) => s + pick(r), 0))
  * One order and its paperwork.
  *   paid         when the payment landed; null while pending or expired
  *   credit       store credit redeemed at checkout
- *   creditNote   { number, reason, at } when the PM trimmed, or, with
- *                full: true, when the whole order was cancelled and refunded
+ *   creditNote   { number, reason, at } when the PM trimmed. Its per-line
+ *                breakdown is not stored anywhere: it is derived from
+ *                order_items, quantity_ordered − quantity_accepted at the
+ *                frozen prices, which is what the credit note covers
  *   logistics    { number, at, taxable, gstPercent, payments: [{ amount, at, via }] }
  */
-function order({ number, outlet, status, placedDaysAgo, lines, credit = 0, steps = {}, expiresAt = null, creditNote = null, logistics = null, shipping = null, cancelReason = null }) {
+function order({ number, outlet, status, placedDaysAgo, lines, credit = 0, steps = {}, expiresAt = null, creditNote = null, logistics = null, shipping = null }) {
   const subtotal = sum(lines, (l) => l.ordered.taxable)
   const gstTotal = sum(lines, (l) => l.ordered.gst)
   const grandTotal = round2(subtotal + gstTotal)
@@ -116,9 +143,7 @@ function order({ number, outlet, status, placedDaysAgo, lines, credit = 0, steps
     })
 
     if (creditNote) {
-      const trimmed = creditNote.full
-        ? lines.map((l) => ({ ...l, quantityAccepted: 0, accepted: { taxable: 0, gst: 0, total: 0 } }))
-        : lines.filter((l) => l.accepted && l.quantityAccepted < l.quantityOrdered)
+      const trimmed = lines.filter((l) => l.accepted && l.quantityAccepted < l.quantityOrdered)
       const amount = sum(trimmed, (l) => l.ordered.total - l.accepted.total)
       creditNotes.push({
         id: `cn-${creditNote.number}`,
@@ -164,7 +189,6 @@ function order({ number, outlet, status, placedDaysAgo, lines, credit = 0, steps
     status,
     placedAt,
     expiresAt,
-    cancelReason,
     timeline: {
       paid: moneyTaken ? placedAt : null,
       accepted: steps.accepted ?? null,
@@ -248,13 +272,6 @@ const ORDERS = [
     number: 'GX-2608-0012', outlet: 'NK1076', status: 'expired', placedDaysAgo: 27,
     expiresAt: ago(27, -1),
     lines: [line('chicken', 10), line('mayo', 2)],
-  }),
-  order({
-    number: 'GX-2608-0010', outlet: 'EC1027', status: 'cancelled', placedDaysAgo: 29,
-    steps: {},
-    cancelReason: 'Cancelled by Gastronomix at your request. The payment was returned as store credit.',
-    lines: [line('butter', 3)],
-    creditNote: { number: 'CN/26-27/0007', reason: 'Order cancelled by Gastronomix before packing.', at: ago(28), full: true },
   }),
 ]
 

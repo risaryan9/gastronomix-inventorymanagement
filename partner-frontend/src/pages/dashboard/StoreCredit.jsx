@@ -15,7 +15,8 @@ import { storeCreditStatement } from '../../dummy/ordersAndMoney.js'
  * disputed balance can be settled line by line.
  *
  * Available is the balance less what checkouts in progress are holding
- * (decision 0020).
+ * (decision 0020). The hold itself is not called out here; it shows on the
+ * order waiting for payment.
  *
  * DUMMY DATA: src/dummy/ordersAndMoney.js until GET /api/franchise/credit/statement exists.
  */
@@ -110,13 +111,6 @@ export default function StoreCredit() {
         <div className="animate-rise-in rounded-2xl border-2 border-accent bg-card p-5 shadow-card">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Available to spend</p>
           <p className="mt-1 text-4xl font-black text-success">{formatINR(statement.available)}</p>
-          {statement.heldByCheckouts > 0 && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-              <Icon name="clock" className="h-3.5 w-3.5" />
-              {formatINR(statement.heldByCheckouts)} is held by a checkout waiting for payment ·{' '}
-              <Link to="/payments" className="font-semibold text-accent-text hover:underline">see it</Link>
-            </p>
-          )}
           <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-sm">
             <div><dt className="text-[11px] text-muted-foreground">Earned</dt><dd className="font-bold text-foreground">{formatINR(statement.earnedTotal)}</dd></div>
             <div><dt className="text-[11px] text-muted-foreground">Spent</dt><dd className="font-bold text-foreground">{formatINR(statement.spentTotal)}</dd></div>

@@ -40,7 +40,7 @@ function Sidebar({ onNavigate }) {
       <ul className="space-y-1">
         {DASHBOARD_NAV.map((item) => (
           <li key={item.path}>
-            <NavLink to={`/${item.path}`} end={item.path === ''} className={linkClass} onClick={onNavigate}>
+            <NavLink to={`/${item.path}`} className={linkClass} onClick={onNavigate}>
               <NavIcon name={item.icon} />
               {item.label}
             </NavLink>

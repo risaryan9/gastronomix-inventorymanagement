@@ -202,7 +202,7 @@ export default function OrderDetail() {
               ? 'The payment window for this checkout closed before a payment arrived, so nothing was charged. The outlet\'s cart was left as it was — check out again from there.'
               : order.status === 'payment_failed'
                 ? 'The payment for this checkout failed, so nothing was charged. Check out again from the cart.'
-                : order.cancelReason}
+                : 'This order was cancelled by Gastronomix.'}
           </Alert>
         )}
 

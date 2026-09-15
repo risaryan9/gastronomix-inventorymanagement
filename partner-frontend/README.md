@@ -29,7 +29,7 @@ project only looks for functions inside its own Root Directory.
 
 | Signed out | Signed in (dashboard) |
 |---|---|
-| `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` Overview, `/order` → `/order/:outletId` (catalogue), `/orders`, `/orders/:orderId`, `/payments` (pending payments), `/store-credit`, `/account`, and `/cart` from the gold icon in the top bar |
+| `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` opens Order supplies (there is no overview), `/order` → `/order/:outletId` (catalogue), `/orders`, `/orders/:orderId`, `/payments` (pending payments), `/store-credit`, `/account`, and `/cart` from the gold icon in the top bar |
 
 The dashboard sections are placeholders, except **Order supplies** and the **cart**, which run on the live database through `/api/franchise/*`: outlets, each outlet's catalogue priced in its kitchen (`api/_lib/pricing.js`), and one shared cart per outlet with price-change and lock handling (`api/_lib/cart.js`, decision 0020). Checkout checks the cart and shows the amount, but stops before payment, which is not built yet. **Orders** (with order detail), **Pending payments** and **Store credit** are designed on dummy data (`src/dummy/ordersAndMoney.js`, invented numbers and prices, shaped like the endpoints they will call) until their API exists; their Pay and Checkout buttons stop with a message. Invoices have no section: they are shown with the order they bill. `src/dashboard/navigation.js` is the one
 list both the sidebar and the router are built from — add a section there.

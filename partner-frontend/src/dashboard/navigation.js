@@ -9,7 +9,6 @@
 // and are shown with it. The cart is not in the sidebar either — it is the
 // highlighted icon in the top bar (CART_ROUTE), always one click away.
 
-import Overview from '../pages/dashboard/Overview.jsx'
 import OrderSupplies from '../pages/dashboard/OrderSupplies.jsx'
 import OutletCatalog from '../pages/dashboard/OutletCatalog.jsx'
 import Cart from '../pages/dashboard/Cart.jsx'
@@ -20,7 +19,6 @@ import StoreCredit from '../pages/dashboard/StoreCredit.jsx'
 import Account from '../pages/dashboard/Account.jsx'
 
 export const DASHBOARD_NAV = [
-  { path: '', label: 'Overview', icon: 'home', Component: Overview },
   { path: 'order', label: 'Order supplies', icon: 'catalog', Component: OrderSupplies },
   { path: 'orders', label: 'Orders', icon: 'orders', Component: Orders },
   { path: 'payments', label: 'Pending payments', icon: 'payments', Component: PendingPayments },

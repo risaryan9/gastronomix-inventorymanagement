@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth.jsx'
 import DashboardLayout from './dashboard/DashboardLayout.jsx'
 import { ACCOUNT_NAV, CART_ROUTE, DASHBOARD_EXTRA_ROUTES, DASHBOARD_NAV } from './dashboard/navigation.js'
@@ -13,7 +13,9 @@ import NotFound from './pages/NotFound.jsx'
  * Every page of the partner app.
  *
  *   Signed out   /login  /forgot-password  /reset-password  /register  /status
- *   Signed in    the dashboard sections in dashboard/navigation.js
+ *   Signed in    the dashboard sections in dashboard/navigation.js. There is
+ *                no overview: / lands on Order supplies, so sign-in, a bare
+ *                address and "back to the dashboard" links all open it.
  *
  * vercel.json sends every non-/api path to index.html, so a refresh or a
  * bookmarked link lands here and is routed in the browser.
@@ -29,11 +31,10 @@ export default function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<DashboardLayout />}>
-          {[...DASHBOARD_NAV, ACCOUNT_NAV, CART_ROUTE, ...DASHBOARD_EXTRA_ROUTES].map(({ path, Component }) =>
-            path === ''
-              ? <Route key="index" index element={<Component />} />
-              : <Route key={path} path={path} element={<Component />} />
-          )}
+          <Route index element={<Navigate to="/order" replace />} />
+          {[...DASHBOARD_NAV, ACCOUNT_NAV, CART_ROUTE, ...DASHBOARD_EXTRA_ROUTES].map(({ path, Component }) => (
+            <Route key={path} path={path} element={<Component />} />
+          ))}
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
