@@ -11,7 +11,18 @@ export const ORDER_STATUS = {
   shipped: { label: 'Shipped', tone: 'info' },
   delivered: { label: 'Delivered', tone: 'good' },
   cancelled: { label: 'Cancelled', tone: 'bad' },
+  expired: { label: 'Payment expired', tone: 'muted' },
+  payment_failed: { label: 'Payment failed', tone: 'bad' },
 }
+
+// Where an order stands, in the words a franchise uses to find it.
+export const ORDER_GROUPS = [
+  { value: 'all', label: 'All' },
+  { value: 'in_process', label: 'In process', statuses: ['paid', 'accepted', 'packed', 'ready_to_ship', 'shipped'] },
+  { value: 'awaiting_payment', label: 'Awaiting payment', statuses: ['pending_payment'] },
+  { value: 'delivered', label: 'Delivered', statuses: ['delivered'] },
+  { value: 'closed', label: 'Cancelled & expired', statuses: ['cancelled', 'expired', 'payment_failed'] },
+]
 export const ORDER_STEPS = ['paid', 'accepted', 'packed', 'ready_to_ship', 'shipped', 'delivered']
 
 export const MATERIAL_TYPE_LABEL = {

@@ -5,6 +5,7 @@ const TONE = {
   good: 'border-success/40 bg-success/10 text-success',
   warn: 'border-accent/40 bg-accent/10 text-accent-text',
   bad: 'border-destructive/40 bg-destructive/10 text-destructive',
+  muted: 'border-border bg-muted text-muted-foreground',
 }
 
 export function StatusBadge({ status }) {
