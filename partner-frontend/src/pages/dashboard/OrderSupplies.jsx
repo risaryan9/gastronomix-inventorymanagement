@@ -1,18 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import Icon from '../../components/ui/Icon.jsx'
-import { OrderProgress, StatusBadge } from '../../components/catalog/OrderStatus.jsx'
 import { useCart } from '../../cart/cartContext.js'
-import { formatINR, formatINRWhole, formatRelativeDay, formatShortDate } from '../../lib/format.js'
+import { formatINRWhole, formatRelativeDay } from '../../lib/format.js'
 import { listOutlets } from '../../dummy/orderSupplies.js'
 
 /*
  * Order supplies, step 1: choose the outlet.
  *
  * An order is always for one outlet, because the outlet decides the serving
- * kitchen, and the kitchen decides the price (spec §6). Each outlet's card shows
- * where its orders stand, so a franchise can see what is already on the way
- * before ordering more.
+ * kitchen, and the kitchen decides the price (spec §6). Each outlet's card counts
+ * its in-process and completed orders, so a franchise can see something is
+ * already on the way before ordering more; the orders themselves live in Orders.
  *
  * DESIGN STAGE: data comes from src/dummy/orderSupplies.js.
  */
@@ -23,40 +22,10 @@ const BRAND_STYLE = {
   BP: { label: 'Boom Pizza', className: 'bg-success text-background' },
 }
 
-function OrderRow({ order }) {
-  return (
-    <li className="rounded-xl border border-border bg-background/40 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{order.orderNumber}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatShortDate(order.placedAt)} · {order.lines.length} item{order.lines.length === 1 ? '' : 's'} · {formatINR(order.total)}
-          </p>
-        </div>
-        <StatusBadge status={order.status} />
-      </div>
-      {order.status !== 'delivered' && (
-        <div className="mt-2.5">
-          <OrderProgress status={order.status} />
-        </div>
-      )}
-    </li>
-  )
-}
-
 function OutletCard({ outlet, index }) {
   const { summaryFor } = useCart()
   const cart = summaryFor(outlet.id)
-  const [tab, setTab] = useState(outlet.inProcessOrders.length ? 'inProcess' : 'completed')
   const brand = BRAND_STYLE[outlet.brand] || { label: outlet.brand, className: 'bg-muted text-foreground' }
-
-  const orders = tab === 'inProcess' ? outlet.inProcessOrders : outlet.completedOrders
-  const shown = orders.slice(0, 3)
-
-  const tabClass = (active) =>
-    `flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-      active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-    }`
 
   return (
     <article
@@ -97,32 +66,6 @@ function OutletCard({ outlet, index }) {
       <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon name="truck" className="h-3.5 w-3.5" /> Supplied by {outlet.kitchenName}
       </p>
-
-      <div className="mt-4">
-        <div className="flex gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label={`${outlet.name} orders`}>
-          <button type="button" role="tab" aria-selected={tab === 'inProcess'} className={tabClass(tab === 'inProcess')} onClick={() => setTab('inProcess')}>
-            In process ({outlet.inProcessOrders.length})
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'completed'} className={tabClass(tab === 'completed')} onClick={() => setTab('completed')}>
-            Completed ({outlet.completedOrders.length})
-          </button>
-        </div>
-
-        {shown.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-dashed border-border px-3 py-5 text-center text-sm text-muted-foreground">
-            {tab === 'inProcess' ? 'Nothing on the way.' : 'No completed orders yet.'}
-          </p>
-        ) : (
-          <ul key={tab} className="mt-3 animate-rise-in space-y-2">
-            {shown.map((order) => <OrderRow key={order.id} order={order} />)}
-          </ul>
-        )}
-        {orders.length > shown.length && (
-          <Link to="/orders" className="mt-2 inline-block text-xs font-semibold text-accent-text hover:underline">
-            and {orders.length - shown.length} more in Orders
-          </Link>
-        )}
-      </div>
 
       <Link
         to={`/order/${outlet.id}`}
