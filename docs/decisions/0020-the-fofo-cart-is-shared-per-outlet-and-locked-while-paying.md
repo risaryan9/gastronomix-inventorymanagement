@@ -129,6 +129,10 @@ checkout" rule already covers, and it is flagged for review.
   the columns, the lock trigger, the credit hold, `clear_cart_after_payment`
 - `migrations/fofo/05-create-fofo-orders-and-carts.sql`: one cart per outlet,
   one live pending order per outlet
+- `partner-frontend/api/_lib/cart.js`: stamping the agreed price, line
+  statuses, refusing writes while locked, and the checkout checks
+- `partner-frontend/src/pages/dashboard/Cart.jsx`: the cart list, one outlet's
+  cart, keep/remove, store credit and checkout
 - `partner-frontend/api/_lib/razorpay.js`: the webhook compares against
   `amount_paise`, which now excludes redeemed credit
 - `docs/fofo-dashboard-spec.md` §8.2: the cart and checkout flow

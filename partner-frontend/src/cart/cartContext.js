@@ -5,9 +5,13 @@ import { createContext, useContext } from 'react'
 export const CartContext = createContext(null)
 
 /**
- * The cart, one per outlet.
+ * The franchise's carts, one per outlet, held by the server.
  *
- *   const { quantityOf, setQuantity, linesFor, summaryFor, totalItems } = useCart()
+ *   const { summary, carts, totalItems, loadCart, quantityOf, setQuantity,
+ *           keepPrice, clearCart, checkout, error } = useCart()
+ *
+ * carts[outletId] is the server's view of that outlet's cart once loadCart has
+ * run: { outlet, lines, totals, storeCredit, lock, needsAnswer, canCheckout }.
  */
 export function useCart() {
   const context = useContext(CartContext)

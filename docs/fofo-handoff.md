@@ -43,7 +43,20 @@ exposed through the API, RLS on with no policies, service_role only.
 **Phase 0 done:** the three decision records from spec §14 are written
 (0014–0016).
 
-**Not built:** the pricing module (spec Phase 1), every other API endpoint,
+**Built on 2026-09-15:** the pricing module (`api/_lib/pricing.js`, exact
+decimals in `api/_lib/decimal.js`); the catalogue, purchase history, cart and
+checkout-check endpoints (`api/_lib/catalog.js`, `api/_lib/cart.js`); the Order
+supplies, catalogue and cart screens on them (the dummy data is gone); and FOFO
+sale fields (sellable, margin, sale GST, HSN) in the internal app's material
+edit form. Exercised against a local Postgres built from migrations 03–08 and 17.
+Not yet run against the live API, which needs `DATABASE_URL`. **Checkout stops
+before payment.** It checks the cart and returns the amounts, but creates no
+order: a pending order would lock the cart behind a payment nobody can make.
+**Pricing was built ahead of the Phase 1 gate** (accountant sign-off on a sample
+invoice), which is still owed.
+
+**Not built:** freezing a pending order + Razorpay order at checkout, the
+webhook, the unpaid-dues check, every other API endpoint,
 franchise auth, the admin onboarding endpoints, the accept function (migration
 12), gapless invoice/credit-note numbering, all screens.
 
@@ -86,7 +99,13 @@ Not in the spec:
 - **Never prefix a secret env var with `VITE_`** — Vite ships it to the browser.
 - **`public.is_purchase_manager_or_admin()` returns true for any caller without
   a Supabase Auth session.** Never build a write policy on it (this is why
-  recipe writes are admin-only).
+  recipe writes are admin-only). **`raw_materials` UPDATE policies are built on
+  it**, so anyone holding the internal app's anon key can change a material's
+  `sale_margin_percent` or `is_fofo_sellable`, which are now live FOFO prices.
+  Close this before real franchises order.
+- **The test outlet EC1027 is served by CK1**, which had purchase history for
+  only 5 materials on 2026-09-15. Most supplies show as unavailable there. CK2
+  and CK3 have far more.
 - **`public.fifo_consume` is callable with the public anon key** (pre-existing).
   Worth locking down before the accept flow relies on stock being right.
 - **`REVOKE … FROM PUBLIC` alone does nothing here** — revoke `anon` and

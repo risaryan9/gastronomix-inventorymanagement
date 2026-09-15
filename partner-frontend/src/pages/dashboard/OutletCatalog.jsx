@@ -4,9 +4,11 @@ import CatalogItemCard from '../../components/catalog/CatalogItemCard.jsx'
 import ItemDetailSheet from '../../components/catalog/ItemDetailSheet.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import Sheet from '../../components/ui/Sheet.jsx'
+import Alert from '../../components/Alert.jsx'
 import { useCart } from '../../cart/cartContext.js'
+import { MATERIAL_TYPE_LABEL } from '../../lib/catalog.js'
 import { formatINR } from '../../lib/format.js'
-import { catalogForOutlet, getOutlet, listOutlets, MATERIAL_TYPE_LABEL } from '../../dummy/orderSupplies.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * Order supplies, step 2: the catalogue for one outlet.
@@ -17,8 +19,10 @@ import { catalogForOutlet, getOutlet, listOutlets, MATERIAL_TYPE_LABEL } from '.
  * filters live in a sheet behind one button, and the cart total follows along
  * the bottom of the screen.
  *
- * DESIGN STAGE: data comes from src/dummy/orderSupplies.js. Only final prices
- * appear; cost, margin and stock never reach this app (spec §11).
+ * Prices come from the server, worked out in this outlet's serving kitchen.
+ * Only final prices reach this app; cost, margin and stock never do (spec §11).
+ * The cart is the server's too (CartProvider): it is loaded when the page
+ * opens, and while a payment for it is in progress it cannot be changed.
  */
 
 const SORTS = [
@@ -88,10 +92,16 @@ function FilterControls({ types, availableTypes, toggleType, orderedBefore, setO
 export default function OutletCatalog() {
   const { outletId } = useParams()
   const navigate = useNavigate()
-  const outlet = useMemo(() => getOutlet(outletId), [outletId])
-  const outlets = useMemo(() => listOutlets(), [])
-  const catalog = useMemo(() => catalogForOutlet(outletId), [outletId])
-  const { quantityOf, setQuantity, summaryFor } = useCart()
+  const { data: catalogData, error: catalogError, loading, reload } = useApi(`franchise/catalog?outlet_id=${encodeURIComponent(outletId)}`)
+  const { data: outletsData } = useApi('franchise/outlets')
+  const outlet = catalogData?.outlet || null
+  const outlets = outletsData || []
+  const catalog = useMemo(() => catalogData?.items || [], [catalogData])
+  const { quantityOf, setQuantity, carts, loadCart, error: cartError, clearError } = useCart()
+  const outletCart = carts[outletId]
+  const locked = Boolean(outletCart?.lock)
+
+  useEffect(() => { loadCart(outletId) }, [outletId, loadCart])
 
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
@@ -179,12 +189,26 @@ export default function OutletCatalog() {
 
   const handleSetQuantity = useCallback((item, qty) => setQuantity(outletId, item, qty), [setQuantity, outletId])
   const openItem = catalog.find((i) => i.id === openItemId) || null
-  const cart = summaryFor(outletId)
+  const cart = { lines: outletCart?.lines.length || 0, total: outletCart?.totals.total || 0 }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-8 w-64 animate-pulse rounded-lg bg-card" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-52 animate-pulse rounded-2xl border-2 border-border bg-card/60" />)}
+        </div>
+      </div>
+    )
+  }
 
   if (!outlet) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Outlet not found</h1>
+        <h1 className="text-2xl font-bold text-foreground">{catalogError?.status === 404 ? 'Outlet not found' : 'Could not load the catalogue'}</h1>
+        {catalogError && catalogError.status !== 404 && (
+          <div className="mt-4"><Alert>{catalogError.message} <button type="button" onClick={reload} className="font-semibold text-accent-text hover:underline">Try again</button></Alert></div>
+        )}
         <Link to="/order" className="mt-4 inline-block text-sm font-semibold text-accent-text hover:underline">Back to your outlets</Link>
       </div>
     )
@@ -213,10 +237,31 @@ export default function OutletCatalog() {
               onChange={(e) => navigate(`/order/${e.target.value}`)}
               className="min-w-0 flex-1 rounded-lg border border-border bg-input px-3 py-2 font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:flex-none"
             >
-              {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              {(outlets.length ? outlets : [outlet]).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </label>
         </div>
+        {locked && (
+          <div className="mt-4">
+            <Alert tone="info">
+              A payment for this outlet's cart is in progress (order {outletCart.lock.orderNumber}), so the cart cannot be changed until it finishes or expires.
+            </Alert>
+          </div>
+        )}
+        {cartError && (
+          <div className="mt-4">
+            <Alert>
+              {cartError} <button type="button" onClick={clearError} className="font-semibold text-accent-text hover:underline">Dismiss</button>
+            </Alert>
+          </div>
+        )}
+        {catalog.length === 0 && (
+          <div className="mt-6 flex flex-col items-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center">
+            <Icon name="box" className="h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 font-semibold text-foreground">No supplies listed for this outlet yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">Gastronomix has not opened any supplies to {outlet.brandName} outlets. Contact us to ask.</p>
+          </div>
+        )}
       </div>
 
       {/* Search, categories and filters — pinned under the top bar */}
@@ -280,7 +325,7 @@ export default function OutletCatalog() {
         )}
       </div>
 
-      {results.length === 0 ? (
+      {catalog.length === 0 ? null : results.length === 0 ? (
         <div className="mt-6 flex animate-rise-in flex-col items-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center">
           <Icon name="search" className="h-8 w-8 text-muted-foreground" />
           <p className="mt-3 font-semibold text-foreground">No supplies match</p>
@@ -303,6 +348,7 @@ export default function OutletCatalog() {
                     <CatalogItemCard
                       item={item}
                       quantityInCart={quantityOf(outletId, item.id)}
+                      locked={locked}
                       onOpen={(it) => setOpenItemId(it.id)}
                       onSetQuantity={handleSetQuantity}
                     />
@@ -327,7 +373,7 @@ export default function OutletCatalog() {
               </p>
               <p className="truncate text-xs text-muted-foreground">For {outlet.name}</p>
             </div>
-            <Link to="/cart" className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-accent px-4 text-sm font-black text-accent-foreground transition hover:brightness-110 active:scale-95">
+            <Link to={`/cart?outlet=${outlet.id}`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-accent px-4 text-sm font-black text-accent-foreground transition hover:brightness-110 active:scale-95">
               View cart <Icon name="chevronRight" />
             </Link>
           </div>
@@ -354,6 +400,7 @@ export default function OutletCatalog() {
         item={openItem}
         outlet={outlet}
         quantityInCart={openItem ? quantityOf(outletId, openItem.id) : 0}
+        locked={locked}
         onSetQuantity={handleSetQuantity}
         onClose={() => setOpenItemId(null)}
       />

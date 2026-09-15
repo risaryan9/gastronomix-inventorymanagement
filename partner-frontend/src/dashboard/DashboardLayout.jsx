@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext.js'
 import { useCart } from '../cart/cartContext.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
@@ -12,7 +12,10 @@ import { ACCOUNT_NAV, CART_ROUTE, DASHBOARD_NAV } from './navigation.js'
  * phone the sidebar becomes a drawer behind the menu button.
  *
  * The cart is a highlighted gold icon at the top right, beside the theme
- * toggle, rather than a sidebar entry — one click away from every page.
+ * toggle, rather than a sidebar entry — one click away from every page. Each
+ * outlet has its own cart, so inside an outlet's catalogue the icon opens that
+ * outlet's cart; anywhere else it opens the list of carts. The count is the
+ * number of lines across all of them.
  *
  * Built like the internal app's admin dashboard — cards on the navy ground,
  * the active section in gold — on the partner app's theme tokens.
@@ -59,6 +62,7 @@ export default function DashboardLayout() {
   const { session, signOut } = useAuth()
   const { totalItems } = useCart()
   const navigate = useNavigate()
+  const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
 
@@ -67,6 +71,11 @@ export default function DashboardLayout() {
     await signOut().catch(() => {})
     navigate('/login', { replace: true })
   }
+
+  // In /order/:outletId, or already in one outlet's cart, the icon means that outlet.
+  const inOutlet = matchPath('/order/:outletId', location.pathname)?.params.outletId
+    || (location.pathname === `/${CART_ROUTE.path}` ? new URLSearchParams(location.search).get('outlet') : null)
+  const cartLink = inOutlet ? `/${CART_ROUTE.path}?outlet=${inOutlet}` : `/${CART_ROUTE.path}`
 
   return (
     <div className="min-h-screen bg-background">
@@ -103,7 +112,7 @@ export default function DashboardLayout() {
             </div>
 
             <NavLink
-              to={`/${CART_ROUTE.path}`}
+              to={cartLink}
               aria-label={totalItems ? `Cart, ${totalItems} item${totalItems === 1 ? '' : 's'}` : 'Cart'}
               title="Cart"
               className={({ isActive }) =>

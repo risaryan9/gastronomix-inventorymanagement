@@ -73,6 +73,45 @@ const showsInRequisitions = (material) => {
   return material.material_type === 'non_food' || material.is_requisitionable === true
 }
 
+// Selling a material to FOFO franchises (migration 01, spec §6–7). The partner
+// app lists a material only when it is sellable, active, mapped to the outlet's
+// brand and priceable in the outlet's kitchen. The price is the GST-inclusive
+// purchase cost (or recipe cost, for made goods) plus the margin, plus sale GST
+// — the margin is on the GST-inclusive cost on purpose (decision 0014).
+//
+// The database refuses a sellable material without a margin and a sale GST
+// rate (raw_materials_fofo_sellable_needs_sale_details); the form says so first.
+// HSN is optional: it changes no price or tax amount.
+const EMPTY_FOFO_SALE_FIELDS = {
+  is_fofo_sellable: false,
+  sale_margin_percent: '',
+  sale_gst_percent: '',
+  hsn_code: ''
+}
+
+const fofoSaleFieldsOf = (material) => ({
+  is_fofo_sellable: material.is_fofo_sellable === true,
+  sale_margin_percent: String(material.sale_margin_percent ?? ''),
+  sale_gst_percent: String(material.sale_gst_percent ?? ''),
+  hsn_code: material.hsn_code || ''
+})
+
+// '' → null; anything else must be a number in range, or undefined (invalid).
+const parsePercentField = (value, { max } = {}) => {
+  const text = String(value ?? '').trim()
+  if (text === '') return null
+  const n = Number(text)
+  if (!Number.isFinite(n) || n < 0 || (max !== undefined && n > max)) return undefined
+  return n
+}
+
+const fofoSaleValuesToSave = (formData) => ({
+  is_fofo_sellable: formData.is_fofo_sellable === true,
+  sale_margin_percent: parsePercentField(formData.sale_margin_percent) ?? null,
+  sale_gst_percent: parsePercentField(formData.sale_gst_percent, { max: 100 }) ?? null,
+  hsn_code: formData.hsn_code.trim() || null
+})
+
 const Materials = ({ isAdminMode = false }) => {
   const [materials, setMaterials] = useState([])
   const [filteredMaterials, setFilteredMaterials] = useState([])
@@ -96,7 +135,8 @@ const Materials = ({ isAdminMode = false }) => {
     vendor_id: '',
     material_type: '',
     brand_codes: null,
-    is_requisitionable: false
+    is_requisitionable: false,
+    ...EMPTY_FOFO_SALE_FIELDS
   })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
@@ -459,7 +499,8 @@ const Materials = ({ isAdminMode = false }) => {
       vendor_id: '',
       material_type: '',
       brand_codes: null,
-      is_requisitionable: false
+      is_requisitionable: false,
+      ...EMPTY_FOFO_SALE_FIELDS
     })
     setKitchenThresholds({})
     setOriginalKitchenThresholds({})
@@ -513,7 +554,8 @@ const Materials = ({ isAdminMode = false }) => {
       vendor_id: material.vendor_id || '',
       material_type: material.material_type || 'raw_material',
       brand_codes: existingIsInternalProduction ? null : existingBrandCodes,
-      is_requisitionable: material.is_requisitionable === true
+      is_requisitionable: material.is_requisitionable === true,
+      ...fofoSaleFieldsOf(material)
     })
     setError(null)
     setIsModalOpen(true)
@@ -628,6 +670,24 @@ const Materials = ({ isAdminMode = false }) => {
         return
       }
     }
+    if (parsePercentField(formData.sale_margin_percent) === undefined) {
+      setError('The FOFO margin must be a number of 0 or more, or left blank.')
+      return
+    }
+    if (parsePercentField(formData.sale_gst_percent, { max: 100 }) === undefined) {
+      setError('The FOFO sale GST must be a number from 0 to 100, or left blank.')
+      return
+    }
+    if (formData.is_fofo_sellable) {
+      if (isInternalProduction) {
+        setError('Internal production materials cannot be sold to FOFO franchises. Map it to a brand, or turn off "Sell to FOFO franchises".')
+        return
+      }
+      if (parsePercentField(formData.sale_margin_percent) === null || parsePercentField(formData.sale_gst_percent, { max: 100 }) === null) {
+        setError('To sell this material to FOFO franchises, enter its margin and its sale GST rate.')
+        return
+      }
+    }
     // Per-kitchen thresholds: blank is allowed and means "follow the default",
     // but a value that is not a non-negative number is not.
     const badKitchen = thresholdKitchens.find(
@@ -716,6 +776,7 @@ const Materials = ({ isAdminMode = false }) => {
           material_type: formData.material_type,
           brand_codes: brandCodesToSave,
           is_requisitionable: isRequisitionableToSave,
+          ...fofoSaleValuesToSave(formData),
           updated_at: new Date().toISOString()
         }
 
@@ -746,7 +807,11 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: editingMaterial.low_stock_threshold,
             ...thresholdAuditValues(originalKitchenThresholds),
             brand_codes: editingMaterial.brand_codes || null,
-            is_requisitionable: editingMaterial.is_requisitionable === true
+            is_requisitionable: editingMaterial.is_requisitionable === true,
+            is_fofo_sellable: editingMaterial.is_fofo_sellable === true,
+            sale_margin_percent: editingMaterial.sale_margin_percent ?? null,
+            sale_gst_percent: editingMaterial.sale_gst_percent ?? null,
+            hsn_code: editingMaterial.hsn_code || null
           },
           p_new_values: {
             name: updateData.name,
@@ -758,7 +823,11 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: updateData.low_stock_threshold,
             ...thresholdAuditValues(thresholdsEditable ? thresholdUpdates : originalKitchenThresholds),
             brand_codes: updateData.brand_codes,
-            is_requisitionable: updateData.is_requisitionable
+            is_requisitionable: updateData.is_requisitionable,
+            is_fofo_sellable: updateData.is_fofo_sellable,
+            sale_margin_percent: updateData.sale_margin_percent,
+            sale_gst_percent: updateData.sale_gst_percent,
+            hsn_code: updateData.hsn_code
           }
         })
 
@@ -789,7 +858,8 @@ const Materials = ({ isAdminMode = false }) => {
             vendor_id: formData.vendor_id || null,
             material_type: formData.material_type,
             brand_codes: brandCodesToSave,
-            is_requisitionable: isRequisitionableToSave
+            is_requisitionable: isRequisitionableToSave,
+            ...fofoSaleValuesToSave(formData)
           })
           .select()
           .single()
@@ -812,7 +882,11 @@ const Materials = ({ isAdminMode = false }) => {
             low_stock_threshold: newMaterial.low_stock_threshold,
             ...thresholdAuditValues(thresholdUpdates),
             brand_codes: newMaterial.brand_codes || null,
-            is_requisitionable: newMaterial.is_requisitionable === true
+            is_requisitionable: newMaterial.is_requisitionable === true,
+            is_fofo_sellable: newMaterial.is_fofo_sellable === true,
+            sale_margin_percent: newMaterial.sale_margin_percent ?? null,
+            sale_gst_percent: newMaterial.sale_gst_percent ?? null,
+            hsn_code: newMaterial.hsn_code || null
           }
         })
 
@@ -1007,6 +1081,14 @@ const Materials = ({ isAdminMode = false }) => {
                             title="Outlets can ask for this material in a requisition"
                           >
                             Requisitionable
+                          </span>
+                        )}
+                        {material.is_fofo_sellable === true && (
+                          <span
+                            className="mt-1 block w-fit px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-accent/15 text-accent border border-accent/40"
+                            title="FOFO franchises can buy this material"
+                          >
+                            FOFO
                           </span>
                         )}
                       </td>
@@ -1359,6 +1441,90 @@ const Materials = ({ isAdminMode = false }) => {
                     </div>
                   )}
 
+                  {/* Selling to FOFO franchises */}
+                  {formData.material_type && (
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-2">
+                        FOFO Franchise Sales
+                      </label>
+                      <label className="flex items-start gap-3 p-3 bg-input border-2 border-border rounded-lg cursor-pointer hover:bg-accent/5 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_fofo_sellable === true}
+                          onChange={(e) =>
+                            setFormData(prev => ({ ...prev, is_fofo_sellable: e.target.checked }))
+                          }
+                          disabled={saving}
+                          className="mt-0.5 w-4 h-4 accent-accent cursor-pointer"
+                        />
+                        <span className="text-sm text-foreground font-medium">
+                          Sell to FOFO franchises
+                        </span>
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {isInternalProduction
+                          ? 'Internal production materials are never shown to franchises.'
+                          : 'Franchises see it in the Order supplies catalogue of outlets of the brands it is mapped to, priced in each outlet\'s cloud kitchen.'}
+                        {(formData.material_type === 'semi_finished' || formData.material_type === 'finished') &&
+                          ' A made item is priced from its recipe, so it shows as unavailable until it has one.'}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                        <div>
+                          <label htmlFor="fofo-margin" className="block text-xs font-semibold text-foreground mb-1">
+                            Margin %{formData.is_fofo_sellable && <span className="text-destructive"> *</span>}
+                          </label>
+                          <input
+                            id="fofo-margin"
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={formData.sale_margin_percent}
+                            onChange={(e) => setFormData(prev => ({ ...prev, sale_margin_percent: e.target.value }))}
+                            placeholder="e.g. 15"
+                            className="w-full bg-input border-2 border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                            disabled={saving}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="fofo-gst" className="block text-xs font-semibold text-foreground mb-1">
+                            Sale GST %{formData.is_fofo_sellable && <span className="text-destructive"> *</span>}
+                          </label>
+                          <input
+                            id="fofo-gst"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.001"
+                            value={formData.sale_gst_percent}
+                            onChange={(e) => setFormData(prev => ({ ...prev, sale_gst_percent: e.target.value }))}
+                            placeholder="e.g. 5"
+                            className="w-full bg-input border-2 border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                            disabled={saving}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="fofo-hsn" className="block text-xs font-semibold text-foreground mb-1">
+                            HSN code
+                          </label>
+                          <input
+                            id="fofo-hsn"
+                            type="text"
+                            value={formData.hsn_code}
+                            onChange={(e) => setFormData(prev => ({ ...prev, hsn_code: e.target.value }))}
+                            placeholder="Optional"
+                            className="w-full bg-input border-2 border-border rounded-lg px-3 py-2 text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-300"
+                            disabled={saving}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        The margin is added to the GST-inclusive cost, then sale GST on top — correct here, because vendor GST cannot be claimed back.
+                        Sale GST is the rate charged to the franchise, not what a vendor charged us.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Material Code - Always shown, always read-only */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">
@@ -1620,6 +1786,14 @@ const Materials = ({ isAdminMode = false }) => {
                           : formData.is_requisitionable === true
                             ? 'Yes'
                             : 'No'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Sold to FOFO franchises:</span>
+                      <span className="text-foreground font-semibold">
+                        {formData.is_fofo_sellable
+                          ? `Yes · ${formData.sale_margin_percent}% margin · ${formData.sale_gst_percent}% GST`
+                          : 'No'}
                       </span>
                     </div>
                     {formData.description && (

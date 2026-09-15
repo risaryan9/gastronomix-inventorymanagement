@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
+import Alert from '../Alert.jsx'
 import Sheet from '../ui/Sheet.jsx'
 import Icon from '../ui/Icon.jsx'
 import QuantityStepper from '../ui/QuantityStepper.jsx'
 import PriceTrend from './PriceTrend.jsx'
 import { StatusBadge } from './OrderStatus.jsx'
 import { formatDate, formatINR, formatQty, unitLabel } from '../../lib/format.js'
-import { MATERIAL_TYPE_LABEL, purchaseHistory } from '../../dummy/orderSupplies.js'
+import { MATERIAL_TYPE_LABEL } from '../../lib/catalog.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * Everything about one supply for one outlet: what it is, what it costs now,
  * and every time this outlet has bought it — when, how much, and at what price.
- * The footer adds it to the cart or changes the quantity already there.
+ * The footer adds it to the cart or changes the quantity already there. The
+ * history is what this outlet paid on its own orders — never anyone's cost.
  */
 function Stat({ label, value, hint }) {
   return (
@@ -22,8 +25,11 @@ function Stat({ label, value, hint }) {
   )
 }
 
-function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
-  const history = useMemo(() => purchaseHistory(outlet.id, item.id), [outlet.id, item.id])
+function ItemDetail({ item, outlet, quantityInCart, locked = false, onSetQuantity, onClose }) {
+  const { data, error: historyError, loading: historyLoading } = useApi(
+    `franchise/catalog/history?outlet_id=${encodeURIComponent(outlet.id)}&material_id=${encodeURIComponent(item.id)}`
+  )
+  const history = useMemo(() => data || [], [data])
   const [qty, setQty] = useState(quantityInCart || item.orderStep)
 
   const totals = useMemo(() => {
@@ -31,7 +37,7 @@ function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
     const quantity = history.reduce((s, h) => s + h.quantity, 0)
     const spend = history.reduce((s, h) => s + h.lineTotal, 0)
     const last = history[0].unitPriceIncGst
-    return { times: history.length, quantity, average: spend / quantity, last, change: ((item.priceIncGst - last) / last) * 100 }
+    return { times: history.length, quantity, average: spend / quantity, last, change: item.available ? ((item.priceIncGst - last) / last) * 100 : 0 }
   }, [history, item.priceIncGst])
 
   const gstAmount = item.priceIncGst - item.priceExGst
@@ -41,6 +47,11 @@ function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
     <p className="flex items-start gap-2 text-sm text-muted-foreground">
       <Icon name="info" className="mt-0.5 h-4 w-4 shrink-0" />
       This item is not available for {outlet.name} right now. Contact Gastronomix to ask about it.
+    </p>
+  ) : locked ? (
+    <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <Icon name="clock" className="mt-0.5 h-4 w-4 shrink-0" />
+      A payment for this outlet's cart is in progress. The cart can be changed again once it finishes or expires.
     </p>
   ) : (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -76,7 +87,7 @@ function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
 
       {item.description && <p className="text-sm leading-relaxed text-foreground">{item.description}</p>}
 
-      <section className="rounded-2xl border-2 border-accent/40 bg-accent/5 p-4">
+      {item.available && <section className="rounded-2xl border-2 border-accent/40 bg-accent/5 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price for {outlet.name}</p>
         <p className="mt-1 text-3xl font-black text-foreground">
           {formatINR(item.priceIncGst)} <span className="text-base font-semibold text-muted-foreground">/ {unitLabel(item.unit)}</span>
@@ -87,13 +98,17 @@ function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
           <div><dt className="text-xs text-muted-foreground">Sold in</dt><dd className="font-semibold text-foreground">{formatQty(item.orderStep, item.unit)}</dd></div>
         </dl>
         <p className="mt-3 text-xs text-muted-foreground">Supplied by {outlet.kitchenName}. Prices can change until you pay; the price at checkout is final.</p>
-      </section>
+      </section>}
 
       <section>
         <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
           <Icon name="history" /> Bought by this outlet
         </h3>
-        {!totals ? (
+        {historyError ? (
+          <Alert>{historyError.message}</Alert>
+        ) : historyLoading ? (
+          <div className="h-20 animate-pulse rounded-xl bg-background/50" />
+        ) : !totals ? (
           <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             {outlet.name} has not ordered this before.
           </p>
@@ -115,7 +130,7 @@ function ItemDetail({ item, outlet, quantityInCart, onSetQuantity, onClose }) {
               />
             </div>
 
-            <PriceTrend history={history} currentPrice={item.priceIncGst} />
+            {item.available && <PriceTrend history={history} currentPrice={item.priceIncGst} />}
 
             <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
               {history.map((h) => (

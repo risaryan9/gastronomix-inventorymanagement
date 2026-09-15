@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import Alert from '../../components/Alert.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import { useCart } from '../../cart/cartContext.js'
+import { brandClass } from '../../lib/catalog.js'
 import { formatINRWhole, formatRelativeDay } from '../../lib/format.js'
-import { listOutlets } from '../../dummy/orderSupplies.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * Order supplies, step 1: choose the outlet.
@@ -12,20 +13,11 @@ import { listOutlets } from '../../dummy/orderSupplies.js'
  * kitchen, and the kitchen decides the price (spec §6). Each outlet's card counts
  * its in-process and completed orders, so a franchise can see something is
  * already on the way before ordering more; the orders themselves live in Orders.
- *
- * DESIGN STAGE: data comes from src/dummy/orderSupplies.js.
  */
 
-const BRAND_STYLE = {
-  EC: { label: 'El Chaapo', className: 'bg-accent text-accent-foreground' },
-  NK: { label: 'Nippu Kodi', className: 'bg-destructive text-destructive-foreground' },
-  BP: { label: 'Boom Pizza', className: 'bg-success text-background' },
-}
-
 function OutletCard({ outlet, index }) {
-  const { summaryFor } = useCart()
-  const cart = summaryFor(outlet.id)
-  const brand = BRAND_STYLE[outlet.brand] || { label: outlet.brand, className: 'bg-muted text-foreground' }
+  const { summary } = useCart()
+  const cartLines = summary.outlets.find((o) => o.id === outlet.id)?.lines || 0
 
   return (
     <article
@@ -33,26 +25,30 @@ function OutletCard({ outlet, index }) {
       style={{ animationDelay: `${index * 60}ms` }}
     >
       <header className="flex items-start gap-3">
-        <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-black ${brand.className}`}>
+        <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-black ${brandClass(outlet.brand)}`}>
           {outlet.brand}
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-bold text-foreground">{outlet.name}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {brand.label} · {outlet.code} · {outlet.area}
+            {outlet.brandName} · {outlet.code}
           </p>
         </div>
-        {cart.lines > 0 && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-accent-foreground">
-            <Icon name="cart" className="h-3 w-3" /> {cart.lines}
-          </span>
+        {cartLines > 0 && (
+          <Link
+            to={`/cart?outlet=${outlet.id}`}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-accent-foreground"
+            title="Open this outlet's cart"
+          >
+            <Icon name="cart" className="h-3 w-3" /> {cartLines}
+          </Link>
         )}
       </header>
 
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          { label: 'In process', value: outlet.inProcessOrders.length },
-          { label: 'Completed', value: outlet.completedOrders.length },
+          { label: 'In process', value: outlet.inProcessCount },
+          { label: 'Completed', value: outlet.completedCount },
           { label: 'Last order', value: outlet.lastOrderAt ? formatRelativeDay(outlet.lastOrderAt) : '—' },
           { label: 'Last 30 days', value: formatINRWhole(outlet.spendLast30Days) },
         ].map((stat) => (
@@ -71,15 +67,19 @@ function OutletCard({ outlet, index }) {
         to={`/order/${outlet.id}`}
         className="group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border-3 border-accent bg-accent px-5 py-3 text-base font-black text-accent-foreground shadow-button transition-all hover:-translate-x-[0.05em] hover:-translate-y-[0.05em] hover:shadow-button-hover hover:brightness-110 active:translate-x-[0.05em] active:translate-y-[0.05em] active:shadow-button-active"
       >
-        {cart.lines > 0 ? 'Continue ordering' : 'Order for this outlet'}
+        {cartLines > 0 ? 'Continue ordering' : 'Order for this outlet'}
         <Icon name="chevronRight" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </Link>
     </article>
   )
 }
 
+function OutletCardSkeleton() {
+  return <div className="h-64 animate-pulse rounded-2xl border-2 border-border bg-card/60" />
+}
+
 export default function OrderSupplies() {
-  const outlets = useMemo(() => listOutlets(), [])
+  const { data: outlets, error, loading, reload } = useApi('franchise/outlets')
 
   return (
     <div>
@@ -88,12 +88,37 @@ export default function OrderSupplies() {
           <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Order supplies</h1>
           <p className="mt-1 text-sm text-muted-foreground">Choose the outlet you are ordering for. Prices depend on the kitchen that supplies it.</p>
         </div>
-        <p className="text-xs text-muted-foreground">{outlets.length} outlet{outlets.length === 1 ? '' : 's'}</p>
+        {outlets && <p className="text-xs text-muted-foreground">{outlets.length} outlet{outlets.length === 1 ? '' : 's'}</p>}
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
-        {outlets.map((outlet, index) => <OutletCard key={outlet.id} outlet={outlet} index={index} />)}
-      </div>
+      {error && (
+        <div className="mt-6">
+          <Alert>
+            {error.message}{' '}
+            <button type="button" onClick={reload} className="font-semibold text-accent-text hover:underline">Try again</button>
+          </Alert>
+        </div>
+      )}
+
+      {loading && (
+        <div className="mt-6 grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+          <OutletCardSkeleton /><OutletCardSkeleton />
+        </div>
+      )}
+
+      {outlets && outlets.length === 0 && (
+        <div className="mt-6 flex flex-col items-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center">
+          <Icon name="store" className="h-8 w-8 text-muted-foreground" />
+          <p className="mt-3 font-semibold text-foreground">No outlets yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">Gastronomix links your outlets to your account. Contact us if one is missing.</p>
+        </div>
+      )}
+
+      {outlets && outlets.length > 0 && (
+        <div className="mt-6 grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+          {outlets.map((outlet, index) => <OutletCard key={outlet.id} outlet={outlet} index={index} />)}
+        </div>
+      )}
     </div>
   )
 }

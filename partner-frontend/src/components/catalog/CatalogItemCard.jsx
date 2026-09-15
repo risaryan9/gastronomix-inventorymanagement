@@ -2,14 +2,15 @@ import { memo, useState } from 'react'
 import Icon from '../ui/Icon.jsx'
 import QuantityStepper from '../ui/QuantityStepper.jsx'
 import { formatINR, formatQty, formatRelativeDay, unitLabel } from '../../lib/format.js'
-import { MATERIAL_TYPE_LABEL } from '../../dummy/orderSupplies.js'
+import { MATERIAL_TYPE_LABEL } from '../../lib/catalog.js'
 
 /*
  * One supply in the catalogue. The card opens the item's details; the cart
  * controls at the bottom work without opening it. Once an item is in the cart
- * the card turns gold-edged and the stepper edits the cart directly.
+ * the card turns gold-edged and the stepper edits the cart directly. While a
+ * payment for this outlet's cart is in progress (`locked`) the controls are off.
  */
-function CatalogItemCard({ item, quantityInCart, onOpen, onSetQuantity }) {
+function CatalogItemCard({ item, quantityInCart, locked = false, onOpen, onSetQuantity }) {
   const [draftQty, setDraftQty] = useState(item.orderStep)
   const [bumped, setBumped] = useState(false)
   const inCart = quantityInCart > 0
@@ -38,8 +39,14 @@ function CatalogItemCard({ item, quantityInCart, onOpen, onSetQuantity }) {
         <h3 className="mt-1 line-clamp-2 text-base font-bold leading-snug text-foreground group-hover:text-accent-text">{item.name}</h3>
 
         <div className="mt-3 flex items-baseline gap-1">
-          <span className="text-xl font-black text-foreground">{formatINR(item.priceIncGst)}</span>
-          <span className="text-xs text-muted-foreground">/ {unitLabel(item.unit)}</span>
+          {item.available ? (
+            <>
+              <span className="text-xl font-black text-foreground">{formatINR(item.priceIncGst)}</span>
+              <span className="text-xs text-muted-foreground">/ {unitLabel(item.unit)}</span>
+            </>
+          ) : (
+            <span className="text-base font-bold text-muted-foreground">Price unavailable</span>
+          )}
         </div>
         <p className="text-[11px] text-muted-foreground">
           {item.gstPercent ? `Includes ${item.gstPercent}% GST` : 'No GST'}
@@ -68,7 +75,7 @@ function CatalogItemCard({ item, quantityInCart, onOpen, onSetQuantity }) {
           </p>
         ) : inCart ? (
           <div className="flex items-center justify-between gap-2">
-            <QuantityStepper value={quantityInCart} step={item.orderStep} unit={item.unit} onChange={(q) => onSetQuantity(item, q)} label={`${item.name} in cart`} />
+            <QuantityStepper value={quantityInCart} step={item.orderStep} unit={item.unit} onChange={(q) => onSetQuantity(item, q)} disabled={locked} label={`${item.name} in cart`} />
             <span className="text-right text-xs">
               <span className="block font-semibold text-accent-text">In cart</span>
               <span className="text-muted-foreground">{formatINR(item.priceIncGst * quantityInCart)}</span>
@@ -76,12 +83,13 @@ function CatalogItemCard({ item, quantityInCart, onOpen, onSetQuantity }) {
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
-            <QuantityStepper value={draftQty} step={item.orderStep} unit={item.unit} onChange={(q) => setDraftQty(q || item.orderStep)} label={`${item.name} quantity`} />
+            <QuantityStepper value={draftQty} step={item.orderStep} unit={item.unit} onChange={(q) => setDraftQty(q || item.orderStep)} disabled={locked} label={`${item.name} quantity`} />
             <button
               type="button"
               onClick={add}
+              disabled={locked}
               onAnimationEnd={() => setBumped(false)}
-              className={`inline-flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-sm font-bold text-accent-foreground transition hover:brightness-110 active:scale-95 ${bumped ? 'animate-pop' : ''}`}
+              className={`inline-flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-sm font-bold text-accent-foreground transition hover:brightness-110 active:scale-95 disabled:pointer-events-none disabled:opacity-50 ${bumped ? 'animate-pop' : ''}`}
             >
               <Icon name="plus" className="h-3.5 w-3.5" /> Add
             </button>

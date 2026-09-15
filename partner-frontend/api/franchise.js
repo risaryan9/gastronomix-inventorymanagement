@@ -5,35 +5,56 @@
  * franchise that returns: a franchise id in a URL or body is never trusted to
  * say whose data to read. That is the whole of franchise isolation — these
  * tables are unreachable any other way (decision 0015) — so a route that skips
- * it is a leak.
+ * it is a leak. An outlet id in a request is only ever used through
+ * catalog.outletForFranchise, which refuses one the franchise does not own.
  *
  * Same-origin, one function behind a vercel.json rewrite (see api/admin.js).
- * The catalogue, cart, orders, invoices and store credit join this file.
  *
- *   GET /api/franchise/outlets     the outlets this franchise owns
+ *   GET    /api/franchise/outlets                         outlets, with where their orders stand
+ *   GET    /api/franchise/catalog?outlet_id=              an outlet's catalogue, final prices only
+ *   GET    /api/franchise/catalog/history?outlet_id=&material_id=
+ *                                                         every time the outlet bought one supply
+ *   GET    /api/franchise/cart                            the outlets that have a cart
+ *   GET    /api/franchise/cart?outlet_id=                 one outlet's cart, priced now
+ *   PUT    /api/franchise/cart                            set a line's quantity (0 removes it)
+ *   DELETE /api/franchise/cart?outlet_id=                 clear one outlet's cart
+ *   POST   /api/franchise/cart/keep                       keep a changed price
+ *   POST   /api/franchise/checkout                        check a cart and work out what it costs
  */
 import { transaction } from './_lib/db.js'
-import { HttpError, sendError } from './_lib/http.js'
+import { HttpError, jsonBody, sendError } from './_lib/http.js'
 import { requireFranchiseUser, requireSameOrigin } from './_lib/franchiseAuth.js'
+import { catalogForOutlet, outletsWithOrderSummary, purchaseHistory } from './_lib/catalog.js'
+import { cartSummary, checkout, clearCart, getCart, keepPrice, setQuantity } from './_lib/cart.js'
 
-async function listOutlets(user) {
-  return transaction(async (db) => {
-    const { rows } = await db.query(
-      `SELECT o.id, o.code, o.name
-         FROM fofo.franchise_outlets fo
-         JOIN public.outlets o ON o.id = fo.outlet_id
-        WHERE fo.franchise_id = $1
-          AND o.is_active = true AND o.deleted_at IS NULL
-        ORDER BY o.code, o.id`,
-      [user.franchiseId]
-    )
-    return rows
-  })
-}
+const inTransaction = (work) => (user, req) => transaction((db) => work(db, user, req))
 
 // path → { method → handler(user, req) }
 const ROUTES = {
-  outlets: { GET: (user) => listOutlets(user) },
+  outlets: {
+    GET: inTransaction((db, user) => outletsWithOrderSummary(db, user.franchiseId)),
+  },
+  catalog: {
+    GET: inTransaction((db, user, req) => catalogForOutlet(db, user.franchiseId, req.query.outlet_id)),
+  },
+  'catalog/history': {
+    GET: inTransaction((db, user, req) =>
+      purchaseHistory(db, user.franchiseId, req.query.outlet_id, req.query.material_id)
+    ),
+  },
+  cart: {
+    GET: inTransaction((db, user, req) =>
+      req.query.outlet_id ? getCart(db, user, req.query.outlet_id) : cartSummary(db, user)
+    ),
+    PUT: inTransaction((db, user, req) => setQuantity(db, user, jsonBody(req))),
+    DELETE: inTransaction((db, user, req) => clearCart(db, user, req.query.outlet_id)),
+  },
+  'cart/keep': {
+    POST: inTransaction((db, user, req) => keepPrice(db, user, jsonBody(req))),
+  },
+  checkout: {
+    POST: inTransaction((db, user, req) => checkout(db, user, jsonBody(req))),
+  },
 }
 
 export default async function handler(req, res) {

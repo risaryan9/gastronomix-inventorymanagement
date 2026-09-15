@@ -1,4 +1,4 @@
-import { ORDER_STATUS, ORDER_STEPS } from '../../dummy/orderSupplies.js'
+import { ORDER_STATUS, ORDER_STEPS } from '../../lib/catalog.js'
 
 const TONE = {
   info: 'border-accent/40 bg-accent/10 text-accent-text',

@@ -4,7 +4,8 @@
 applied to the live database on 2026-09-13, including 10 (franchise users in the
 audit trail) and 11 (onboarding: welcome email and registration links). 17 (the
 cart: agreed prices, the lock while paying, store credit at checkout) was applied
-on 2026-09-15. The partner app on Vercel has a health check and a tested
+on 2026-09-15. The partner app's catalogue, cart and checkout checks are built
+on the live database (§6.5, §12). Payment is not built yet. The partner app on Vercel has a health check and a tested
 Razorpay webhook check; the accept function, invoice numbering, API endpoints
 and screens are not built yet.
 
@@ -354,13 +355,25 @@ A material shows in a franchise's catalogue only if **all** of these hold:
 
 1. `is_fofo_sellable = true`
 2. `is_active = true` and `deleted_at IS NULL`
-3. Its `brand_codes` match a brand the franchise owns — where **NULL means all
-   brands** — and do **not** contain `'ip'`
-4. It can be priced in the serving kitchen (section 6.4)
+3. Its `brand_codes` contain **the outlet's brand**, where **NULL means all
+   brands**, and do **not** contain `'ip'`
+4. It can be priced in the serving kitchen (section 6.4). If it cannot, it is
+   still listed, as **unavailable**
 
-The franchise's brands are the distinct first-two-characters of the codes of the
-outlets mapped to them. Use `brandForOutletCode()` from
-`lib/adminKitchenDetail.js` rather than writing a fourth copy of that rule.
+The outlet's brand is the first two characters of its code (`EC1026` → `EC`).
+The catalogue is per outlet, not per franchise: an order is for one outlet, and
+an El Chaapo outlet has no use for Nippu Kodi's supplies even when the same
+franchise owns both. Built in `partner-frontend/api/_lib/catalog.js`.
+
+**Order steps come from the unit.** No column holds them: kg and litres are
+ordered in 0.5s, pieces and packets in 1s (`orderStepForUnit()` in `catalog.js`).
+If one material ever needs its own step, add a column then.
+
+**Where the price is computed.** `partner-frontend/api/_lib/pricing.js` holds
+the §6 rules as pure functions, on exact decimal arithmetic
+(`api/_lib/decimal.js`). Float rounding would disagree with the database's own
+checks on invoice lines. Admins set sellable, margin, sale GST and HSN in the
+internal app's material edit form (Materials → Edit → FOFO Franchise Sales).
 
 ---
 
@@ -852,13 +865,15 @@ except the webhook.
 | `POST /api/auth/register` | Registration through a link: creates the Auth user, then claims the invitation; deletes the Auth user if the claim fails |
 | `POST /api/auth/login` · `logout` · `GET /api/auth/session` | Partner-app session in an HttpOnly cookie; refuses an inactive user or franchise; throttled (decision 0018) |
 | `POST /api/auth/password-reset` · `/complete` | Supabase recovery email to `/reset-password`; ends every session of that user |
-| `GET /api/franchise/outlets` | The outlets this franchise owns. **Franchise endpoints live under `/api/franchise/*`** and scope every query to the session's franchise |
-| `GET /api/catalog?outlet_id=` | Sellable materials with **final prices**, cost and margin stripped |
-| `GET /api/cart` | The outlets that have a cart, with line counts, plus store credit available |
-| `GET /api/cart?outlet_id=` | One outlet's cart, priced on read. Each line is flagged available / unavailable / price changed. Includes whether it is locked by a payment in progress |
-| `PUT /api/cart` | Set a line's quantity (0 removes it) or **keep** a changed price. The server stamps the agreed price and never takes one from the browser. Refused while locked |
-| `DELETE /api/cart?outlet_id=` | Clear one outlet's cart. Refused while locked |
-| `POST /api/checkout` | One outlet, plus the store credit to redeem. Refuses while any line is unavailable or has an unanswered price change. Freezes prices and credit, creates the order + Razorpay order, returns what the popup needs |
+| `GET /api/franchise/outlets` | The outlets this franchise owns, with in-process and completed order counts, last order and 30-day spend. **Franchise endpoints live under `/api/franchise/*`** and scope every query to the session's franchise. **Built** |
+| `GET /api/franchise/catalog?outlet_id=` | Listed materials with **final prices**, cost and margin stripped, and when this outlet last ordered each. **Built** |
+| `GET /api/franchise/catalog/history?outlet_id=&material_id=` | Every time this outlet bought one supply, at what it paid. **Built** |
+| `GET /api/franchise/cart` | The outlets that have a cart, with line counts and whether each is locked, plus store credit available. **Built** |
+| `GET /api/franchise/cart?outlet_id=` | One outlet's cart, priced on read. Each line is `ok`, `price_changed` or `unavailable`. Includes totals, redeemable credit and whether a payment in progress locks it. **Built** |
+| `PUT /api/franchise/cart` | Set a line's quantity (0 removes it). The server stamps the agreed price and never takes one from the browser. Refused while locked. **Built** |
+| `POST /api/franchise/cart/keep` | **Keep** a changed price. Refused while locked. **Built** |
+| `DELETE /api/franchise/cart?outlet_id=` | Clear one outlet's cart. Refused while locked. **Built** |
+| `POST /api/franchise/checkout` | One outlet, plus whether to redeem store credit. Refuses while any line is unavailable or has an unanswered price change. **Built up to the payment:** it runs every check and returns the exact amounts, then stops without creating an order. Still to build: freezing prices and credit onto a pending order, the Razorpay order, and the unpaid-dues check |
 | `POST /api/orders/webhook` | **Razorpay only.** Verifies signature; marks paid, issues the invoice, applies the redeemed credit, empties the cart. Idempotent. Raw body. |
 | `GET /api/orders` / `GET /api/orders/:id` | Order list and detail |
 | `GET /api/invoices` / `:id/pdf` | Invoices and their PDFs (`pdfCurrency`, decision 0007) |

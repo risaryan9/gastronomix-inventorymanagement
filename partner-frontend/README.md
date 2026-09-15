@@ -31,7 +31,7 @@ project only looks for functions inside its own Root Directory.
 |---|---|
 | `/login`, `/forgot-password`, `/reset-password`, `/register`, `/status` | `/` Overview, `/order` → `/order/:outletId` (catalogue), `/orders`, `/orders/:orderId`, `/payments` (pending payments), `/store-credit`, `/account`, and `/cart` from the gold icon in the top bar |
 
-The dashboard sections are placeholders, except **Order supplies**, which is designed on dummy data (`src/dummy/orderSupplies.js` — real names and categories, prices deliberately not real) until its API exists. Invoices have no section: they are shown with the order they bill. `src/dashboard/navigation.js` is the one
+The dashboard sections are placeholders, except **Order supplies** and the **cart**, which run on the live database through `/api/franchise/*`: outlets, each outlet's catalogue priced in its kitchen (`api/_lib/pricing.js`), and one shared cart per outlet with price-change and lock handling (`api/_lib/cart.js`, decision 0020). Checkout checks the cart and shows the amount, but stops before payment, which is not built yet. Invoices have no section: they are shown with the order they bill. `src/dashboard/navigation.js` is the one
 list both the sidebar and the router are built from — add a section there.
 
 Signing in: the server checks the password with Supabase Auth and keeps its own
