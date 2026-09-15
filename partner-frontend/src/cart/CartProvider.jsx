@@ -16,10 +16,16 @@ import { CartContext } from './cartContext.js'
  * every write answers with the outlet's whole cart, which replaces what was here.
  *
  * QUANTITY CHANGES FEEL INSTANT. The quantity is shown straight away, and the
- * writes for an outlet go to the server one after another, in the order they
- * were made. Only the answer to the last write is shown, so tapping + three
+ * requests for an outlet go to the server one after another, in the order they
+ * were made. Only the answer to the last one is shown, so tapping + three
  * times never flickers back through the earlier answers. If a write fails, the
  * outlet's cart is reloaded from the server and the error is shown.
+ *
+ * READS GO THROUGH THE SAME QUEUE AS WRITES. A screen that already holds a
+ * cart shows it at once and reloads it in the background. Outside the queue,
+ * that reload could start before a "clear cart" and answer after it, and put
+ * the cleared lines back on screen until the page was refreshed. In the queue,
+ * the reload finishes first and the clear's answer is the one shown.
  */
 export default function CartProvider({ children }) {
   const { status } = useAuth()
@@ -27,6 +33,8 @@ export default function CartProvider({ children }) {
   const [carts, setCarts] = useState({})
   const [error, setError] = useState(null)
   const queues = useRef({})
+  // Outlets whose cart is on screen. Read in callbacks, so a ref, not state.
+  const loaded = useRef(new Set())
 
   const refreshSummary = useCallback(async () => {
     try {
@@ -41,11 +49,13 @@ export default function CartProvider({ children }) {
     if (status === 'signedOut') {
       setSummary({ outlets: [], totalLines: 0, storeCreditAvailable: 0 })
       setCarts({})
+      loaded.current.clear()
     }
   }, [status, refreshSummary])
 
   // A cart the server just sent: store it, and bring the summary row in line.
   const acceptCart = useCallback((view) => {
+    loaded.current.add(view.outlet.id)
     setCarts((current) => ({ ...current, [view.outlet.id]: view }))
     setSummary((current) => {
       const others = current.outlets.filter((o) => o.id !== view.outlet.id)
@@ -56,30 +66,27 @@ export default function CartProvider({ children }) {
     })
   }, [])
 
-  const loadCart = useCallback(async (outletId) => {
-    try {
-      const view = await api(`franchise/cart?outlet_id=${encodeURIComponent(outletId)}`)
-      acceptCart(view)
-      return view
-    } catch (err) {
-      setError(err.message)
-      return null
-    }
-  }, [acceptCart])
+  const fetchCart = (outletId) => api(`franchise/cart?outlet_id=${encodeURIComponent(outletId)}`)
 
-  // Runs writes for one outlet in order; applies only the last one's answer.
-  const enqueue = useCallback((outletId, write) => {
+  // Runs one outlet's requests in order; applies only the last one's answer —
+  // except that a read may fill a screen that has no cart yet, since there is
+  // nothing newer on it to overwrite.
+  const enqueue = useCallback((outletId, request, { isRead = false } = {}) => {
     const queue = queues.current[outletId] || { tail: Promise.resolve(), pending: 0 }
     queues.current[outletId] = queue
     queue.pending += 1
     const run = queue.tail.then(async () => {
       try {
-        const view = await write()
-        if (queue.pending === 1) acceptCart(view)
+        const view = await request()
+        if (queue.pending === 1 || (isRead && !loaded.current.has(outletId))) acceptCart(view)
         return view
       } catch (err) {
         setError(err.message)
-        if (queue.pending === 1) await loadCart(outletId)
+        // Put the screen back to what the server holds. Called directly, not
+        // through the queue: this request is still the one running.
+        if (queue.pending === 1) {
+          await fetchCart(outletId).then(acceptCart).catch(() => {})
+        }
         throw err
       } finally {
         queue.pending -= 1
@@ -87,7 +94,12 @@ export default function CartProvider({ children }) {
     })
     queue.tail = run.catch(() => {})
     return run
-  }, [acceptCart, loadCart])
+  }, [acceptCart])
+
+  const loadCart = useCallback(
+    (outletId) => enqueue(outletId, () => fetchCart(outletId), { isRead: true }).catch(() => null),
+    [enqueue]
+  )
 
   const setQuantity = useCallback((outletId, item, quantity) => {
     setError(null)
