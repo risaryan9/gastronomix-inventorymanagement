@@ -40,7 +40,9 @@ export function verifyWebhookSignature(rawBody, signature, secret) {
 
 /*
  * Razorpay amounts are whole paise, and fofo.orders.amount_paise is a bigint
- * generated from grand_total. Compare them as integers — never by dividing by
+ * generated from grand_total less any store credit redeemed at checkout
+ * (migration 17): what Razorpay collects, not the order's value. Compare them
+ * as integers — never by dividing by
  * 100 into a float. A bigint may arrive as a string (node-postgres) or a
  * number (JSON), so accept both and refuse anything that is not a whole
  * number of paise.

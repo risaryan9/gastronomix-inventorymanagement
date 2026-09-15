@@ -5,8 +5,8 @@ in plain words. For the full reasoning behind each choice, see
 [`fofo-schema.md`](fofo-schema.md). For the order to run the files in, see
 [`migrations/fofo/README.md`](../migrations/fofo/README.md).
 
-**Status:** all of it — `migrations/fofo/` files 01–15 — was applied to the live
-database on 2026-09-13.
+**Status:** all of it — `migrations/fofo/` files 01–15 and 17 — was applied to the live
+database (17 on 2026-09-15). 16 is not written yet.
 
 ---
 
@@ -145,12 +145,22 @@ The people who log in for a franchise. One franchise can have several.
 
 ### `carts` and `cart_items` *(file 05)*
 
-The basket a franchise is filling for one outlet.
+The basket a franchise is filling for one outlet. *(file 17 adds the agreed
+price and the lock.)*
 
-- One cart per outlet, and each material appears once in it.
-- **The cart stores quantities only, never prices.** Prices move as our costs
+- One cart per outlet, and each material appears once in it. **Everyone at the
+  franchise shares it**, and it is kept in the database, so it is still there
+  after they close the window or sign in elsewhere.
+- **The cart is never charged at a stored price.** Prices move as our costs
   move, so they are worked out fresh every time the cart is shown.
-- The cart survives if a payment is abandoned, so they come back to a full basket.
+- **Each line remembers the price it was agreed at** (`agreed_unit_price_inc_gst`,
+  and who agreed, `agreed_by`), only to spot a change. If the price moved, they
+  must choose keep or remove before checkout. An item we stopped selling must be
+  removed.
+- **Locked while it is being paid for.** Nobody can add or change a line until
+  the payment succeeds or expires.
+- **It empties when the payment succeeds**, not when they click pay. If the
+  payment is abandoned, they come back to a full basket.
 
 ### `orders` *(file 05)*
 
@@ -175,7 +185,8 @@ Key columns in plain words:
 | `expires_at` | When the frozen prices stop being offered. A payment that arrives late still counts — paid always wins over expired. |
 | `razorpay_order_id` | Razorpay's id for this payment. It is how an incoming payment finds its order. |
 | `subtotal`, `gst_total`, `grand_total` | The order's value. `subtotal` is the selling price before GST, **markup already included**; `gst_total` is the GST on that; `grand_total` is what the franchise pays and must equal `subtotal + gst_total`. Our markup is not a separate total — it can be worked out from the order lines. |
-| `amount_paise` | `grand_total` in paise (₹450.63 → 45063), calculated automatically. This is what Razorpay is asked for and what the payment is checked against. |
+| `store_credit_to_apply` | Store credit they chose to use at checkout *(file 17)*. It is a payment, not a discount: `grand_total` and the invoice stay the same. The credit is held while they pay, so two outlets cannot spend the same credit. |
+| `amount_paise` | What Razorpay collects: `grand_total` less the store credit, in paise (₹450.63 with no credit → 45063), calculated automatically. It is what the payment is checked against. 0 means credit paid for everything. |
 | shipping columns | Carrier, tracking reference and notes, filled in when it ships. |
 
 **Rule:** only **one unpaid order per outlet** at a time. Otherwise someone
@@ -314,12 +325,15 @@ Razorpay is asked for                          45063 paise
 
 ## One order, start to finish
 
-1. The franchise adds paneer to the **cart** — quantity only.
-2. They click pay. An **order** and its **order items** are created with prices
-   frozen, and Razorpay is asked for **45063 paise**.
-3. Razorpay confirms the payment. It is checked — right order, captured, INR,
-   exactly 45063 paise — and only then is the order marked **paid**, a
-   **payment** row recorded, and the goods **invoice** issued.
+1. The franchise adds paneer to outlet 2's **cart**: a quantity, and the price
+   they saw.
+2. They open outlet 2's cart and click pay. An **order** and its **order items**
+   are created with prices frozen, the cart is locked, and Razorpay is asked for
+   **45063 paise** (less, if they redeemed store credit).
+3. Razorpay confirms the payment. It is checked (right order, captured, INR,
+   exactly 45063 paise), and only then is the order marked **paid**, the goods
+   **invoice** issued at full value, any redeemed credit applied to it, a
+   **payment** row recorded, and outlet 2's cart emptied.
 4. The purchase manager **accepts** it. Stock is taken off the shelf and a
    **stock_out** row points back at the order. If only 10 kg is available, they
    trim it, a **credit note** is issued for the missing 2.5 kg, and the franchise

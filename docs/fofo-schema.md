@@ -5,7 +5,7 @@ Companion to [`fofo-dashboard-spec.md`](fofo-dashboard-spec.md): the spec says
 shorter, plain-English walkthrough of every table, read
 [`fofo-schema-explained.md`](fofo-schema-explained.md) first.
 
-**Status:** everything in `migrations/fofo/` (01–15) was applied to the live database (01–13 on 2026-09-13, 14–15 on 2026-09-14).
+**Status:** everything in `migrations/fofo/` (01–15 and 17) was applied to the live database (01–13 on 2026-09-13, 14–15 on 2026-09-14, 17 on 2026-09-15). 16 is not written yet.
 Facts marked "today" in §1–2 were read from the live database before that, and
 row counts will have moved since.
 
@@ -328,16 +328,36 @@ fofo.cart_items
   cart_id          uuid not null → fofo.carts(id) on delete cascade
   raw_material_id  uuid not null → public.raw_materials(id)
   quantity         numeric not null check (quantity > 0)
+  agreed_unit_price_inc_gst numeric(14,4) not null   -- migration 17; compared, never charged
+  agreed_at        timestamptz not null
+  agreed_by        uuid not null → fofo.franchise_users(id)
+  created_at, updated_at                              -- updated_at kept by trigger
   unique (cart_id, raw_material_id)
 ```
 
-**The cart stores no prices.** Not one column. Prices are worked out fresh every
-time the cart is read, because raw material costs move and the cart must show
-what things cost *now*. A price column here would be a stale number pretending
-to be a promise.
+**The cart is never charged at a stored price.** Prices are worked out fresh
+every time the cart is read, because raw material costs move and the cart must
+show what things cost *now*. A price charged from here would be a stale number
+pretending to be a promise.
 
-The cart survives an expired checkout, so someone who walks away comes back to
-an intact basket.
+**It does remember the price each line was agreed at** (migration 17), because
+"this price has changed" needs something to compare against. The server stamps
+it with the live price whenever someone sets the quantity or presses keep. It
+never comes from the browser. Checkout refuses while any line's live price,
+rounded to the paisa, differs from it, and it prices from the catalogue as
+always. `agreed_by` names who agreed, because the cart is shared across the
+franchise.
+
+**One cart per outlet, shared by everyone at the franchise.** It survives an
+expired checkout, so someone who walks away comes back to an intact basket. It
+empties only when the payment lands (`clear_cart_after_payment`), removing the
+lines the order bought and keeping any changed after the order was frozen.
+
+**Locked while it is being paid for.** A trigger refuses additions and changes
+while the outlet has a live pending order. Otherwise a line added during payment
+would be cleared unpaid when the money lands. Deletes are left to the API,
+because the trigger cannot tell a person's removal from the cascade in
+`unlink_franchise_outlet`. Decision 0020.
 
 ### 5.3 Orders
 
@@ -364,7 +384,8 @@ fofo.orders
   subtotal          numeric(14,2) not null default 0
   gst_total         numeric(14,2) not null default 0
   grand_total       numeric(14,2) not null default 0   -- check: = subtotal + gst_total
-  amount_paise      bigint generated always as (grand_total * 100)
+  store_credit_to_apply numeric(14,2) not null default 0   -- migration 17
+  amount_paise      bigint generated always as ((grand_total - store_credit_to_apply) * 100)
   created_at, updated_at
 ```
 
@@ -374,9 +395,20 @@ hang the payment on. Without this column a genuine payment arrives and nothing
 can say which order it paid for. Unique, so one Razorpay order can never match
 two of ours.
 
+**`store_credit_to_apply` is credit redeemed at checkout.** It is frozen with
+the prices. When the money lands it is applied to the goods invoice through
+`apply_store_credit`. The invoice stays at full value, because credit is a
+payment (decision 0013). While the order is a live pending order the credit is
+held: a trigger locks the franchise row and refuses a checkout whose credit,
+added to what other live checkouts hold, exceeds the balance.
+`fofo.store_credit_available()` is the balance less those holds. Two CHECKs
+apply: credit is never more than `grand_total`, and it never leaves Razorpay
+between 1 and 99 paise to collect, because Razorpay's minimum is ₹1.
+
 **`amount_paise` is what Razorpay is asked for, and what it is checked
 against.** Razorpay works in whole paise. The column is generated from
-`grand_total`, so it cannot drift, and the webhook compares Razorpay's integer
+`grand_total` less redeemed credit (0 means credit covered the order and there is
+no Razorpay order), so it cannot drift, and the webhook compares Razorpay's integer
 with this integer — no conversion to rupees in between. The check itself is
 `partner-frontend/api/_lib/razorpay.js`: a valid signature is not enough, the
 captured payment must also be for this Razorpay order, in INR, captured, and
@@ -638,6 +670,9 @@ rather than merely discouraged:
 | A sellable material is priceable and taxable | CHECK on `raw_materials`: sellable ⇒ GST rate and margin present (HSN optional) |
 | An outlet has exactly one owner | `UNIQUE (outlet_id)` on `franchise_outlets` |
 | One open cart per outlet | `UNIQUE (outlet_id)` on `carts` |
+| A cart does not change while its payment is in progress | trigger on `cart_items` (insert, update) against a live pending order *(17)* |
+| Checkouts never promise more credit than a franchise has | trigger on `orders`: held credit ≤ balance, under a franchise row lock *(17)* |
+| Redeemed credit fits the order and leaves Razorpay nothing or at least ₹1 | CHECKs on `orders` *(17)* |
 | One live pending order per outlet | Partial unique index on `orders (outlet_id) WHERE status = 'pending_payment'` |
 | A credit note is credited once | `UNIQUE (credit_note_id)` on `store_credits` |
 | A credit is never overdrawn | trigger on `store_credit_applications`: applied ≤ credit, under a row lock |
@@ -658,6 +693,9 @@ Things the schema **cannot** enforce, which therefore need code and a test:
 
 - A recipe must not contain itself, through any depth of nesting.
 - Invoice and credit-note numbers must be gapless per financial year.
+- Checkout must refuse a cart with an unavailable line or an unanswered price
+  change. Pricing happens in the API, so no constraint can compare the two
+  prices (decision 0020).
 - Store credit must be applied as a **payment** and never as a discount line —
   no constraint can see the difference, and getting it wrong undercharges GST.
 - `quantity_accepted` must never exceed `quantity_ordered` (a CHECK can do this
@@ -684,7 +722,7 @@ Things the schema **cannot** enforce, which therefore need code and a test:
 ## 9. Migration order
 
 All of these live in `migrations/fofo/`, numbered in the order they must run.
-**01–15 were applied to the live database**, in order, each verified before the next.
+**01–15 and 17 were applied to the live database**, in order, each verified before the next.
 
 1. `01-add-fofo-sale-columns-to-materials.sql`
 2. `02-add-recipes-and-recipe-items.sql` — the BOM tables
@@ -714,6 +752,10 @@ All of these live in `migrations/fofo/`, numbered in the order they must run.
     0019).
 16. `16-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
     accept, modelled on `pack_allocation_request`
+17. `17-add-cart-price-agreement-lock-and-checkout-credit.sql` — **applied
+    2026-09-15.** Agreed prices on cart lines, the cart lock while paying,
+    emptying the cart on payment, and store credit redeemed at checkout and
+    held (decision 0020). Does not need 16.
 
 The pricing module (Phase 1) only reads what 01–02 added, so it can be built
 and checked against real data without touching the `fofo` schema.

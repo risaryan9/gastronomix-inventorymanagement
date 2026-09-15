@@ -4,10 +4,11 @@ Everything the FOFO franchise dashboard adds to the database. Kept in its own
 folder because it is one feature that must be applied as a set, in order — the
 rest of `migrations/` is a flat history and does not work that way.
 
-**Status: 01–15 were applied to the live database** (01–13 on 2026-09-13, 14–15 on 2026-09-14), in number order, each verified
+**Status: 01–15 and 17 were applied to the live database** (01–13 on 2026-09-13, 14–15 on 2026-09-14, 17 on 2026-09-15), in number order, each verified
 against the live schema before the next was run. For a fresh environment, run
 them the same way — in order, on a branch or backup first, running each file's
-verification block before moving on. 16 is not written yet.
+verification block before moving on. 16 is not written yet. 17 does not depend on 16 and was
+run first.
 
 | # | File | Adds | Needs |
 |---|---|---|---|
@@ -27,6 +28,7 @@ verification block before moving on. 16 is not written yet.
 | 14 | `14-add-franchise-sessions.sql` | partner-app sessions, sign-in throttling, sign-in/out and reset audit | 03, 10, 11 |
 | 15 | `15-tie-foco-portal-codes-to-ownership-model.sql` | FOFO turns an outlet's FOCO portal code off, FOCO back on; linking accepts FOFO outlets only. Replaces `set_outlet_ownership_model` (13) and `link_franchise_outlet` (12) | 12, 13 |
 | 16 | `16-create-fofo-accept-order-rpc.sql` | **not written yet** — the purchase manager's atomic accept | 07, 09, 10 |
+| 17 | `17-add-cart-price-agreement-lock-and-checkout-credit.sql` | applied 2026-09-15 — cart lines remember their agreed price; cart locked while paying and emptied on payment; `orders.store_credit_to_apply` held against the balance, `amount_paise` excludes it (decision 0020) | 05, 07, 08 |
 
 01 and 02 are all Phase 1 of the build plan needs. Two rules that apply to every
 file here: do **not** add `fofo` to Supabase's exposed schemas, and check any

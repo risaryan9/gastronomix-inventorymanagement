@@ -2,7 +2,9 @@
 
 **Status:** design settled. The database is built — `migrations/fofo/` 01–15,
 applied to the live database on 2026-09-13, including 10 (franchise users in the
-audit trail) and 11 (onboarding: welcome email and registration links). The partner app on Vercel has a health check and a tested
+audit trail) and 11 (onboarding: welcome email and registration links). 17 (the
+cart: agreed prices, the lock while paying, store credit at checkout) was applied
+on 2026-09-15. The partner app on Vercel has a health check and a tested
 Razorpay webhook check; the accept function, invoice numbering, API endpoints
 and screens are not built yet.
 
@@ -426,12 +428,14 @@ fofo.franchise_users                            -- created on registration
 **Cart — live, never frozen**
 
 ```
-fofo.carts        id, franchise_id, outlet_id (UNIQUE while live)
-fofo.cart_items   id, cart_id, raw_material_id, quantity
+fofo.carts        id, franchise_id, outlet_id (UNIQUE)
+fofo.cart_items   id, cart_id, raw_material_id, quantity,
+                  agreed_unit_price_inc_gst, agreed_at, agreed_by
 ```
 
-Carts hold **no prices**. Prices are computed live on every read, and only
-frozen at checkout.
+Carts are **never charged at a stored price**. Prices are computed live on every
+read and frozen only at checkout. `agreed_unit_price_inc_gst` is kept only to
+flag a price that changed since someone chose the quantity (§8.2, migration 17).
 
 **Orders**
 
@@ -442,7 +446,9 @@ fofo.orders
   placed_at, accepted_at, accepted_by, packed_at, ready_at,
   shipped_at, delivered_at,
   shipping_carrier, shipping_tracking_ref, shipping_notes,
-  subtotal, gst_total, grand_total, amount_paise (generated),
+  subtotal, gst_total, grand_total,
+  store_credit_to_apply,
+  amount_paise (generated: grand_total less store_credit_to_apply),
   created_at, updated_at
 
 fofo.order_items
@@ -554,18 +560,84 @@ widens automatically, because brands are derived from the outlets they own.
 
 1. Franchise picks an **outlet** and browses its catalogue. Prices are **live**
    and move as costs move.
-2. They add items to a cart. The cart stores quantities only.
-3. **Proceed to payment** freezes everything:
+2. They add items to **that outlet's cart**. Each cart line stores a quantity
+   and the price it was agreed at (below).
+3. They open the cart, review it, and optionally **redeem store credit**.
+4. **Proceed to payment** freezes everything:
    - prices are copied onto `order_items`
+   - the store credit to redeem is copied onto `orders.store_credit_to_apply`
    - order status becomes `pending_payment`
    - `expires_at` is set
    - any previous live pending order for that outlet is killed
-   - a Razorpay order is created
-4. They pay in the Razorpay popup.
-5. Razorpay's **webhook** arrives at `/api/orders/webhook`. The server verifies
-   the signature, then marks the order `paid` and issues the goods invoice.
+   - a Razorpay order is created for `amount_paise` (none when credit covers
+     the whole order, which is then confirmed at once)
+5. They pay in the Razorpay popup.
+6. Razorpay's **webhook** arrives at `/api/orders/webhook`. The server verifies
+   the signature. Then, in one transaction, it marks the order `paid`, issues
+   the goods invoice at full value, applies the redeemed credit to it, records
+   the payment, and empties the cart (`clear_cart_after_payment`). The order is
+   now on the purchase manager's dashboard.
 
-**If they have unpaid dues, step 3 is blocked.**
+**If they have unpaid dues, step 4 is blocked.**
+
+#### The cart
+
+Decision [0020](decisions/0020-the-fofo-cart-is-shared-per-outlet-and-locked-while-paying.md)
+has the reasoning. Migration 17 has the database side.
+
+- **One cart per outlet, shared by the whole franchise.** Everyone signed in for
+  the franchise sees and edits the same cart for outlet 2. Carts live in the
+  database, so they are there after closing the window or signing in on another
+  device.
+- **A cart is emptied only by a successful payment or by "clear cart".** An
+  abandoned or expired payment leaves it intact.
+- **The cart icon opens the cart for the outlet you are working in.** If you are
+  in outlet 2's catalogue, the icon opens outlet 2's cart. From anywhere else it
+  opens the cart page, which lists the outlets that have a cart. You pick one to
+  see its lines. This is a frontend behaviour and needs nothing stored.
+- **Checkout is for one outlet.** The cart page shows one outlet's lines, then
+  its subtotal, GST, total, store credit redeemed, and the amount to pay, with
+  one **Checkout** button. There is no "pay for all outlets".
+- **Unavailable lines must be removed.** A material that was deactivated, made
+  unsellable, or can no longer be priced in the serving kitchen (§6.4) shows as
+  unavailable. It is left out of the total, and checkout stays blocked until it
+  is removed.
+- **Changed prices need an answer.** Each line keeps
+  `agreed_unit_price_inc_gst`, which the server stamps with the live price
+  whenever someone sets the quantity or presses **keep**. If the live price,
+  rounded to the paisa, differs from it, the line shows the old and new price
+  with **keep** and **remove**. Checkout stays blocked until every changed line
+  is answered. The agreed price is never charged: checkout always uses the live
+  price.
+- **The server checks both again at checkout.** A price can move between reviewing
+  and pressing pay. In that case checkout refuses and returns the lines that
+  need an answer.
+- **The cart is locked while its payment is in progress.** While the outlet has a
+  live pending order, the cart is read-only and shows that a payment is in
+  progress. A trigger refuses additions and changes. The API also refuses
+  removals and "clear cart". The lock lifts when the order is paid (the cart
+  empties) or expires (the cart is back as it was).
+- **Emptying keeps late changes.** A payment can land after its order expired
+  (paid beats expired). By then someone may have changed the cart. Lines changed
+  after the order was frozen are kept, and lines untouched since are removed.
+
+#### Store credit at checkout
+
+- The cart shows **store credit available**:
+  `fofo.store_credit_available()`, the balance less credit already held by the
+  franchise's other live checkouts. Credit belongs to the franchise, so it can
+  be redeemed on any of its outlets.
+- Redeeming takes up to the order total, and never leaves less than ₹1 for
+  Razorpay. If that would happen, ₹1 less credit is redeemed.
+- It is **still a payment, not a discount** (decision 0013). Subtotal, GST and
+  total are unchanged on the cart, the order and the invoice. Credit appears
+  below the total, and only the amount to pay goes down.
+- While the order is a live pending order, its credit is **held**. A trigger
+  refuses a checkout that would promise more than the franchise has. When the
+  order expires the hold lapses.
+- If a payment lands after its order expired and the held credit has since been
+  spent, the credit still available is applied. The rest is an unpaid remainder
+  on that invoice. It counts as unpaid dues and is flagged for review.
 
 **The webhook checks the payment, not just the signature.** A valid signature
 proves Razorpay sent the message; it does not prove the payment is the one we
@@ -591,8 +663,9 @@ Four rules that make freezing safe:
    waits, freezes again, and pays whichever turned out cheaper.
 
 The cart survives until payment succeeds, so an expiry drops them back on an
-intact cart. Match the TTL to Razorpay's own order expiry so two clocks cannot
-disagree. Keep expired rows; do not delete them.
+intact cart. The same expiry lifts the cart lock and releases held credit. Match
+the TTL to Razorpay's own order expiry so two clocks cannot disagree. Keep
+expired rows; do not delete them.
 
 ### 8.3 The purchase manager accepts
 
@@ -711,6 +784,9 @@ credit-note numbers must be **gapless and sequential per financial year**.
   leaves ₹600. Where a balance spans several credits it is drawn down
   **oldest first**, and where it is smaller than the invoice the rest is paid by
   Razorpay.
+- **Credit can be redeemed at checkout.** It is recorded on the order, held
+  while the payment is in progress, and applied to the goods invoice when the
+  money lands (§8.2, decision 0020).
 - **Credit is a payment, not a discount.** The invoice is issued at full value
   with full GST and the credit settles part of what is payable — exactly as cash
   would. It never reduces an invoice's taxable value. Decision
@@ -778,9 +854,12 @@ except the webhook.
 | `POST /api/auth/password-reset` · `/complete` | Supabase recovery email to `/reset-password`; ends every session of that user |
 | `GET /api/franchise/outlets` | The outlets this franchise owns. **Franchise endpoints live under `/api/franchise/*`** and scope every query to the session's franchise |
 | `GET /api/catalog?outlet_id=` | Sellable materials with **final prices**, cost and margin stripped |
-| `GET/PUT /api/cart` | Live cart contents, priced on read |
-| `POST /api/checkout` | Freezes prices, creates the order + Razorpay order, returns what the popup needs |
-| `POST /api/orders/webhook` | **Razorpay only.** Verifies signature, marks paid, issues the invoice. Idempotent. Raw body. |
+| `GET /api/cart` | The outlets that have a cart, with line counts, plus store credit available |
+| `GET /api/cart?outlet_id=` | One outlet's cart, priced on read. Each line is flagged available / unavailable / price changed. Includes whether it is locked by a payment in progress |
+| `PUT /api/cart` | Set a line's quantity (0 removes it) or **keep** a changed price. The server stamps the agreed price and never takes one from the browser. Refused while locked |
+| `DELETE /api/cart?outlet_id=` | Clear one outlet's cart. Refused while locked |
+| `POST /api/checkout` | One outlet, plus the store credit to redeem. Refuses while any line is unavailable or has an unanswered price change. Freezes prices and credit, creates the order + Razorpay order, returns what the popup needs |
+| `POST /api/orders/webhook` | **Razorpay only.** Verifies signature; marks paid, issues the invoice, applies the redeemed credit, empties the cart. Idempotent. Raw body. |
 | `GET /api/orders` / `GET /api/orders/:id` | Order list and detail |
 | `GET /api/invoices` / `:id/pdf` | Invoices and their PDFs (`pdfCurrency`, decision 0007) |
 | `GET /api/credit/balance` | Earned less applied, plus the per-credit statement behind it |
@@ -854,6 +933,11 @@ Each of these is recorded in `docs/decisions/`, because each would otherwise be
 3. **An invoice is never edited.** A trim creates a credit note instead, because
    a GST invoice sequence cannot have holes or rewrites. Section 10, decision
    0016.
+4. **A cart line stores a price, and that price is never charged.** It only
+   detects that the live price moved since someone agreed to it. Checkout
+   always re-prices. Redeemed store credit also lowers `amount_paise` without
+   lowering `grand_total`, because credit is a payment. Section 8.2, decisions
+   0013 and 0020.
 
 Existing decisions this feature leans on, all in `docs/decisions/`:
 

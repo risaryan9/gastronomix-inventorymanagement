@@ -97,6 +97,7 @@ against each other.
 | [0017](0017-staff-login-keys-are-not-readable-through-the-api.md) | **Staff login keys are not readable through the API** — column privilege, not RLS; `select('*')` on `users` fails on purpose | `public.users` queries, login keys, new `users` columns | Accepted |
 | [0018](0018-franchise-sessions-are-server-side.md) | Franchise sessions are the partner app's own (HttpOnly cookie, hashed in the database), not Supabase tokens in the browser | partner-app sign-in, `/api/franchise/*`, anything scoped to a franchise | Accepted |
 | [0019](0019-foco-portal-codes-follow-the-ownership-model.md) | An outlet's FOCO portal code follows its ownership model — FOFO turns it off, FOCO back on; only FOFO outlets can be linked to a franchise | `outlets.ownership_model`, `franchise_outlet_codes`, franchise outlet linking | Accepted |
+| [0020](0020-the-fofo-cart-is-shared-per-outlet-and-locked-while-paying.md) | The FOFO cart is one per outlet, shared by the franchise; lines remember the price they were agreed at; the cart is locked while it is being paid for and empties when the payment lands; checkout is one outlet at a time, and store credit chosen there is held on the order | the partner-app cart, checkout, store credit at checkout, `orders.amount_paise` | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

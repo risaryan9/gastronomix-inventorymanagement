@@ -5,10 +5,11 @@ import { CartContext } from './cartContext.js'
  * DESIGN STAGE: the cart lives in this browser tab only.
  *
  * The real cart is a database row per outlet (fofo.carts), shared by everyone
- * at the franchise and priced live on every read — it stores quantities, never
- * prices (spec §7.2). This keeps a snapshot of each item's price only so the
+ * at the franchise and priced live on every read. Each line keeps the price it
+ * was agreed at, used only to flag a price change, never charged (spec §8.2,
+ * decision 0020). This keeps a snapshot of each item's price only so the
  * design can show totals; when the cart API exists, this provider becomes a
- * thin wrapper around GET/PUT /api/franchise/cart and the snapshot goes.
+ * thin wrapper around the cart endpoints and the snapshot goes.
  */
 
 // Round to the item's order step's precision, so 0.1 + 0.2 stays 0.3.

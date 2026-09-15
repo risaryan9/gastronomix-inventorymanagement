@@ -105,6 +105,9 @@ for goods before we know we can supply them. Not decided here; see
 - A concurrent redemption loses and raises, rather than silently applying less.
   The caller retries. An error is the right outcome; a quietly smaller
   application is not.
+- Credit redeemed **at checkout**, before the goods invoice exists, is recorded
+  on the order and held until the money lands. It is then applied to the invoice
+  exactly as described here. See decision 0020.
 - This would have to be revisited if credit ever gained an expiry date, when
   FIFO stops being an arbitrary ordering and starts being a rule about which
   money dies first.

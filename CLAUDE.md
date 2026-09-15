@@ -31,6 +31,7 @@ look like bugs and are not.** Check the index in
 | a query on `public.users`, or login keys | [0017 — login keys are not readable through the API](docs/decisions/0017-staff-login-keys-are-not-readable-through-the-api.md) |
 | partner-app sign-in, or a franchise endpoint | [0018 — franchise sessions are server-side](docs/decisions/0018-franchise-sessions-are-server-side.md) |
 | an outlet's ownership model, or FOCO portal codes | [0019 — portal codes follow the ownership model](docs/decisions/0019-foco-portal-codes-follow-the-ownership-model.md) |
+| the FOFO cart, checkout, or credit redeemed at checkout | [0020 — the cart is per outlet and locked while paying](docs/decisions/0020-the-fofo-cart-is-shared-per-outlet-and-locked-while-paying.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

@@ -20,7 +20,7 @@ made in conversation, and the traps.
 
 ## Where things stand
 
-**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–15
+**Live database** (Supabase `zyjdzkrtdwlcwkpfnxya`): `migrations/fofo/` 01–15 and 17
 applied and verified one by one. All FOFO tables are in the `fofo` schema, not
 exposed through the API, RLS on with no policies, service_role only.
 
@@ -69,6 +69,10 @@ Not in the spec:
 - **GST CGST/SGST/IGST split** is being handled by the accounting team; not in
   the schema. HSN codes are optional.
 - **Carts stay in the database**, not localStorage (several users per franchise).
+  The full cart behaviour was settled on 2026-09-15: shared per outlet, agreed
+  price per line, locked while paying, emptied on payment, one outlet per
+  checkout, and store credit redeemed at checkout. It is now in spec §8.2 and
+  decision 0020. Migration 17 was applied and verified on 2026-09-15.
 - **Franchise's own user-management screen** — scope not defined yet. Admins get
   full user management.
 - **Invoice immutability is not enforced by the database** — no `BEFORE UPDATE`
