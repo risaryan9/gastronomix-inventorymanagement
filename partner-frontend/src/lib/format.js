@@ -23,6 +23,10 @@ export const formatDate = (iso) =>
 export const formatShortDate = (iso) =>
   new Date(iso).toLocaleDateString('en-IN', { timeZone: IST, day: 'numeric', month: 'short' })
 
+/** "4:35 pm", in IST. */
+export const formatTime = (iso) =>
+  new Date(iso).toLocaleTimeString('en-IN', { timeZone: IST, hour: 'numeric', minute: '2-digit' })
+
 /** "today", "yesterday", "5 days ago", or a date once it is over a month old. */
 export function formatRelativeDay(iso) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)

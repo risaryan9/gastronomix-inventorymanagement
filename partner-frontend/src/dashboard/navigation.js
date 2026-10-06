@@ -14,6 +14,7 @@ import OutletCatalog from '../pages/dashboard/OutletCatalog.jsx'
 import Cart from '../pages/dashboard/Cart.jsx'
 import Orders from '../pages/dashboard/Orders.jsx'
 import OrderDetail from '../pages/dashboard/OrderDetail.jsx'
+import PaymentConfirmed from '../pages/dashboard/PaymentConfirmed.jsx'
 import PendingPayments from '../pages/dashboard/PendingPayments.jsx'
 import StoreCredit from '../pages/dashboard/StoreCredit.jsx'
 import Account from '../pages/dashboard/Account.jsx'
@@ -33,4 +34,5 @@ export const ACCOUNT_NAV = { path: 'account', label: 'Account', icon: 'account',
 export const DASHBOARD_EXTRA_ROUTES = [
   { path: 'order/:outletId', Component: OutletCatalog },
   { path: 'orders/:orderId', Component: OrderDetail },
+  { path: 'orders/:orderId/confirmed', Component: PaymentConfirmed },
 ]

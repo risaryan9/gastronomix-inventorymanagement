@@ -46,6 +46,8 @@ documents ever need Devanagari or a currency symbol that has no ASCII fallback.
 ## Where it lives
 
 - `frontend/src/lib/pdfCurrency.js`
+- `partner-frontend/src/lib/pdfCurrency.js`, the same rule for the partner app,
+  which shares no code with the internal one. Consumer: `src/lib/invoicePdf.js`
 - Consumers: `lib/vendorReportExports.js`, `pages/purchase-manager/Inventory.jsx`,
   `pages/purchase-manager/StockIn.jsx`, `pages/purchase-manager/StockOut.jsx`,
   `pages/supervisor/Inventory.jsx`

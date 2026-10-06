@@ -150,7 +150,9 @@ function localApi(env) {
         try {
           const mod = await server.ssrLoadModule(`${route}.js`)
           req.query = Object.fromEntries(url.searchParams)
-          req.body = await readBody(req)
+          // A function that reads its own raw body (the Razorpay webhook, whose
+          // signature covers the exact bytes) says so, and gets the stream.
+          if (mod.config?.api?.bodyParser !== false) req.body = await readBody(req)
           res.status = (code) => { res.statusCode = code; return res }
           res.json = (body) => {
             res.setHeader('Content-Type', 'application/json; charset=utf-8')

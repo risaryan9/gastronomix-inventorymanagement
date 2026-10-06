@@ -15,24 +15,18 @@
  *   - Checkout is one outlet at a time, and is refused while any line needs an
  *     answer.
  *
- * PAYMENTS ARE NOT LIVE. checkout() runs every check and works out the exact
- * amounts, then stops before freezing an order or calling Razorpay. Creating a
- * pending order now would lock the cart behind a payment nobody can make. The
- * freeze, Razorpay and the webhook are the next step (spec §13 Phase 4).
- *
- * UNPAID DUES are not checked yet. Spec §8.2 blocks checkout while a franchise
- * owes money, but no invoice exists to owe on until invoicing is built; the
- * check belongs in checkout() alongside it.
+ * Checkout itself, which freezes the cart into an order and takes the payment,
+ * is api/_lib/checkout.js.
  */
 import { HttpError, isUuid } from './http.js'
 import { isWholeSteps, outletForFranchise, pricedCatalog, publicItem, publicOutlet } from './catalog.js'
-import { dec, sub, toFixed } from './decimal.js'
+import { toFixed } from './decimal.js'
 import { lineAmounts, money, priceChanged, redeemableCredit, sumLines, unitMoney } from './pricing.js'
 
-const LOCKED = 'This cart is locked while a payment for it is in progress. Wait for the payment to finish or expire.'
+const LOCKED = 'This cart is locked while a payment for it is in progress. Finish or cancel that payment first.'
 
 /** The live pending order locking an outlet's cart, or null. */
-async function lockingOrder(db, outletId) {
+export async function lockingOrder(db, outletId) {
   const { rows } = await db.query(
     `SELECT order_number, expires_at FROM fofo.orders
       WHERE outlet_id = $1 AND status = 'pending_payment'
@@ -64,9 +58,10 @@ async function storeCreditAvailable(db, franchiseId) {
 
 /*
  * One outlet's cart, priced now. Returns decimals for checkout and the public
- * shape for responses.
+ * shape for responses. Each buyable line keeps its priced catalogue `item`, whose
+ * base cost and margin checkout freezes onto the order and nothing else reads.
  */
-async function pricedCart(db, franchiseId, outlet) {
+export async function pricedCart(db, franchiseId, outlet) {
   const { rows } = await db.query(
     `SELECT ci.raw_material_id, ci.quantity::text AS quantity,
             ci.agreed_unit_price_inc_gst::text AS agreed_price, ci.agreed_at,
@@ -108,6 +103,7 @@ async function pricedCart(db, franchiseId, outlet) {
       materialId: row.raw_material_id,
       quantity,
       amounts,
+      item,
       public: {
         ...publicItem(item),
         quantity: Number(quantity),
@@ -129,9 +125,13 @@ async function pricedCart(db, franchiseId, outlet) {
   return { lines, totals }
 }
 
-async function cartView(db, user, outlet) {
+/*
+ * The cart as the partner app shows it. Checkout passes the pricedCart it will
+ * freeze, so the figures it checks and the figures it charges are one reading.
+ */
+export async function cartView(db, user, outlet, priced = null) {
   // Sequential: one client runs one query at a time.
-  const { lines, totals } = await pricedCart(db, user.franchiseId, outlet)
+  const { lines, totals } = priced || await pricedCart(db, user.franchiseId, outlet)
   const lock = await lockingOrder(db, outlet.id)
   const available = await storeCreditAvailable(db, user.franchiseId)
   const needsAnswer = lines.filter((l) => l.status !== 'ok').length
@@ -288,51 +288,4 @@ export async function clearCart(db, user, outletId) {
   await refuseIfLocked(db, outlet.id)
   await db.query('DELETE FROM fofo.carts WHERE outlet_id = $1 AND franchise_id = $2', [outlet.id, user.franchiseId])
   return cartView(db, user, outlet)
-}
-
-/*
- * POST /api/franchise/checkout { outlet_id, redeem_store_credit }
- *
- * Every check checkout will make, and the exact amounts it would freeze, then a
- * clear stop: payments are not live. When they are, this is where the order is
- * frozen (prices onto order_items, credit onto store_credit_to_apply) and the
- * Razorpay order created, in this same transaction.
- */
-export async function checkout(db, user, body) {
-  const outlet = await outletForFranchise(db, user.franchiseId, body.outlet_id)
-  const view = await cartView(db, user, outlet)
-
-  if (view.lock) throw new HttpError(409, LOCKED)
-  if (!view.lines.length) throw new HttpError(422, 'This cart is empty')
-  if (view.needsAnswer) {
-    const unavailable = view.lines.filter((l) => l.status === 'unavailable').length
-    const changed = view.lines.filter((l) => l.status === 'price_changed').length
-    const parts = []
-    if (unavailable) parts.push(`remove ${unavailable} unavailable ${unavailable === 1 ? 'supply' : 'supplies'}`)
-    if (changed) parts.push(`keep or remove ${changed} ${changed === 1 ? 'supply whose price has' : 'supplies whose prices have'} changed`)
-    return { ok: false, reason: `Before checking out, ${parts.join(' and ')}.`, cart: view }
-  }
-
-  const total = dec(String(view.totals.total))
-  // A Razorpay order cannot be for less than ₹1, and neither can what is left
-  // after credit (orders_razorpay_amount_collectable).
-  const credit = body.redeem_store_credit ? dec(String(view.storeCredit.redeemable)) : 0n
-  const payable = sub(total, credit)
-  if (payable > 0n && payable < dec('1')) {
-    return { ok: false, reason: 'The amount to pay must be at least ₹1.', cart: view }
-  }
-
-  return {
-    ok: true,
-    paymentsLive: false,
-    message: 'Your cart is ready to check out. Online payment is not switched on yet, so no order has been placed and nothing has been charged.',
-    quote: {
-      subtotal: view.totals.subtotal,
-      gst: view.totals.gst,
-      total: view.totals.total,
-      storeCredit: money(credit),
-      payable: money(payable),
-    },
-    cart: view,
-  }
 }

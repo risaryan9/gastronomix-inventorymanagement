@@ -873,12 +873,17 @@ except the webhook.
 | `PUT /api/franchise/cart` | Set a line's quantity (0 removes it). The server stamps the agreed price and never takes one from the browser. Refused while locked. **Built** |
 | `POST /api/franchise/cart/keep` | **Keep** a changed price. Refused while locked. **Built** |
 | `DELETE /api/franchise/cart?outlet_id=` | Clear one outlet's cart. Refused while locked. **Built** |
-| `POST /api/franchise/checkout` | One outlet, plus whether to redeem store credit. Refuses while any line is unavailable or has an unanswered price change. **Built up to the payment:** it runs every check and returns the exact amounts, then stops without creating an order. Still to build: freezing prices and credit onto a pending order, the Razorpay order, and the unpaid-dues check |
-| `POST /api/orders/webhook` | **Razorpay only.** Verifies signature; marks paid, issues the invoice, applies the redeemed credit, empties the cart. Idempotent. Raw body. |
-| `GET /api/orders` / `GET /api/orders/:id` | Order list and detail |
-| `GET /api/invoices` / `:id/pdf` | Invoices and their PDFs (`pdfCurrency`, decision 0007) |
-| `GET /api/credit/balance` | Earned less applied, plus the per-credit statement behind it |
-| `POST /api/credit/redeem` | Applies credit to one invoice, oldest first, up to what is still owed. Returns the amount applied; repeating it is a no-op |
+| `POST /api/franchise/checkout` | One outlet, plus whether to redeem store credit. Refuses while any line is unavailable or has an unanswered price change, while the franchise owes money, or has no address. Freezes the order (`fofo.freeze_order`, migration 18), creates the Razorpay order, and returns what the payment popup needs. While the outlet already has a live checkout it returns that one instead. Credit that covers the whole order pays it at once. **Built** |
+| `POST /api/franchise/checkout/confirm` | The popup closed. Asks **Razorpay** for the order's payments (never the popup), captures an authorized one, and settles it (`api/_lib/payments.js`). **Built** |
+| `POST /api/franchise/checkout/cancel` | Stops waiting for a payment and unlocks the cart. Asks Razorpay first, so a payment already made is kept. **Built** |
+| `POST /api/orders/webhook` | **Razorpay only.** Verifies the signature on the raw body; settles `payment.captured`, and asks Razorpay on `payment.authorized` and `order.paid`. One path with confirm, so either may arrive first and a replay is a no-op. A payment that does not fit its order goes to `fofo.payment_exceptions`. The Razorpay order id says whether it pays a checkout or an existing invoice (migration 19). **Built** |
+| `GET /api/franchise/orders` · `?id=` | Order list, and one order with its lines, invoices (paid and due, worked out from payments and credit), credit notes and shipping. An expired checkout reads as `expired`. **Built** (`api/_lib/orders.js`) |
+| `GET /api/franchise/payments/pending` | Invoices with money due, the total due, and store credit available. **Built** |
+| `POST /api/franchise/invoices/pay` | Pay one invoice's dues, with whether to use store credit. Asks Razorpay first, so a payment already made is found. Credit is applied **at once**, oldest first, never leaving 1 to 99 paise; if it covers the invoice the answer is `paid`, otherwise a Razorpay order for exactly the rest (`fofo.begin_invoice_payment`, `open_invoice_payment`, migration 19). **Built** (`api/_lib/invoicePayments.js`) |
+| `POST /api/franchise/invoices/pay/confirm` | The popup closed. Asks **Razorpay**, settles a captured payment (`fofo.mark_invoice_paid`), and says what the invoice is still owed. **Built** |
+| `GET /api/franchise/invoices?id=` | One invoice as issued: frozen buyer and lines, what settled it, credit notes against it, and the seller from configuration. The PDF is drawn from it in the browser (`src/lib/invoicePdf.js`, decisions 0007 and 0021). **Built** |
+| `GET /api/franchise/credit` | The store-credit statement: each credit, what it paid for and what is left; balance, held and available. **Built** |
+| ~~`POST /api/credit/redeem`~~ | Not built as its own endpoint: credit is applied to an invoice by `POST /api/franchise/invoices/pay`, which settles it outright when credit covers it |
 
 **Admin onboarding endpoints.** The admin dashboard lives in the internal app,
 but sending email and generating tokens need server code, and the internal app

@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import Icon from '../../components/ui/Icon.jsx'
 import { OrderProgress, StatusBadge } from '../../components/catalog/OrderStatus.jsx'
 import { brandClass, ORDER_GROUPS } from '../../lib/catalog.js'
+import LoadState from '../../components/LoadState.jsx'
 import { formatDate, formatINR } from '../../lib/format.js'
-import { listOrders } from '../../dummy/ordersAndMoney.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * Every order the franchise has placed, newest first, across its outlets.
@@ -13,7 +14,8 @@ import { listOrders } from '../../dummy/ordersAndMoney.js'
  * supply. Each row says what matters at a glance: how far along it is, what it
  * cost, and whether anything is still owed on it or came back as credit.
  *
- * DUMMY DATA: src/dummy/ordersAndMoney.js until GET /api/franchise/orders exists.
+ * GET /api/franchise/orders (api/_lib/orders.js). Filtering and search happen
+ * here, on the whole list: a franchise has tens of orders, not thousands.
  */
 
 const chip = (active) =>
@@ -26,8 +28,8 @@ const chip = (active) =>
 const IN_PROGRESS_BAR = new Set(['paid', 'accepted', 'packed', 'ready_to_ship', 'shipped'])
 
 function OrderRow({ order, index }) {
-  const creditBack = order.creditNotes.reduce((s, c) => s + c.amount, 0)
-  const items = order.lines.length
+  const { creditBack } = order
+  const items = order.supplyNames.length
   return (
     <li className="animate-rise-in" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
       <Link
@@ -83,8 +85,11 @@ function OrderRow({ order, index }) {
   )
 }
 
+const NO_ORDERS = []
+
 export default function Orders() {
-  const orders = useMemo(() => listOrders(), [])
+  const { data, error, loading, reload } = useApi('franchise/orders')
+  const orders = data || NO_ORDERS
   const [group, setGroup] = useState('all')
   const [outletId, setOutletId] = useState('all')
   const [query, setQuery] = useState('')
@@ -101,7 +106,7 @@ export default function Orders() {
     const q = deferredQuery.trim().toLowerCase()
     return orders.filter((o) =>
       (outletId === 'all' || o.outlet.id === outletId) &&
-      (!q || o.orderNumber.toLowerCase().includes(q) || o.lines.some((l) => l.name.toLowerCase().includes(q)))
+      (!q || o.orderNumber.toLowerCase().includes(q) || o.supplyNames.some((name) => name.toLowerCase().includes(q)))
     )
   }, [orders, outletId, deferredQuery])
 
@@ -118,7 +123,7 @@ export default function Orders() {
           <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Orders</h1>
           <p className="mt-1 text-sm text-muted-foreground">Every order across your outlets, with its invoices and anything that came back as credit.</p>
         </div>
-        <p className="text-xs text-muted-foreground">{orders.length} orders</p>
+        {data && <p className="text-xs text-muted-foreground">{orders.length} {orders.length === 1 ? 'order' : 'orders'}</p>}
       </div>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -152,13 +157,24 @@ export default function Orders() {
         ))}
       </div>
 
-      {shown.length === 0 ? (
+      <LoadState loading={loading} error={error} reload={reload} />
+
+      {data && orders.length === 0 ? (
+        <div className="mt-6 flex flex-col items-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center">
+          <Icon name="box" className="h-8 w-8 text-muted-foreground" />
+          <p className="mt-3 font-semibold text-foreground">No orders yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">Orders appear here once you check out a cart.</p>
+          <Link to="/order" className="mt-4 rounded-xl bg-accent px-4 py-2.5 text-sm font-black text-accent-foreground hover:brightness-110">
+            Order supplies
+          </Link>
+        </div>
+      ) : data && shown.length === 0 ? (
         <div className="mt-6 flex flex-col items-center rounded-2xl border-2 border-dashed border-border px-6 py-14 text-center">
           <Icon name="box" className="h-8 w-8 text-muted-foreground" />
           <p className="mt-3 font-semibold text-foreground">No orders match</p>
           <p className="mt-1 text-sm text-muted-foreground">Try another status, outlet or search.</p>
         </div>
-      ) : (
+      ) : data && (
         <ul className="mt-5 space-y-3">
           {shown.map((order, i) => <OrderRow key={order.id} order={order} index={i} />)}
         </ul>

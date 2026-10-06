@@ -1,6 +1,6 @@
 # FOFO — handoff for the next session
 
-Current state of the FOFO franchise dashboard work, as of **2026-09-13**, for
+Current state of the FOFO franchise dashboard work, as of **2026-09-25**, for
 starting implementation in a fresh session. The design itself is in the docs
 below; this file only holds what they do not: where things stand, decisions
 made in conversation, and the traps.
@@ -55,10 +55,47 @@ order: a pending order would lock the cart behind a payment nobody can make.
 **Pricing was built ahead of the Phase 1 gate** (accountant sign-off on a sample
 invoice), which is still owed.
 
-**Not built:** freezing a pending order + Razorpay order at checkout, the
-webhook, the unpaid-dues check, every other API endpoint,
-franchise auth, the admin onboarding endpoints, the accept function (migration
-12), gapless invoice/credit-note numbering, all screens.
+**Built on 2026-09-25: payment, in Razorpay test mode.** Migration 18
+(applied 2026-10-06) freezes the order at checkout, and on a
+confirmed payment issues the goods invoice (`INV/26-27/0001`, gapless per
+financial year), applies the credit chosen, and empties the cart. Invoices now
+refuse UPDATE/DELETE. Checkout, confirm and cancel endpoints
+(`api/_lib/checkout.js`), the webhook (`api/orders/webhook.js`) and the cart
+page's Razorpay popup are built. A payment is always confirmed by asking
+Razorpay, never the popup (`api/_lib/payments.js`). Exercised against a local
+Postgres with Razorpay faked: amount, double click, lock, replay, forged
+signature, cancel, paid-after-cancel, wrong amount, duplicate payment. Choices made: order numbers
+`FO-000001`, invoices `INV/26-27/0001`, 15-minute expiry; the financial year
+follows the UTC business day (decision 0002), which the accountant should know.
+
+**First real test payment on 2026-10-06**: migration 18 applied to the hosted
+database, order `FO-000001` paid in a browser with Razorpay test keys, invoice
+`INV/26-27/0001` issued. A paid cart now lands on a confirmation page,
+`/orders/:orderId/confirmed` (`PaymentConfirmed.jsx`), which reads the order
+back from the database rather than showing what the popup said.
+
+**Orders, Order detail, Pending payments and Store credit read the database**
+(`api/_lib/orders.js`); the dummy data module is gone. Checked against the
+local Postgres, including a trim, a credit note and a part-paid invoice.
+
+**Built on 2026-10-06: paying an invoice's dues, and invoice PDFs.** Migration
+19 (applied 2026-10-06) adds `begin_invoice_payment`,
+`open_invoice_payment` and `mark_invoice_paid`, and replaces
+`apply_store_credit` to take a limit. The Pay sheet on Pending payments and
+Order detail now pays (`api/_lib/invoicePayments.js`): credit is spent at once,
+Razorpay collects the rest, and the webhook settles invoice payments too.
+Exercised against the hosted database inside a transaction that was rolled
+back, with Razorpay's replies faked: credit then Razorpay, a repeat press, a
+wrong amount, a replay, a second payment, another franchise. **Not yet paid in
+a browser**, which needs a logistics invoice, which needs the staff side.
+Every invoice downloads as a PDF (`src/lib/invoicePdf.js`, decision 0021).
+**Owed before real use:** `SELLER_LEGAL_NAME`, `SELLER_GSTIN` and
+`SELLER_ADDRESS` in the partner app's environment, and the accountant's view of
+the PDF layout (one GST figure per rate, no CGST/SGST/IGST split).
+
+**Not built:** a screen for `fofo.payment_exceptions`; the accept function
+(migration 16); credit-note issuing; credit-note PDFs; everything on the staff
+side.
 
 **Git:** work goes on a branch; the user merges to `master` (pushing `master`
 redeploys the partner app).

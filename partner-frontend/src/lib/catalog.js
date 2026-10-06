@@ -25,6 +25,9 @@ export const ORDER_GROUPS = [
 ]
 export const ORDER_STEPS = ['paid', 'accepted', 'packed', 'ready_to_ship', 'shipped', 'delivered']
 
+// What settled an invoice (decision 0013: store credit is a payment too).
+export const SETTLEMENT_LABEL = { razorpay: 'Paid online', store_credit: 'Store credit' }
+
 export const MATERIAL_TYPE_LABEL = {
   raw_material: 'Raw material',
   semi_finished: 'Semi-finished',

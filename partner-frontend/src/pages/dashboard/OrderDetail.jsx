@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Alert from '../../components/Alert.jsx'
 import Icon from '../../components/ui/Icon.jsx'
+import LoadState from '../../components/LoadState.jsx'
+import InvoicePdfButton from '../../components/payments/InvoicePdfButton.jsx'
 import PaySheet from '../../components/payments/PaySheet.jsx'
 import { StatusBadge } from '../../components/catalog/OrderStatus.jsx'
-import { brandClass, ORDER_STATUS, ORDER_STEPS } from '../../lib/catalog.js'
+import { brandClass, ORDER_STATUS, ORDER_STEPS, SETTLEMENT_LABEL } from '../../lib/catalog.js'
 import { formatDate, formatINR, formatQty } from '../../lib/format.js'
-import { getOrder, listPendingPayments, storeCreditStatement } from '../../dummy/ordersAndMoney.js'
+import { useCart } from '../../cart/cartContext.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * One order and everything that belongs to it (spec §9, §10):
@@ -21,7 +24,11 @@ import { getOrder, listPendingPayments, storeCreditStatement } from '../../dummy
  *                 never edited; the credit note corrects it (decision 0016)
  *   shipping      carrier and reference, once shipped
  *
- * DUMMY DATA: src/dummy/ordersAndMoney.js until GET /api/franchise/orders/:id exists.
+ * GET /api/franchise/orders?id= (api/_lib/orders.js). A checkout still waiting
+ * for its payment is paid from its outlet's cart, which resumes the same
+ * Razorpay order; this page links there rather than taking payment itself.
+ * An invoice with money due is paid here, in the pay sheet, and each invoice
+ * downloads as a PDF (src/lib/invoicePdf.js).
  */
 
 const panel = 'rounded-2xl border-2 border-border bg-card p-4 shadow-card sm:p-5'
@@ -102,8 +109,6 @@ function Lines({ order }) {
   )
 }
 
-const SETTLEMENT_LABEL = { razorpay: 'Paid online', store_credit: 'Store credit' }
-
 function InvoiceCard({ invoice, onPay }) {
   return (
     <li className="rounded-xl border-2 border-border bg-background/30 p-3 sm:p-4">
@@ -112,6 +117,7 @@ function InvoiceCard({ invoice, onPay }) {
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{invoice.type === 'goods' ? 'Goods invoice' : 'Logistics invoice'}</p>
           <p className="font-bold text-foreground">{invoice.invoiceNumber}</p>
           <p className="text-xs text-muted-foreground">Issued {formatDate(invoice.issuedAt)}{invoice.description ? ` · ${invoice.description}` : ''}</p>
+          <InvoicePdfButton invoiceId={invoice.id} />
         </div>
         {invoice.amountDue > 0 ? (
           <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">{formatINR(invoice.amountDue)} due</span>
@@ -148,12 +154,9 @@ function InvoiceCard({ invoice, onPay }) {
 
 export default function OrderDetail() {
   const { orderId } = useParams()
-  const order = useMemo(() => getOrder(orderId), [orderId])
-  const pending = useMemo(() => listPendingPayments(), [])
-  const creditAvailable = useMemo(() => storeCreditStatement().available, [])
-  const [paying, setPaying] = useState(null)
+  const { data: order, error, loading, reload } = useApi(`franchise/orders?id=${encodeURIComponent(orderId)}`)
 
-  if (!order) {
+  if (error?.status === 404 || error?.status === 400) {
     return (
       <div>
         <h1 className="text-2xl font-bold text-foreground">Order not found</h1>
@@ -161,9 +164,35 @@ export default function OrderDetail() {
       </div>
     )
   }
+  if (!order) {
+    return (
+      <div>
+        <Link to="/orders" className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
+          <Icon name="chevronLeft" /> All orders
+        </Link>
+        <LoadState loading={loading} error={error} reload={reload} blocks={['h-20', 'h-32', 'h-64']} />
+      </div>
+    )
+  }
+  return <OrderView order={order} reload={reload} />
+}
 
-  const checkout = pending.find((p) => p.kind === 'checkout' && p.order.id === order.id)
-  const payInvoice = (invoice) => setPaying(pending.find((p) => p.kind === 'invoice' && p.invoice.id === invoice.id))
+function OrderView({ order, reload }) {
+  const { summary, refreshSummary } = useCart()
+  // A payment changes what the invoice is owed and what credit is left.
+  const paymentChanged = () => { reload(); refreshSummary() }
+  const [paying, setPaying] = useState(null)
+
+  const { checkout } = order
+  const payInvoice = (invoice) => setPaying({
+    id: invoice.id,
+    title: invoice.type === 'logistics' ? 'Logistics invoice' : 'Goods invoice',
+    invoice,
+    order,
+    total: invoice.total,
+    alreadyPaid: invoice.paid,
+    amountDue: invoice.amountDue,
+  })
   const closed = ['cancelled', 'expired', 'payment_failed'].includes(order.status)
 
   return (
@@ -189,17 +218,20 @@ export default function OrderDetail() {
             <Icon name="clock" className="h-6 w-6 shrink-0 text-accent-text" />
             <div className="flex-1 text-sm">
               <p className="font-bold text-foreground">This order is waiting for its payment</p>
-              <p className="text-muted-foreground">Prices are held until {time(checkout.expiresAt)}. The outlet's cart stays locked until then.</p>
+              <p className="text-muted-foreground">
+                Prices are held until {time(checkout.expiresAt)}. The outlet's cart stays locked until the payment finishes or is cancelled.
+                {checkout.storeCreditHeld > 0 && ` ${formatINR(checkout.storeCreditHeld)} of store credit is held for it.`}
+              </p>
             </div>
-            <button type="button" onClick={() => setPaying(checkout)} className="rounded-xl bg-accent px-5 py-2.5 text-sm font-black text-accent-foreground hover:brightness-110">
+            <Link to={`/cart?outlet=${order.outlet.id}`} className="rounded-xl bg-accent px-5 py-2.5 text-center text-sm font-black text-accent-foreground hover:brightness-110">
               Pay {formatINR(checkout.amountDue)}
-            </button>
+            </Link>
           </div>
         )}
         {closed && (
           <Alert tone="info">
             {order.status === 'expired'
-              ? 'The payment window for this checkout closed before a payment arrived, so nothing was charged. The outlet\'s cart was left as it was — check out again from there.'
+              ? 'The time to pay for this checkout ran out, or the payment was cancelled, so nothing was charged. The outlet\'s cart was left as it was — check out again from there.'
               : order.status === 'payment_failed'
                 ? 'The payment for this checkout failed, so nothing was charged. Check out again from the cart.'
                 : 'This order was cancelled by Gastronomix.'}
@@ -280,7 +312,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      <PaySheet key={paying?.id || 'none'} payment={paying} creditAvailable={creditAvailable} onClose={() => setPaying(null)} />
+      <PaySheet key={paying?.id || 'none'} payment={paying} creditAvailable={summary.storeCreditAvailable} onClose={() => setPaying(null)} onChanged={paymentChanged} />
     </div>
   )
 }

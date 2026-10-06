@@ -19,13 +19,25 @@
  *   PUT    /api/franchise/cart                            set a line's quantity (0 removes it)
  *   DELETE /api/franchise/cart?outlet_id=                 clear one outlet's cart
  *   POST   /api/franchise/cart/keep                       keep a changed price
- *   POST   /api/franchise/checkout                        check a cart and work out what it costs
+ *   POST   /api/franchise/checkout                        freeze a cart into an order and start its payment
+ *   POST   /api/franchise/checkout/confirm                look at Razorpay once the payment popup closes
+ *   POST   /api/franchise/checkout/cancel                 stop waiting for a payment, unlock the cart
+ *   GET    /api/franchise/orders                          every order, newest first
+ *   GET    /api/franchise/orders?id=                      one order with its invoices and credit notes
+ *   GET    /api/franchise/invoices?id=                    one invoice as issued, for its PDF
+ *   POST   /api/franchise/invoices/pay                    pay an invoice's dues: credit, then Razorpay for the rest
+ *   POST   /api/franchise/invoices/pay/confirm            look at Razorpay once that payment popup closes
+ *   GET    /api/franchise/payments/pending                invoices with money still due
+ *   GET    /api/franchise/credit                          the store-credit statement
  */
 import { transaction } from './_lib/db.js'
 import { HttpError, jsonBody, sendError } from './_lib/http.js'
 import { requireFranchiseUser, requireSameOrigin } from './_lib/franchiseAuth.js'
 import { catalogForOutlet, outletsWithOrderSummary, purchaseHistory } from './_lib/catalog.js'
-import { cartSummary, checkout, clearCart, getCart, keepPrice, setQuantity } from './_lib/cart.js'
+import { cartSummary, clearCart, getCart, keepPrice, setQuantity } from './_lib/cart.js'
+import { cancelCheckout, checkout, confirmCheckout } from './_lib/checkout.js'
+import { confirmInvoicePayment, payInvoice } from './_lib/invoicePayments.js'
+import { creditStatement, getInvoice, getOrder, listOrders, pendingPayments } from './_lib/orders.js'
 
 const inTransaction = (work) => (user, req) => transaction((db) => work(db, user, req))
 
@@ -54,6 +66,32 @@ const ROUTES = {
   },
   checkout: {
     POST: inTransaction((db, user, req) => checkout(db, user, jsonBody(req))),
+  },
+  'checkout/confirm': {
+    POST: inTransaction((db, user, req) => confirmCheckout(db, user, jsonBody(req))),
+  },
+  'checkout/cancel': {
+    POST: inTransaction((db, user, req) => cancelCheckout(db, user, jsonBody(req))),
+  },
+  orders: {
+    GET: inTransaction((db, user, req) =>
+      req.query.id ? getOrder(db, user.franchiseId, req.query.id) : listOrders(db, user.franchiseId)
+    ),
+  },
+  invoices: {
+    GET: inTransaction((db, user, req) => getInvoice(db, user.franchiseId, req.query.id)),
+  },
+  'invoices/pay': {
+    POST: inTransaction((db, user, req) => payInvoice(db, user, jsonBody(req))),
+  },
+  'invoices/pay/confirm': {
+    POST: inTransaction((db, user, req) => confirmInvoicePayment(db, user, jsonBody(req))),
+  },
+  'payments/pending': {
+    GET: inTransaction((db, user) => pendingPayments(db, user.franchiseId)),
+  },
+  credit: {
+    GET: inTransaction((db, user) => creditStatement(db, user.franchiseId)),
   },
 }
 

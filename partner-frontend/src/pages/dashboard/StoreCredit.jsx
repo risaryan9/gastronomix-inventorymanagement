@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import LoadState from '../../components/LoadState.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import { brandClass } from '../../lib/catalog.js'
 import { formatDate, formatINR } from '../../lib/format.js'
-import { storeCreditStatement } from '../../dummy/ordersAndMoney.js'
+import { useApi } from '../../lib/useApi.js'
 
 /*
  * Store credit, shown as a statement rather than a number (decision 0013).
@@ -18,7 +19,7 @@ import { storeCreditStatement } from '../../dummy/ordersAndMoney.js'
  * (decision 0020). The hold itself is not called out here; it shows on the
  * order waiting for payment.
  *
- * DUMMY DATA: src/dummy/ordersAndMoney.js until GET /api/franchise/credit/statement exists.
+ * GET /api/franchise/credit (api/_lib/orders.js).
  */
 
 const RULES = [
@@ -29,18 +30,18 @@ const RULES = [
 ]
 
 function CreditCard({ credit, index }) {
-  const [open, setOpen] = useState(index === 0)
+  const [open, setOpen] = useState(false)
   const usedPct = credit.amount ? Math.round((credit.amountApplied / credit.amount) * 100) : 0
   const { order } = credit
 
   return (
-    <li className="animate-rise-in rounded-2xl border-2 border-border bg-card shadow-card" style={{ animationDelay: `${index * 50}ms` }}>
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full p-4 text-left sm:p-5" aria-expanded={open}>
+    <li className={`animate-rise-in rounded-2xl border-2 bg-card shadow-card transition-colors ${open ? 'border-accent/50' : 'border-border hover:border-accent/50'}`} style={{ animationDelay: `${index * 50}ms` }}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="group w-full p-4 text-left sm:p-5" aria-expanded={open}>
         <div className="flex items-start gap-3">
           <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-black ${brandClass(order.outlet.brand)}`}>{order.outlet.brand}</span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-bold text-foreground">{credit.creditNoteNumber}</p>
+              <p className="font-bold text-foreground group-hover:text-accent-text">{credit.creditNoteNumber}</p>
               {credit.amountRemaining === 0 ? (
                 <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Used up</span>
               ) : credit.amountApplied > 0 ? (
@@ -56,6 +57,7 @@ function CreditCard({ credit, index }) {
           <div className="text-right">
             <p className="text-lg font-black text-success">{formatINR(credit.amountRemaining)}</p>
             <p className="text-[11px] text-muted-foreground">left of {formatINR(credit.amount)}</p>
+            <Icon name="chevronDown" className={`ml-auto mt-1 h-4 w-4 text-muted-foreground transition-transform duration-200 group-hover:text-accent-text ${open ? 'rotate-180' : ''}`} />
           </div>
         </div>
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
@@ -98,15 +100,23 @@ function CreditCard({ credit, index }) {
 }
 
 export default function StoreCredit() {
-  const statement = useMemo(() => storeCreditStatement(), [])
-  const [filter, setFilter] = useState('all')
-  const credits = statement.credits.filter((c) => filter === 'all' || c.amountRemaining > 0)
-
+  const { data, error, loading, reload } = useApi('franchise/credit')
   return (
     <div>
       <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Store credit</h1>
       <p className="mt-1 text-sm text-muted-foreground">What came back to you, and exactly where each rupee of it went.</p>
+      <LoadState loading={loading} error={error} reload={reload} blocks={['h-40', 'h-24', 'h-24']} />
+      {data && <Statement statement={data} />}
+    </div>
+  )
+}
 
+function Statement({ statement }) {
+  const [filter, setFilter] = useState('all')
+  const credits = statement.credits.filter((c) => filter === 'all' || c.amountRemaining > 0)
+
+  return (
+    <>
       <div className="mt-5 grid gap-3 lg:grid-cols-[1.2fr_1fr]">
         <div className="animate-rise-in rounded-2xl border-2 border-accent bg-card p-5 shadow-card">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Available to spend</p>
@@ -156,6 +166,6 @@ export default function StoreCredit() {
           {credits.map((c, i) => <CreditCard key={c.id} credit={c} index={i} />)}
         </ul>
       )}
-    </div>
+    </>
   )
 }

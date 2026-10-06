@@ -144,6 +144,21 @@ export default function CartProvider({ children }) {
     return result
   }, [acceptCart])
 
+  // The payment popup closed: the server asks Razorpay how it went.
+  const confirmPayment = useCallback(
+    (orderId) => api('franchise/checkout/confirm', { method: 'POST', body: { order_id: orderId } }),
+    []
+  )
+
+  // Stop waiting for a payment. Answers with the unlocked cart, or 'paid' if
+  // the payment had already gone through.
+  const cancelCheckout = useCallback(async (outletId) => {
+    setError(null)
+    const result = await api('franchise/checkout/cancel', { method: 'POST', body: { outlet_id: outletId } })
+    if (result.cart) acceptCart(result.cart)
+    return result
+  }, [acceptCart])
+
   const quantityOf = useCallback(
     (outletId, itemId) => carts[outletId]?.lines.find((l) => l.id === itemId)?.quantity || 0,
     [carts]
@@ -162,7 +177,9 @@ export default function CartProvider({ children }) {
     keepPrice,
     clearCart,
     checkout,
-  }), [summary, carts, error, loadCart, refreshSummary, quantityOf, setQuantity, keepPrice, clearCart, checkout])
+    confirmPayment,
+    cancelCheckout,
+  }), [summary, carts, error, loadCart, refreshSummary, quantityOf, setQuantity, keepPrice, clearCart, checkout, confirmPayment, cancelCheckout])
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }

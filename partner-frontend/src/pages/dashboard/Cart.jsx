@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Alert from '../../components/Alert.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import QuantityStepper from '../../components/ui/QuantityStepper.jsx'
 import { useCart } from '../../cart/cartContext.js'
 import { brandClass } from '../../lib/catalog.js'
-import { formatDate, formatINR, formatQty, unitLabel } from '../../lib/format.js'
+import { formatDate, formatINR, formatQty, formatTime, unitLabel } from '../../lib/format.js'
+import { openPaymentPopup } from '../../lib/razorpay.js'
 
 /*
  * The cart: one per outlet (decision 0020).
@@ -21,6 +22,15 @@ import { formatDate, formatINR, formatQty, unitLabel } from '../../lib/format.js
  * remove; the Checkout button stays off until nothing needs an answer, and the
  * server checks the same again. Checkout is for this outlet only — there is no
  * paying for several outlets at once.
+ *
+ * PAYING (usePayment, below). Checkout freezes the cart into an order and the
+ * Razorpay popup takes the money. When the popup closes, however it closes,
+ * the page asks the server, and the server asks Razorpay; nothing the popup
+ * says is taken as proof (src/lib/razorpay.js). While the order waits for its
+ * payment the cart is locked, and the lock notice offers Resume payment, which
+ * reopens the same order, and Cancel payment, which unlocks the cart. Once the
+ * server says the order is paid, the page hands over to the confirmation page
+ * (PaymentConfirmed.jsx), which reads the order back from the database.
  */
 
 const panel = 'rounded-2xl border-2 border-border bg-card p-4 shadow-card sm:p-5'
@@ -162,6 +172,139 @@ function LineRow({ line, outletId, locked }) {
   )
 }
 
+/* ------------------------------------------------------------------ *
+ * Paying for one outlet's cart
+ * ------------------------------------------------------------------ */
+
+// After the popup reports a payment, how long to keep asking before saying the
+// bank has not confirmed yet. UPI and some cards confirm a few seconds late.
+const CONFIRM_ATTEMPTS = 5
+const CONFIRM_INTERVAL_MS = 2000
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function usePayment(outletId) {
+  const { checkout, confirmPayment, cancelCheckout, loadCart, refreshSummary } = useCart()
+  const navigate = useNavigate()
+  const [state, setState] = useState({ phase: 'idle' })
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
+  const update = (next) => { if (mounted.current) setState(next) }
+
+  // Replaces the cart in history: Back from the confirmation should not land
+  // on the cart that was just paid for.
+  const finish = (result) => {
+    loadCart(outletId)
+    refreshSummary()
+    navigate(`/orders/${result.order.id}/confirmed`, { replace: true })
+  }
+
+  const stop = (message, order) => {
+    loadCart(outletId) // the lock notice shows whether a payment is still waiting
+    update({ phase: 'idle', message, order })
+  }
+
+  const confirm = async (order, how) => {
+    update({ phase: 'confirming', order })
+    const attempts = how === 'completed' ? CONFIRM_ATTEMPTS : 1
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const result = await confirmPayment(order.id)
+        if (result.status === 'paid') return finish(result)
+        if (result.status !== 'awaiting_payment') return stop({ tone: 'error', text: result.reason }, null)
+      } catch (err) {
+        if (i === attempts - 1) return stop({ tone: 'error', text: err.message }, order)
+      }
+      if (i < attempts - 1) await wait(CONFIRM_INTERVAL_MS)
+    }
+    return stop(
+      how === 'completed'
+        ? { tone: 'info', text: `Your bank has not confirmed the payment for order ${order.orderNumber} yet. This usually takes a minute. If you have paid, do not pay again: press Check payment shortly.` }
+        : { tone: 'info', text: `The payment for order ${order.orderNumber} was not finished. Resume it, or cancel it to change the cart.` },
+      order
+    )
+  }
+
+  const answer = async (result) => {
+    if (result.status === 'paid') return finish(result)
+    if (result.status !== 'awaiting_payment') return stop({ tone: 'error', text: result.reason }, null)
+    update({ phase: 'paying', order: result.order })
+    let how
+    try {
+      how = await openPaymentPopup(result.razorpay)
+    } catch {
+      return stop({ tone: 'error', text: 'The payment window could not be opened. Check your connection, then press Resume payment.' }, result.order)
+    }
+    return confirm(result.order, how)
+  }
+
+  const begin = async (useCredit) => {
+    update({ phase: 'starting' })
+    try {
+      await answer(await checkout(outletId, useCredit))
+    } catch (err) {
+      stop({ tone: 'error', text: err.message }, null)
+    }
+  }
+
+  const cancel = async () => {
+    update({ phase: 'cancelling', order: state.order })
+    try {
+      const result = await cancelCheckout(outletId)
+      if (result.status === 'paid') return finish(result)
+      update({ phase: 'idle', message: { tone: 'info', text: 'Payment cancelled. You can change the cart again.' } })
+    } catch (err) {
+      stop({ tone: 'error', text: err.message }, state.order)
+    }
+  }
+
+  return {
+    ...state,
+    busy: ['starting', 'paying', 'confirming', 'cancelling'].includes(state.phase),
+    begin,
+    // Checkout again: the server hands back the order already waiting.
+    resume: () => begin(false),
+    check: () => state.order && confirm(state.order, 'check'),
+    cancel,
+    clearMessage: () => update({ ...state, message: null }),
+  }
+}
+
+const BUSY_LABEL = {
+  starting: 'Starting payment…',
+  paying: 'Finish paying in the Razorpay window',
+  confirming: 'Confirming your payment…',
+  cancelling: 'Cancelling…',
+}
+
+function PaymentInProgress({ lock, payment }) {
+  return (
+    <Alert tone="info">
+      <p>
+        A payment for this cart is in progress (order {lock.orderNumber}).
+        {lock.expiresAt && ` It can be finished until ${formatTime(lock.expiresAt)}.`} The cart cannot be changed until
+        the payment finishes or is cancelled.
+      </p>
+      {payment.busy ? (
+        <p className="mt-2 font-semibold text-foreground">{BUSY_LABEL[payment.phase]}</p>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={payment.resume} className="rounded-lg bg-accent px-3 py-2 text-sm font-black text-accent-foreground hover:brightness-110">
+            Resume payment
+          </button>
+          {payment.order && (
+            <button type="button" onClick={payment.check} className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:border-accent/60">
+              Check payment
+            </button>
+          )}
+          <button type="button" onClick={payment.cancel} className="rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-destructive">
+            Cancel payment
+          </button>
+        </div>
+      )}
+    </Alert>
+  )
+}
+
 function Row({ label, value, strong, tone }) {
   return (
     <div className={`flex items-center justify-between gap-3 ${strong ? 'text-base font-black text-foreground' : 'text-sm text-muted-foreground'}`}>
@@ -171,27 +314,12 @@ function Row({ label, value, strong, tone }) {
   )
 }
 
-function Summary({ view }) {
-  const { checkout } = useCart()
+function Summary({ view, payment }) {
   const [useCredit, setUseCredit] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
 
   const credit = useCredit ? view.storeCredit.redeemable : 0
   const payable = Math.round((view.totals.total - credit) * 100) / 100
   const hasCredit = view.storeCredit.available > 0
-
-  const onCheckout = async () => {
-    setBusy(true)
-    setResult(null)
-    try {
-      setResult(await checkout(view.outlet.id, useCredit))
-    } catch (err) {
-      setResult({ ok: false, reason: err.message })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <aside className={`${panel} lg:sticky lg:top-24`}>
@@ -211,8 +339,8 @@ function Summary({ view }) {
           <input
             type="checkbox"
             checked={useCredit}
-            onChange={(e) => { setUseCredit(e.target.checked); setResult(null) }}
-            disabled={view.storeCredit.redeemable <= 0}
+            onChange={(e) => { setUseCredit(e.target.checked); payment.clearMessage() }}
+            disabled={view.storeCredit.redeemable <= 0 || Boolean(view.lock)}
             className="mt-0.5 h-4 w-4 accent-[hsl(var(--accent))]"
           />
           <span className="text-sm">
@@ -235,22 +363,23 @@ function Summary({ view }) {
         </dl>
       )}
 
-      {result && (
+      {payment.message && (
         <div className="mt-4">
-          <Alert tone={result.ok ? 'info' : 'error'}>
-            {result.ok ? result.message : result.reason}
-          </Alert>
+          <Alert tone={payment.message.tone}>{payment.message.text}</Alert>
         </div>
       )}
 
       <button
         type="button"
-        onClick={onCheckout}
-        disabled={!view.canCheckout || busy}
+        onClick={() => payment.begin(useCredit)}
+        disabled={!view.canCheckout || payment.busy}
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border-3 border-accent bg-accent px-5 py-3 text-base font-black text-accent-foreground shadow-button transition-all hover:shadow-button-hover hover:brightness-110 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
       >
-        {busy ? 'Checking…' : `Checkout · ${formatINR(payable)}`}
+        {payment.busy ? BUSY_LABEL[payment.phase] : `Checkout · ${formatINR(payable)}`}
       </button>
+      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+        Prices are fixed when you check out. You then have 15 minutes to pay.
+      </p>
       {!view.canCheckout && !view.lock && view.needsAnswer > 0 && (
         <p className="mt-2 text-center text-xs text-muted-foreground">
           {view.needsAnswer} {view.needsAnswer === 1 ? 'supply needs' : 'supplies need'} your answer above first.
@@ -280,6 +409,7 @@ function ClearCart({ outletId, lines, locked }) {
 function OutletCart({ outletId }) {
   const { carts, summary, loadCart, error, clearError } = useCart()
   const [loadFailed, setLoadFailed] = useState(false)
+  const payment = usePayment(outletId)
   const view = carts[outletId]
 
   useEffect(() => {
@@ -333,11 +463,7 @@ function OutletCart({ outletId }) {
           )}
 
           <div className="mt-4 space-y-3">
-            {view.lock && (
-              <Alert tone="info">
-                A payment for this cart is in progress (order {view.lock.orderNumber}). The cart cannot be changed until it finishes or expires.
-              </Alert>
-            )}
+            {view.lock && <PaymentInProgress lock={view.lock} payment={payment} />}
             {error && (
               <Alert>
                 {error} <button type="button" onClick={clearError} className="font-semibold text-accent-text hover:underline">Dismiss</button>
@@ -373,7 +499,7 @@ function OutletCart({ outletId }) {
                   {view.lines.map((line) => <LineRow key={line.id} line={line} outletId={outletId} locked={Boolean(view.lock)} />)}
                 </ul>
               </section>
-              <Summary key={outletId} view={view} />
+              <Summary key={outletId} view={view} payment={payment} />
             </div>
           )}
         </>

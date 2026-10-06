@@ -29,6 +29,8 @@ run first.
 | 15 | `15-tie-foco-portal-codes-to-ownership-model.sql` | FOFO turns an outlet's FOCO portal code off, FOCO back on; linking accepts FOFO outlets only. Replaces `set_outlet_ownership_model` (13) and `link_franchise_outlet` (12) | 12, 13 |
 | 16 | `16-create-fofo-accept-order-rpc.sql` | **not written yet** — the purchase manager's atomic accept | 07, 09, 10 |
 | 17 | `17-add-cart-price-agreement-lock-and-checkout-credit.sql` | applied 2026-09-15 — cart lines remember their agreed price; cart locked while paying and emptied on payment; `orders.store_credit_to_apply` held against the balance, `amount_paise` excludes it (decision 0020) | 05, 07, 08 |
+| 18 | `18-add-checkout-payment-and-invoice-numbering.sql` | applied 2026-10-06 — checkout freezes the order (`freeze_order`), a confirmed payment issues the goods invoice and applies credit (`mark_order_paid`), `cancel_checkout`, gapless `INV/26-27/0001` numbering, `payment_exceptions`, invoices refuse UPDATE/DELETE | 05, 07, 08, 10, 17 |
+| 19 | `19-add-invoice-payments.sql` | applied 2026-10-06 — paying an invoice that has money due: `begin_invoice_payment` (applies credit at once, says what is left), `open_invoice_payment` (the Razorpay order, as a `created` payment), `mark_invoice_paid`. Replaces `apply_store_credit` (10) to take an optional limit | 07, 08, 10, 17, 18 |
 
 01 and 02 are all Phase 1 of the build plan needs. Two rules that apply to every
 file here: do **not** add `fofo` to Supabase's exposed schemas, and check any

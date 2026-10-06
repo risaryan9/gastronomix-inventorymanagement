@@ -51,12 +51,11 @@ record: whenever the invoice is issued, it is never edited afterwards.
   trim.
 - A credit note must never exceed what is left of its invoice. No constraint
   enforces that yet; the accept function (migration 16) must check it.
-- **Immutability is a rule, not yet a guard.** Nothing in the database refuses an
-  `UPDATE` on `fofo.invoices` today. Only the server's service_role connection can
-  write there, but a `BEFORE UPDATE OR DELETE` trigger would make the rule
-  impossible to break rather than merely documented.
-- Gapless numbering needs a counter row locked inside the issuing transaction,
-  not a sequence (sequences skip on rollback). Not built yet.
+- **Immutability is a guard, not only a rule** (migration 18): a `BEFORE UPDATE
+  OR DELETE` trigger on `fofo.invoices` and `fofo.invoice_items` refuses any change.
+- Gapless numbering uses a counter row locked inside the issuing transaction,
+  not a sequence, which skips on rollback (`fofo.next_document_number`,
+  migration 18).
 
 ## Where it lives
 
