@@ -750,8 +750,10 @@ All of these live in `migrations/fofo/`, numbered in the order they must run.
 15. `15-tie-foco-portal-codes-to-ownership-model.sql` — an outlet's FOCO portal
     code follows its ownership model; only FOFO outlets can be linked (decision
     0019).
-16. `16-create-fofo-accept-order-rpc.sql` — **not written yet.** The atomic
-    accept, modelled on `pack_allocation_request`
+16. `16-create-fofo-accept-order-rpc.sql` — the atomic accept, modelled on
+    `pack_allocation_request`: `fofo.accept_order`. **In full only**; the trim
+    and its credit note come as a later file that replaces the function. The
+    stock-out it writes is a kitchen stock-out (decision 0024)
 17. `17-add-cart-price-agreement-lock-and-checkout-credit.sql` — **applied
     2026-09-15.** Agreed prices on cart lines, the cart lock while paying,
     emptying the cart on payment, and store credit redeemed at checkout and

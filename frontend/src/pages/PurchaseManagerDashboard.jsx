@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Outlet, NavLink } from 'react-router-dom'
+import { useNavigate, useLocation, Outlet, NavLink, Link } from 'react-router-dom'
 import { getSession, clearSession } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import gastronomixLogo from '../assets/gastronomix-logo.png'
 import { getBusinessDate } from '../lib/businessDate'
 import { onlyActiveMaterials } from '../lib/inventoryValuation'
 import { loadKitchenThresholds } from '../lib/stockThresholds'
+import useFranchiseOrdersSummary from '../hooks/useFranchiseOrdersSummary'
+
+const FRANCHISE_ORDERS_PATH = 'franchise-orders'
 
 const PurchaseManagerDashboard = () => {
   const [session, setSession] = useState(null)
@@ -18,6 +21,11 @@ const PurchaseManagerDashboard = () => {
     noStock: 0
   })
   const navigate = useNavigate()
+  const location = useLocation()
+  // FOFO orders waiting for this kitchen to accept. Polled here, in the shell,
+  // so the notice shows on every page and not only on Franchise Orders.
+  const franchiseOrders = useFranchiseOrdersSummary()
+  const onFranchiseOrders = location.pathname.endsWith(`/${FRANCHISE_ORDERS_PATH}`)
 
   useEffect(() => {
     const currentSession = getSession()
@@ -132,6 +140,9 @@ const PurchaseManagerDashboard = () => {
     { path: 'inventory', label: 'Inventory' },
     { path: 'returns', label: 'Returns' },
     { path: 'outlets', label: 'Requisition' },
+    // Its own section: these orders come from franchise-owned outlets through
+    // the partner app, not from our own outlets' requisitions.
+    { path: FRANCHISE_ORDERS_PATH, label: 'Franchise Orders', section: 'Franchise' },
   ]
 
   return (
@@ -186,6 +197,11 @@ const PurchaseManagerDashboard = () => {
           <ul className="space-y-2">
             {navItems.map((item) => (
               <li key={item.path}>
+                {item.section && (
+                  <p className="mt-4 mb-2 pt-4 px-4 border-t border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {item.section}
+                  </p>
+                )}
                 <NavLink
                   to={item.path}
                   onClick={() => setIsSidebarOpen(false)}
@@ -198,6 +214,25 @@ const PurchaseManagerDashboard = () => {
                   }
                 >
                   <span className="flex-1">{item.label}</span>
+
+                  {/* Franchise orders: a solid count while any wait for acceptance */}
+                  {item.path === FRANCHISE_ORDERS_PATH && franchiseOrders.waiting > 0 && (
+                    <span
+                      className="ml-2 inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold"
+                      aria-label={`${franchiseOrders.waiting} waiting for acceptance`}
+                    >
+                      {franchiseOrders.waiting}
+                    </span>
+                  )}
+                  {/* No working staff pass, so the count is unknown: the page asks for the key */}
+                  {item.path === FRANCHISE_ORDERS_PATH && franchiseOrders.needsPass && (
+                    <span
+                      className="ml-2 inline-flex items-center justify-center px-1.5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold"
+                      aria-label="Enter your login key to see franchise orders"
+                    >
+                      Key needed
+                    </span>
+                  )}
 
                   {/* Stock Out notifications: hourglass + count for pending allocations today */}
                   {item.path === 'stock-out' && notificationStats.pendingAllocationsToday > 0 && (
@@ -290,7 +325,32 @@ const PurchaseManagerDashboard = () => {
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto bg-background">
-          <Outlet />
+          {/* Shown on every page but Franchise Orders, which has its own notice. */}
+          {franchiseOrders.waiting > 0 && !onFranchiseOrders && (
+            <div role="status" className="px-2 sm:px-4 lg:px-6 pt-2 sm:pt-4 lg:pt-6">
+              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center gap-3 bg-accent/15 border-2 border-accent rounded-2xl px-4 py-4">
+                <span className="relative hidden sm:flex h-3 w-3 flex-shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-accent" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-base font-bold text-foreground">
+                    {franchiseOrders.waiting === 1
+                      ? '1 franchise order is waiting for your acceptance'
+                      : `${franchiseOrders.waiting} franchise orders are waiting for your acceptance`}
+                  </p>
+                  <p className="text-sm text-muted-foreground">The franchise has already paid.</p>
+                </div>
+                <Link
+                  to={FRANCHISE_ORDERS_PATH}
+                  className="px-4 py-2.5 text-sm font-bold rounded-xl bg-accent text-background hover:bg-accent/90 transition-colors text-center whitespace-nowrap"
+                >
+                  View orders
+                </Link>
+              </div>
+            </div>
+          )}
+          <Outlet context={{ franchiseOrders }} />
         </main>
       </div>
     </div>

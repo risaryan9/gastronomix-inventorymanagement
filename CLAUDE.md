@@ -35,6 +35,7 @@ look like bugs and are not.** Check the index in
 | a FOFO invoice PDF, or the seller's details | [0021 — invoice PDFs and the seller](docs/decisions/0021-invoice-pdfs-are-drawn-in-the-browser-and-the-seller-is-configuration.md) |
 | a recipe, the Recipes page, or the cost of a made product | [0022 — a recipe is shares and a yield](docs/decisions/0022-a-recipe-is-shares-of-the-mix-and-a-yield-fraction.md) |
 | a staff FOFO screen or endpoint, or key login | [0023 — the staff pass](docs/decisions/0023-the-staff-pass-is-a-bearer-token-issued-for-the-login-key.md) |
+| accepting a FOFO order, a stock-out reason, or a report that sums kitchen stock-outs | [0024 — a franchise sale is a kitchen stock-out](docs/decisions/0024-a-franchise-sale-is-a-kitchen-stock-out.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

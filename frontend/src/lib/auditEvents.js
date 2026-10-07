@@ -216,6 +216,8 @@ export const STOCK_OUT_REASON_LABEL = {
   dispatch: 'Brand dispatch',
   'inter-cloud-kitchen': 'Transfer to another kitchen',
   adjustment: 'Stock adjustment',
+  // Stock sold to a franchise-owned outlet (fofo.accept_order, decision 0024).
+  'franchise-order': 'Franchise order',
 }
 
 // Why a sign-in was turned away. The reason is recorded but deliberately never

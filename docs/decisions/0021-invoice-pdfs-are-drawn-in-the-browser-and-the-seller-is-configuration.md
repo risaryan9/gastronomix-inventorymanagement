@@ -35,6 +35,16 @@ under the totals, because that part does change.
 `SELLER_GSTIN`, `SELLER_ADDRESS` (`partner-frontend/.env.example`), returned
 with each invoice.
 
+**The seller is Delectable Gourmet Private Limited**, GSTIN 29AAJCD6630M1Z5, 3rd
+Floor, 75/2, Giddens Layout, Kotak Mahindra Bank Building, Bengaluru, Karnataka
+560066 (given on 2026-10-07, from the shipping label the business already
+prints). An invoice printing "Gastronomix", the fallback when the configuration
+is unset, is therefore wrong, not merely incomplete.
+
+**The shipping label reads the same configuration** as its sender
+(`api/_lib/seller.js`), so the invoice and the label in one box name the same
+company. Added 2026-10-07 with the pack step.
+
 ## Alternatives
 
 **A server endpoint that returns a PDF.** One place to change the layout, and a
@@ -69,5 +79,8 @@ issued should say.
 
 - `partner-frontend/src/lib/invoicePdf.js`, `src/lib/pdfCurrency.js`,
   `src/components/payments/InvoicePdfButton.jsx`
-- `partner-frontend/api/_lib/orders.js` (`getInvoice`, `seller`)
-- `partner-frontend/.env.example`
+- `partner-frontend/api/_lib/orders.js` (`getInvoice`)
+- `partner-frontend/api/_lib/seller.js` — the one place the seller is read
+- `partner-frontend/.env.example` — the real values, since they are not secret
+- `partner-frontend/api/_lib/staffOrders.js` (`getShippingLabel`),
+  `frontend/src/lib/shippingLabelPdf.js` — the label that shares the seller

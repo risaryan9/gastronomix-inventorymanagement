@@ -11,6 +11,7 @@ import StockIn from './pages/purchase-manager/StockIn'
 import StockOut from './pages/purchase-manager/StockOut'
 import Materials from './pages/purchase-manager/Materials'
 import Recipes from './pages/purchase-manager/Recipes'
+import FranchiseOrders from './pages/purchase-manager/FranchiseOrders'
 import Inventory from './pages/purchase-manager/Inventory'
 import PMOutlets from './pages/purchase-manager/Outlets'
 import PMReturns from './pages/purchase-manager/Returns'
@@ -171,6 +172,7 @@ function App() {
               <Route path="returns" element={<PMReturns />} />
               <Route path="outlets" element={<PMOutlets />} />
               <Route path="outlets/:outletId" element={<PMOutletDetails />} />
+              <Route path="franchise-orders" element={<FranchiseOrders />} />
             </Route>
         
             <Route 

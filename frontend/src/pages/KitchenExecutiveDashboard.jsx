@@ -15,6 +15,8 @@ import nippuKodiLogo from '../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../assets/el-chaapo-logo.png'
 import boomPizzaLogo from '../assets/boom-pizza-logo.png'
 import { getBusinessDate } from '../lib/businessDate'
+import useFranchiseOrdersSummary from '../hooks/useFranchiseOrdersSummary'
+import FranchiseOrders from './purchase-manager/FranchiseOrders'
 
 const BRANDS = [
   {
@@ -62,6 +64,12 @@ const KitchenExecutiveDashboard = () => {
   const toast = useToast()
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+  // 'dispatch' (our own outlets' dispatch plans) or 'franchise' (FOFO orders to
+  // pack). Two separate jobs, so two views rather than one long page.
+  const [view, setView] = useState('dispatch')
+  // Accepted FOFO orders waiting to be packed. Polled here so the notice shows
+  // whichever view is open.
+  const franchiseOrders = useFranchiseOrdersSummary()
   const [cloudKitchenId, setCloudKitchenId] = useState(null)
   const [userId, setUserId] = useState(null)
 
@@ -533,6 +541,72 @@ const KitchenExecutiveDashboard = () => {
       </header>
 
       <main className="flex-1 overflow-auto">
+        {/* Which job: dispatch plans, or franchise orders to pack */}
+        <div className="max-w-7xl mx-auto px-4 pt-4 lg:pt-6">
+          <div role="tablist" className="flex gap-2 border-b border-border">
+            {[
+              { id: 'dispatch', label: 'Dispatch Plans' },
+              { id: 'franchise', label: 'Franchise Orders' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={view === tab.id}
+                onClick={() => setView(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 -mb-px text-sm lg:text-base font-semibold border-b-2 transition-colors ${
+                  view === tab.id
+                    ? 'border-accent text-accent'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+                {tab.id === 'franchise' && franchiseOrders.toPack > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold"
+                    aria-label={`${franchiseOrders.toPack} ready to pack`}
+                  >
+                    {franchiseOrders.toPack}
+                  </span>
+                )}
+                {tab.id === 'franchise' && franchiseOrders.needsPass && (
+                  <span className="inline-flex items-center px-1.5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">
+                    Key needed
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Shown over dispatch plans; Franchise Orders has its own notice */}
+          {view === 'dispatch' && franchiseOrders.toPack > 0 && (
+            <div role="status" className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-accent/15 border-2 border-accent rounded-2xl px-4 py-4">
+              <span className="relative hidden sm:flex h-3 w-3 flex-shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-accent" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-bold text-foreground">
+                  {franchiseOrders.toPack === 1
+                    ? '1 franchise order is ready to pack'
+                    : `${franchiseOrders.toPack} franchise orders are ready to pack`}
+                </p>
+                <p className="text-sm text-muted-foreground">Your purchase manager has accepted it.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setView('franchise')}
+                className="px-4 py-2.5 text-sm font-bold rounded-xl bg-accent text-background hover:bg-accent/90 transition-colors whitespace-nowrap"
+              >
+                View orders
+              </button>
+            </div>
+          )}
+        </div>
+
+        {view === 'franchise' ? (
+          <FranchiseOrders role="kitchen_executive" shell={franchiseOrders} />
+        ) : (
         <div className="max-w-7xl mx-auto px-4 py-6 lg:py-8">
           {/* Brand selection */}
           <section className="mb-6 lg:mb-8">
@@ -755,6 +829,7 @@ const KitchenExecutiveDashboard = () => {
             </section>
           )}
         </div>
+        )}
       </main>
 
       {/* Draft plan modal */}

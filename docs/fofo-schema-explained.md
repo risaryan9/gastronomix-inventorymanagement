@@ -360,7 +360,7 @@ Razorpay is asked for                          45063 paise
 | Missing | Why it matters |
 |---|---|
 | CGST / SGST / IGST split, kitchen and outlet states | Needed if these invoices become the official GST invoice. Being handled by the accounting team. |
-| The purchase manager's **accept** function (file 16) | Stock-out, trim and credit note in one step. Not written yet. |
+| **Trimming** an order at accept | The accept function (file 16) takes an order in full only. Accepting less needs a credit note and store credit in the same step, and is not written yet. |
 | What a franchise's **own user management** screen allows | Admins get full user management; the franchise's limited version isn't defined yet. |
 | Invoice and credit note **numbering** | Must be gapless per financial year. Not built yet. |
 | Invoice **paid / unpaid** status | Needed to block checkout when they owe money. |

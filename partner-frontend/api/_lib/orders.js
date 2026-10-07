@@ -28,6 +28,7 @@ import { HttpError, isUuid } from './http.js'
 import { publicOutlet } from './catalog.js'
 import { add, sub } from './decimal.js'
 import { lineAmounts, money, unitMoney } from './pricing.js'
+import { seller } from './seller.js'
 
 // The order's kitchen is the one frozen on it at checkout, not the outlet's today.
 const ORDER_OUTLET = `
@@ -252,16 +253,6 @@ export async function getOrder(db, franchiseId, orderId) {
     amountDue: money(invoices.reduce((s, i) => add(s, i.owed), 0n)),
   }
 }
-
-// Who issues the invoice. Not in the database: there is one seller, and its
-// legal name, GSTIN and address are configuration (.env.example). An invoice
-// does not freeze them the way it freezes the buyer, so a change here changes
-// how an old invoice prints. Decision 0021 says why that is accepted for now.
-const seller = () => ({
-  name: process.env.SELLER_LEGAL_NAME || 'Gastronomix',
-  gstin: process.env.SELLER_GSTIN || null,
-  address: process.env.SELLER_ADDRESS || null,
-})
 
 /**
  * GET /api/franchise/invoices?id= — one invoice exactly as issued: the buyer

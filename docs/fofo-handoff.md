@@ -90,9 +90,14 @@ back, with Razorpay's replies faked: credit then Razorpay, a repeat press, a
 wrong amount, a replay, a second payment, another franchise. **Not yet paid in
 a browser**, which needs a logistics invoice, which needs the staff side.
 Every invoice downloads as a PDF (`src/lib/invoicePdf.js`, decision 0021).
-**Owed before real use:** `SELLER_LEGAL_NAME`, `SELLER_GSTIN` and
-`SELLER_ADDRESS` in the partner app's environment, and the accountant's view of
-the PDF layout (one GST figure per rate, no CGST/SGST/IGST split).
+**The seller is now known** (2026-10-07): Delectable Gourmet Private Limited,
+GSTIN 29AAJCD6630M1Z5, 3rd Floor, 75/2, Giddens Layout, Kotak Mahindra Bank
+Building, Bengaluru, Karnataka 560066. The values are in `.env.example` and the
+local `.env`. **Owed before real use:** the same three variables
+(`SELLER_LEGAL_NAME`, `SELLER_GSTIN`, `SELLER_ADDRESS`) set on Vercel for the
+partner project, without which live invoices and labels print "Gastronomix"
+and no GSTIN; and the accountant's view of the PDF layout (one GST figure per
+rate, no CGST/SGST/IGST split).
 
 **Built on 2026-10-06: the Recipes page.** In the purchase manager dashboard
 and under Admin → Operations (`frontend/src/pages/purchase-manager/Recipes.jsx`).
@@ -117,17 +122,92 @@ real handler against a local Postgres, 47 checks: right and wrong keys, wrong
 role and kitchen, the other key-login roles, both throttles, expiry, sign-out,
 and a pass ending when its user is deactivated, moved, or has their key
 changed. **The endpoints have not yet been run against the hosted database or in a browser**, and
-`staffPass.js` itself has only been built and linted, not run. Nothing uses a
-pass yet: there is no staff endpoint beyond `/api/staff/pass`.
+`staffPass.js` itself has only been built and linted, not run. The first thing
+to use a pass is Franchise Orders, below.
 
-**Not built:** a screen for `fofo.payment_exceptions`; the accept function
-(migration 16); credit-note issuing; credit-note PDFs; on the staff side,
-everything after the pass — the order list, accept, pack, the logistics
-invoice, shipping, and the prompt that asks for the key again when a pass has
-run out (`StaffPassRequired`), which belongs with the first staff screen.
+**Built on 2026-10-07: Franchise Orders, read only**, the purchase manager's
+list of FOFO orders (`frontend/src/pages/purchase-manager/FranchiseOrders.jsx`),
+in its own "Franchise" section of the sidebar. It lists every paid-for order
+the kitchen serves, and opening one shows its lines against the kitchen's
+stock on hand, with any shortfall.
+- **The notice.** The dashboard shell polls
+  `GET /api/staff/orders/summary` every minute
+  (`hooks/useFranchiseOrdersSummary.js`) and, while any order is `paid`, shows
+  a gold banner above every page and a red count on the sidebar entry.
+- **The key prompt** (`components/StaffPassPrompt.jsx`) replaces the list when
+  there is no working pass, which is everyone who logged in before passes
+  existed. The sidebar entry then reads "Key needed".
+- **Server:** `api/_lib/staffOrders.js`, three GET routes under `/api/staff`,
+  purchase managers only, scoped to the pass holder's kitchen. No migration.
+- Exercised through the real handler against a local Postgres with stand-in
+  tables (25 checks: kitchen isolation, unpaid checkouts hidden, shortfalls,
+  roles), and the queries run as written against the hosted database. Used in
+  a browser by the user on 2026-10-07, locally against the hosted database.
 
-**Git:** work goes on a branch; the user merges to `master` (pushing `master`
-redeploys the partner app).
+**Built on 2026-10-07: accept in full.** A waiting order opened on Franchise
+Orders has an "Accept order in full" button, confirmed first.
+`POST /api/staff/orders/accept` calls `fofo.accept_order` (migration 16,
+applied and verified 2026-10-07), which in one transaction writes the accepted
+quantities, the stock-out, the FIFO consumption, status `accepted` and a
+`fofo_money / order_accepted` audit event.
+- **In full only.** If the kitchen is short on any line the button is off and
+  the function refuses, naming each shortfall. The way through is to stock in.
+  Trimming needs the credit note and is the last step of the staff side.
+- **The stock-out is a kitchen stock-out**, reason `franchise-order`, no outlet
+  (decision 0024). It appears in the Stock Out history and the admin kitchen
+  breakdown under that reason, and is not counted against any of our outlets.
+- Exercised through the real handler against a local Postgres, 39 checks. The
+  stock tables were stand-ins, but `fifo_consume`, the `stock_out` CHECK and
+  `log_fofo_audit_event` were copied from the hosted database and the
+  inventory trigger is the repo's migration. Covered: who may accept, the
+  stock-out's shape, FIFO order and cost, the audit event, a short order left
+  untouched, two presses at once, and two orders racing for stock only one can
+  have. Used for real on 2026-10-07: FO-000001 and FO-000002 accepted from the
+  screen, each leaving one stock-out, matching consumption and one audit
+  event, and CK1's stock down by exactly two.
+- The audit screens in the internal app do not list `fofo_money` events at
+  all yet, so the accept is recorded but not shown anywhere.
+
+**Built on 2026-10-07: pack, and the shipping label.** The kitchen executive's
+dashboard has two tabs, Dispatch Plans and Franchise Orders. The second is the
+same screen the purchase manager uses (`FranchiseOrders.jsx`, with
+`role="kitchen_executive"`), showing only orders that have been accepted,
+grouped To pack / Packed / Completed. A gold banner over Dispatch Plans and a
+red count on the tab say how many are ready to pack.
+- **Mark as packed** calls `POST /api/staff/orders/pack` →
+  `fofo.mark_order_packed` (migration 22, applied and verified 2026-10-07), which
+  moves only the status, records who and when (`orders.packed_by`, new), and
+  writes a `fofo_money / order_packed` audit event. Kitchen executives only;
+  a purchase manager is refused.
+- **Print label / Download label**, on any accepted order that is not yet
+  delivered, for both roles. `GET /api/staff/orders/label` says what goes on
+  it; `lib/shippingLabelPdf.js` draws one A4 page after the label the business
+  already prints: ship-to, the goods invoice's number and date, that number as
+  a Code 128 barcode (`lib/code128.js`), sender, the return line. Print loads
+  the PDF into a hidden frame and opens the browser's print dialog.
+- **The ship-to name and address are the buyer frozen on the goods invoice**,
+  not the franchise as it is today; the phone is the franchise's current one.
+- **Migration 22 must be applied before this server code runs**: the order
+  detail query reads `orders.packed_by`, so without the column every order
+  fails to open, for the purchase manager too.
+- Checked: 40 server checks through the real handler on the local stand-in
+  database (roles, kitchen isolation, the frozen buyer, the goods invoice
+  chosen over a logistics one, two presses at once, no stock moved). The
+  barcode encoder reproduces the bars on the sample label exactly, and the
+  bars drawn for a real invoice number were read back off the rendered PDF.
+  Packing was used for real on 2026-10-07 (FO-000002 packed by CK1's kitchen
+  executive, one audit event). **Not confirmed:** the print dialog across
+  browsers, or the barcode under a real scanner.
+- The sample label PDF the layout was taken from is not in the repo: it
+  carries a real customer's address and phone number.
+
+**Not built:** a screen for `fofo.payment_exceptions`; trimming an order at
+accept, and so credit-note issuing; credit-note PDFs; on the staff side, the
+logistics invoice, shipping and delivered.
+
+**Git:** the handoff first said work goes on a branch. Since 2026-10-07 commits
+have gone straight to `master` at the user's request. Pushing `master`
+redeploys the partner app, so push only when asked.
 
 ## Decided in conversation
 
@@ -207,8 +287,8 @@ Not in the spec:
 
 **The staff side, in this order** (agreed 2026-10-07): the staff pass (done,
 migration 21 applied) → a read-only list of FOFO orders for the purchase
-manager, with the key prompt → accept in full, no trim (migration 16) → pack →
-the logistics invoice → shipping and delivered → trim with a credit note. Up to
+manager, with the key prompt (done) → accept in full, no trim (done, migration 16 applied) → pack and the shipping label (done,
+migration 22 applied) → the logistics invoice → shipping and delivered → trim with a credit note. Up to
 shipping gets one real order from paid to delivered (the Phase 5 gate) and lets
 an invoice's dues be paid in a browser for the first time. Still to be decided:
 the GST rate and HSN/SAC on the logistics invoice, and who marks an order

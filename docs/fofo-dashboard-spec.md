@@ -726,6 +726,15 @@ Two supporting rules:
 
 **What leaves the shelf is the finished good itself**, not its BOM components.
 
+> **Built so far: accept in full** (`fofo.accept_order`, migration 16). Steps
+> 1–4, 6 and 7 above, with every line accepted at the quantity ordered. The
+> trim and step 5 are not built, so today the only way past a shortfall is to
+> stock up first. The stock-out is written as a kitchen stock-out with reason
+> `franchise-order` and no outlet (decision
+> [0024](decisions/0024-a-franchise-sale-is-a-kitchen-stock-out.md)). Stock is
+> compared by name before anything is written, so the refusal lists every
+> shortfall; `fifo_consume` remains the guarantee.
+
 ### 8.4 Packing and shipping
 
 1. The accepted order appears on the **kitchen executive's** dashboard. They
@@ -739,6 +748,16 @@ Two supporting rules:
 
 Shipping cost is **not** estimated at checkout. Mode of transport, destination
 and packaging vary too much to compute automatically.
+
+> **Built so far: step 1** (`fofo.mark_order_packed`, migration 22). The
+> kitchen executive's dashboard has a Franchise Orders tab listing accepted
+> orders; "Mark as packed" moves the status and nothing else, and only a
+> kitchen executive may press it. The shipping label is one A4 page, printed
+> or downloaded from the same screen: ship-to (the buyer frozen on the goods
+> invoice), the goods invoice's number, date and Code 128 barcode, and the
+> seller as sender. Printing is not recorded and not required before packing.
+> Step 2 stays verbal; the purchase manager also sees the order turn to
+> "Packed".
 
 ---
 
@@ -934,11 +953,24 @@ migration 21, `api/_lib/staffAuth.js`). Staff endpoints live under
 | `POST /api/staff/pass` | `{ login_key, role, cloud_kitchen_id }`. Checks the key and returns a pass, once. Wrong key 401, too many wrong keys 429. The internal app calls it at key login. **Built** |
 | `GET /api/staff/pass` | Who the pass belongs to, or 401. **Built** |
 | `DELETE /api/staff/pass` | Ends the pass, on sign-out. **Built** |
+| `GET /api/staff/orders/summary` | Both roles. How many of the kitchen's orders are `paid` and waiting for acceptance, how many are `accepted` and waiting to be packed, and since when. Each dashboard polls it for its notice. **Built** |
+| `GET /api/staff/orders` | Both roles. The kitchen's orders the caller's role may see, newest first: franchise, outlet, supplies, order value, status. Unpaid checkouts are left out. **Built** (`api/_lib/staffOrders.js`) |
+| `GET /api/staff/orders?id=` | Both roles. One order with its lines and, while it waits for acceptance, this kitchen's stock on hand and any shortfall per line. Another kitchen's order answers 404. Never the cost or margin. **Built** |
 
-Every other staff endpoint starts from `requireStaff(req, roles)` and answers
-401 only for a missing or ended pass, which is the internal app's signal to ask
-for the key again. The endpoints that act on orders are not fixed yet; they are
-designed with 8.3.
+| `POST /api/staff/orders/accept` | Purchase manager. `{ order_id }`. Accepts a paid order **in full** through `fofo.accept_order` and answers with the order as it now stands. 422 with the reason in words when the kitchen is short or the order is already accepted; 404 for another kitchen's order. **Built** |
+
+| `GET /api/staff/orders/label?id=` | Both roles. What the shipping label says for an accepted order: ship-to, the goods invoice's number and date, the seller as sender. 404 before the order is accepted. The label is drawn in the internal app (`lib/shippingLabelPdf.js`). **Built** |
+| `POST /api/staff/orders/pack` | Kitchen executive. `{ order_id }`. Marks an accepted order packed through `fofo.mark_order_packed` and answers with the order as it now stands. 403 for a purchase manager; 422 if it is already packed. **Built** |
+
+The three reads are open to both roles and each is sent what its role may see:
+a purchase manager every paid-for order, a kitchen executive every accepted
+one. An order outside a role's view is 404 for it, not 403.
+
+Every staff endpoint other than `POST /api/staff/pass` names the roles it
+allows, starts from `requireStaff(req, roles)`, and answers 401 only for a
+missing or ended pass, which is the internal app's signal to ask for the key
+again. The kitchen always comes from the pass, never from the request. The
+endpoints that change an order are not fixed yet; they are designed with 8.3.
 
 ---
 

@@ -47,6 +47,8 @@ export const SELF_STOCK_OUT_REASONS = {
   'cullinary-rnd': 'Culinary R&D',
   'inter-cloud-kitchen': 'Inter-Kitchen Transfer',
   wastage: 'Wastage',
+  // Stock sold to a franchise-owned outlet (fofo.accept_order, decision 0024).
+  'franchise-order': 'Franchise Order',
 }
 
 export const reasonLabel = (reason) =>
