@@ -2,6 +2,8 @@
  * Authentication and Session Management Utilities
  */
 
+import { forgetStaffPass } from './staffPass'
+
 // Get current user session
 export const getSession = () => {
   try {
@@ -27,6 +29,8 @@ export const getSession = () => {
 export const clearSession = () => {
   localStorage.removeItem('user_session')
   sessionStorage.removeItem('user')
+  // The FOFO staff pass belongs to whoever was logged in (lib/staffPass.js).
+  forgetStaffPass()
 }
 
 // Check if user is authenticated

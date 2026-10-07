@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { STAFF_PASS_ROLES, forgetStaffPass, requestStaffPass } from '../lib/staffPass'
 
 const BP_OPERATOR_DEFAULT_CLOUD_KITCHEN_ID = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e'
 
@@ -56,6 +57,8 @@ const Login = () => {
 
       localStorage.setItem('user_session', JSON.stringify(sessionData))
       sessionStorage.setItem('user', JSON.stringify(sessionData))
+      // An admin has no staff pass; drop one left by whoever used this browser before.
+      forgetStaffPass()
 
       // Redirect to role-based dashboard (client-side navigation)
       navigate(`/invmanagement/dashboard/${userData.role}`, { replace: true })
@@ -187,6 +190,19 @@ const Login = () => {
       
       // Also set in sessionStorage for immediate access
       sessionStorage.setItem('user', JSON.stringify(sessionData))
+
+      // The FOFO staff pass (lib/staffPass.js). This is the only moment the key
+      // is in hand, so the pass is asked for now, in the background: logging in
+      // neither waits for the partner app nor fails if it is unreachable. A
+      // FOFO screen that finds no pass asks for the key again.
+      forgetStaffPass()
+      if (STAFF_PASS_ROLES.includes(userData.role)) {
+        requestStaffPass({
+          loginKey: loginKey.trim(),
+          role: userData.role,
+          cloudKitchenId: userData.cloud_kitchen_id,
+        }).catch((err) => console.warn('No FOFO staff pass was issued at login:', err.message))
+      }
 
       // Redirect to role-based dashboard (client-side navigation)
       navigate(`/invmanagement/dashboard/${userData.role}`, { replace: true })

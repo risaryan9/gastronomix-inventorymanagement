@@ -32,6 +32,7 @@ run first.
 | 18 | `18-add-checkout-payment-and-invoice-numbering.sql` | applied 2026-10-06 — checkout freezes the order (`freeze_order`), a confirmed payment issues the goods invoice and applies credit (`mark_order_paid`), `cancel_checkout`, gapless `INV/26-27/0001` numbering, `payment_exceptions`, invoices refuse UPDATE/DELETE | 05, 07, 08, 10, 17 |
 | 19 | `19-add-invoice-payments.sql` | applied 2026-10-06 — paying an invoice that has money due: `begin_invoice_payment` (applies credit at once, says what is left), `open_invoice_payment` (the Razorpay order, as a `created` payment), `mark_invoice_paid`. Replaces `apply_store_credit` (10) to take an optional limit | 07, 08, 10, 17, 18 |
 | 20 | `20-save-recipes-as-shares-of-the-mix.sql` | applied (confirmed live 2026-10-07) — recipes are saved as each ingredient's share of the mix plus a yield fraction (decision 0022): `recipes.piece_weight_grams`, `save_recipe`, `remove_recipe`, both callable by the internal app | 02 |
+| 21 | `21-add-staff-passes.sql` | applied 2026-10-07 — the staff pass (decision 0023): `staff_passes`, `staff_pass_attempts`, `issue_staff_pass` (quiet key check, throttled), `resolve_staff_pass` (ends a pass whose user was deactivated, moved, or had their key changed), `end_staff_pass`. Purchase managers and kitchen executives only | 03 |
 
 01 and 02 are all Phase 1 of the build plan needs. Two rules that apply to every
 file here: do **not** add `fofo` to Supabase's exposed schemas, and check any

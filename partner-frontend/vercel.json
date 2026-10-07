@@ -5,6 +5,7 @@
     { "source": "/api/admin/:path*", "destination": "/api/admin?path=:path*" },
     { "source": "/api/auth/:path*", "destination": "/api/auth?path=:path*" },
     { "source": "/api/franchise/:path*", "destination": "/api/franchise?path=:path*" },
+    { "source": "/api/staff/:path*", "destination": "/api/staff?path=:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

@@ -16,7 +16,7 @@
  * and they check it once more themselves.
  *
  * Purchase managers and kitchen staff log in by key, not Supabase Auth; their
- * check is a different module, built with the accept flow.
+ * check is the staff pass, in staffAuth.js.
  */
 import { HttpError } from './http.js'
 

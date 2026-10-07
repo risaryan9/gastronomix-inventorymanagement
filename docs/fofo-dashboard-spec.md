@@ -918,11 +918,27 @@ Purchase managers and kitchen staff log in by key, not Supabase Auth, so:
 
 - The server checks the key **once** with a quiet lookup — not
   `authenticate_user_by_key`, which audits a login on every call — and issues a
-  temporary pass (~12 h) for later requests. Wrong keys are rate-limited.
+  temporary pass (7 days, the length of a key login) for later requests. Wrong
+  keys are rate-limited.
 - Every action checks the **kitchen** as well as the role: a PM acts only on
   orders whose `cloud_kitchen_id` is theirs.
 
-The exact staff endpoint paths are not fixed yet; they are designed with 8.3.
+The pass is built (decision
+[0023](decisions/0023-the-staff-pass-is-a-bearer-token-issued-for-the-login-key.md),
+migration 21, `api/_lib/staffAuth.js`). Staff endpoints live under
+`/api/staff/*`, carry CORS headers for the internal app, and are called with
+`Authorization: Bearer <pass>`:
+
+| Endpoint | Does |
+|---|---|
+| `POST /api/staff/pass` | `{ login_key, role, cloud_kitchen_id }`. Checks the key and returns a pass, once. Wrong key 401, too many wrong keys 429. The internal app calls it at key login. **Built** |
+| `GET /api/staff/pass` | Who the pass belongs to, or 401. **Built** |
+| `DELETE /api/staff/pass` | Ends the pass, on sign-out. **Built** |
+
+Every other staff endpoint starts from `requireStaff(req, roles)` and answers
+401 only for a missing or ended pass, which is the internal app's signal to ask
+for the key again. The endpoints that act on orders are not fixed yet; they are
+designed with 8.3.
 
 ---
 

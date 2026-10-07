@@ -1,6 +1,6 @@
 # FOFO — handoff for the next session
 
-Current state of the FOFO franchise dashboard work, as of **2026-09-25**, for
+Current state of the FOFO franchise dashboard work, as of **2026-10-07**, for
 starting implementation in a fresh session. The design itself is in the docs
 below; this file only holds what they do not: where things stand, decisions
 made in conversation, and the traps.
@@ -16,7 +16,8 @@ made in conversation, and the traps.
 5. `migrations/fofo/README.md` — run order and status
 6. Decisions `0004` (audit writes, grants), `0013` (store credit), and the three
    FOFO records `0014` (GST-inclusive pricing), `0015` (access only through the
-   partner server) and `0016` (invoices never edited)
+   partner server) and `0016` (invoices never edited); for the staff side,
+   `0023` (the staff pass)
 
 ## Where things stand
 
@@ -104,9 +105,26 @@ nested recipe, in a rolled-back transaction. **Not yet used in a browser.**
 The spreadsheet holds one recipe; six of its seven ingredients are not in the
 materials list under those names.
 
+**Built on 2026-10-07: the staff pass**, the first piece of the staff side
+(decision 0023). A purchase manager or kitchen executive logs in with their key
+exactly as before; in the background the internal app also sends that key once
+to `POST /api/staff/pass`, and gets back a 7-day token (the length of a key login) that later FOFO
+requests carry. Migration 21 (applied and verified 2026-10-07) holds the tables
+and functions; `api/_lib/staffAuth.js` and `api/staff.js` are the server;
+`frontend/src/lib/staffPass.js` is the internal app's half, called from
+`Login.jsx` and dropped by `clearSession`. The server was exercised through the
+real handler against a local Postgres, 47 checks: right and wrong keys, wrong
+role and kitchen, the other key-login roles, both throttles, expiry, sign-out,
+and a pass ending when its user is deactivated, moved, or has their key
+changed. **The endpoints have not yet been run against the hosted database or in a browser**, and
+`staffPass.js` itself has only been built and linted, not run. Nothing uses a
+pass yet: there is no staff endpoint beyond `/api/staff/pass`.
+
 **Not built:** a screen for `fofo.payment_exceptions`; the accept function
-(migration 16); credit-note issuing; credit-note PDFs; everything on the staff
-side.
+(migration 16); credit-note issuing; credit-note PDFs; on the staff side,
+everything after the pass — the order list, accept, pack, the logistics
+invoice, shipping, and the prompt that asks for the key again when a pass has
+run out (`StaffPassRequired`), which belongs with the first staff screen.
 
 **Git:** work goes on a branch; the user merges to `master` (pushing `master`
 redeploys the partner app).
@@ -121,7 +139,9 @@ Now in the spec and decision 0015, kept here as a summary:
   `authenticate_user_by_key` — then a ~12 h pass; kitchen checked on every
   action; wrong keys rate-limited. **Correction:** the browser session does
   *not* keep `login_key` (checked in `Login.jsx`), so the pass must be issued
-  at login or the key asked for again — see decision 0017.
+  at login or the key asked for again — see decision 0017. Built on
+  2026-10-07 as decision 0023: issued at login and valid 7 days, not ~12 h, so
+  it lasts as long as the key login and staff are not asked for the key again.
 - **`yield_quantity` is real** — BOMs are written per production run. Examples
   come with the BOM seed data (spec §5).
 
@@ -153,8 +173,17 @@ Not in the spec:
   Close this before real franchises order.
 - **`save_recipe` and `remove_recipe` trust the user id they are sent**, like the
   other catalog functions. Anyone with the internal app's anon key can change a
-  recipe, and so a FOFO price. Chosen knowingly (decision 0022); closes with the
-  staff pass.
+  recipe, and so a FOFO price. Chosen knowingly (decision 0022). The staff pass
+  now exists but does not close this by itself: the recipe and material writes
+  would have to move behind the partner server and `requireStaff` (0023).
+- **`authenticate_user_by_key` is callable with the public anon key and is not
+  throttled** (pre-existing). The staff pass throttles its own key check, so the
+  login function is now the easier place to guess a key. It does audit every
+  attempt.
+- **A staff endpoint must check the order's kitchen itself.** `requireStaff`
+  says who is calling and which kitchen they belong to; it does not look at the
+  order. And it must answer 401 only for a missing or ended pass, since that is
+  what makes the internal app ask for the key again.
 - **The test outlet EC1027 is served by CK1**, which had purchase history for
   only 5 materials on 2026-09-15. Most supplies show as unavailable there. CK2
   and CK3 have far more.
@@ -175,6 +204,18 @@ Not in the spec:
   socket). Pure JS was verified by running it directly with `node`.
 
 ## Sensible next steps
+
+**The staff side, in this order** (agreed 2026-10-07): the staff pass (done,
+migration 21 applied) → a read-only list of FOFO orders for the purchase
+manager, with the key prompt → accept in full, no trim (migration 16) → pack →
+the logistics invoice → shipping and delivered → trim with a credit note. Up to
+shipping gets one real order from paid to delivered (the Phase 5 gate) and lets
+an invoice's dues be paid in a browser for the first time. Still to be decided:
+the GST rate and HSN/SAC on the logistics invoice, and who marks an order
+delivered.
+
+The older notes below predate that and are kept for what they say about
+onboarding.
 
 **In progress: onboarding first**, ahead of pricing — tracked in
 `docs/fofo-onboarding-checklist.md`. Migration 12 is the franchise admin

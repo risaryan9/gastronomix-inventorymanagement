@@ -36,7 +36,7 @@ endpoints:
 - **Admins** send their Supabase Auth session. The server checks `public.users`
   (active, role `admin`); the database functions check again.
 - **Purchase managers and kitchen staff** log in by key, not Supabase Auth. The
-  server checks the key **once** and issues a short-lived pass (~12 h) for later
+  server checks the key **once** and issues a pass (7 days, as long as the key login; first written as ~12 h, see 0023) for later
   requests. The check is a quiet lookup — not `authenticate_user_by_key`, which
   writes a login audit event on every call. Wrong keys are rate-limited.
 - Every staff action checks the **kitchen**, not only the role: a PM acts only on
@@ -73,6 +73,7 @@ public key. Only a server that has checked the key can.
 
 - `partner-frontend/vite.config.js` — the build that refuses secrets in the bundle
 - `partner-frontend/api/` — the server
+- Decision [0023](0023-the-staff-pass-is-a-bearer-token-issued-for-the-login-key.md) — how the staff pass is built
 - `migrations/fofo/03-create-fofo-schema.sql` — the unexposed schema
 - `docs/fofo-dashboard-spec.md` §4, §11, §12
 - `docs/fofo-schema.md` §2 — the live policies that forced this
