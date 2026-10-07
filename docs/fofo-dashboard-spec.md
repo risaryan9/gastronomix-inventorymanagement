@@ -209,7 +209,8 @@ up from component costs — which move every time a vendor's price changes.
 public.recipes
   id                 uuid pk
   material_id        uuid not null unique references raw_materials(id)
-  yield_quantity     numeric not null default 1   -- how much one run produces
+  yield_quantity     numeric not null default 1   -- the yield FRACTION: 0.62 = 62% of the mix comes out
+  piece_weight_grams numeric                      -- for a material counted in pieces (migration 20)
   is_active          boolean not null default true
   notes              text
   created_at, updated_at, deleted_at
@@ -218,14 +219,17 @@ public.recipe_items
   id                    uuid pk
   recipe_id             uuid not null references recipes(id) on delete cascade
   component_material_id uuid not null references raw_materials(id)
-  quantity              numeric not null check (quantity > 0)
+  quantity              numeric not null check (quantity > 0 and quantity <= 1)  -- SHARE of the mix by weight
   unique (recipe_id, component_material_id)
 ```
 
-> **Confirmed:** `yield_quantity` is used. Kitchens make things in batches — a
-> marinade run yields 5 kg, not 1 — and BOMs are written per production run.
-> Per-unit cost is `sum(components) / yield_quantity`. Real examples arrive
-> with the BOM seed data.
+> **A recipe is a ratio, not a batch** (decision
+> [0022](decisions/0022-a-recipe-is-shares-of-the-mix-and-a-yield-fraction.md)).
+> The kitchen types one batch in grams and a yield fraction; what is stored is
+> each ingredient's share of the mix (the shares add up to 1) and the fraction.
+> Cost per kg of output is `sum(share × ingredient cost per kg) / yield`. It is
+> entered on the Recipes page, by purchase managers and admins, through
+> `save_recipe` (migration 20).
 
 ### Rules
 
@@ -235,9 +239,13 @@ public.recipe_items
 - **A loop guard is mandatory.** A BOM must not be able to contain itself,
   directly or through a chain. Enforce on write (walk the tree before saving)
   and defend again on read with a depth cap, because data can predate the guard.
-- **A component with no purchase history anywhere cannot be added to a BOM.**
-  Blocked in the admin UI. This is the first line of defence, not the guarantee
-  — see section 6.
+- **A component with no purchase history can be added**, and the Recipes page
+  says the recipe cannot be costed in that kitchen yet. (This was first written
+  as a block. It is a warning instead, so a recipe can be entered before its
+  ingredients have been bought; section 6.4 is the guarantee either way.)
+- **Everything is weighed.** A material bought by the piece cannot be an
+  ingredient; a litre counts as 1,000 g; a made material counted in pieces
+  carries a piece weight on its recipe.
 
 ---
 
@@ -309,11 +317,14 @@ Take the **first** rule that applies, always **in the serving kitchen**:
 ### 6.3 Food cost, for made goods
 
 ```
-food_cost(material, kitchen) =
+food_cost_per_kg(material, kitchen) =
     SUM over recipe_items of
-        quantity * cost_of(component, kitchen)
-    / recipe.yield_quantity
+        share * cost_per_kg(component, kitchen)
+    / recipe.yield_quantity          -- a fraction
 ```
+
+A material counted in pieces then costs `food_cost_per_kg × piece_weight_grams
+/ 1000` each.
 
 where `cost_of` recurses into another recipe when the component is itself made,
 and otherwise uses section 6.2.

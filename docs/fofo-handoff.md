@@ -93,6 +93,17 @@ Every invoice downloads as a PDF (`src/lib/invoicePdf.js`, decision 0021).
 `SELLER_ADDRESS` in the partner app's environment, and the accountant's view of
 the PDF layout (one GST figure per rate, no CGST/SGST/IGST split).
 
+**Built on 2026-10-06: the Recipes page.** In the purchase manager dashboard
+and under Admin → Operations (`frontend/src/pages/purchase-manager/Recipes.jsx`).
+A batch is typed in grams with a yield fraction and saved as a ratio (decision
+0022). Migration 20 (applied; confirmed live 2026-10-07) adds `save_recipe`,
+`remove_recipe` and `recipes.piece_weight_grams`. The partner server's cost
+roll-up reads recipes the new way (`api/_lib/pricing.js`). Both were checked
+against the spreadsheet's Chicken Basic Marination (Rs 621.31 per kg) and a
+nested recipe, in a rolled-back transaction. **Not yet used in a browser.**
+The spreadsheet holds one recipe; six of its seven ingredients are not in the
+materials list under those names.
+
 **Not built:** a screen for `fofo.payment_exceptions`; the accept function
 (migration 16); credit-note issuing; credit-note PDFs; everything on the staff
 side.
@@ -140,6 +151,10 @@ Not in the spec:
   it**, so anyone holding the internal app's anon key can change a material's
   `sale_margin_percent` or `is_fofo_sellable`, which are now live FOFO prices.
   Close this before real franchises order.
+- **`save_recipe` and `remove_recipe` trust the user id they are sent**, like the
+  other catalog functions. Anyone with the internal app's anon key can change a
+  recipe, and so a FOFO price. Chosen knowingly (decision 0022); closes with the
+  staff pass.
 - **The test outlet EC1027 is served by CK1**, which had purchase history for
   only 5 materials on 2026-09-15. Most supplies show as unavailable there. CK2
   and CK3 have far more.

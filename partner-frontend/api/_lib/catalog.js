@@ -116,6 +116,7 @@ async function kitchenPricing(db, kitchenId) {
   )
   const recipes = await db.query(
     `SELECT r.material_id, r.yield_quantity::text AS yield_quantity,
+            r.piece_weight_grams::text AS piece_weight_grams,
             ri.component_material_id, ri.quantity::text AS quantity
        FROM public.recipes r
        JOIN public.recipe_items ri ON ri.recipe_id = r.id
@@ -127,7 +128,7 @@ async function kitchenPricing(db, kitchenId) {
   const costMap = new Map(costs.rows.map((c) => [c.id, c.cost]))
   const recipeMap = new Map()
   for (const row of recipes.rows) {
-    if (!recipeMap.has(row.material_id)) recipeMap.set(row.material_id, { yieldQuantity: row.yield_quantity, items: [] })
+    if (!recipeMap.has(row.material_id)) recipeMap.set(row.material_id, { yieldQuantity: row.yield_quantity, pieceWeightGrams: row.piece_weight_grams, items: [] })
     recipeMap.get(row.material_id).items.push({ componentId: row.component_material_id, quantity: row.quantity })
   }
   return { materials: materialMap, cost: costResolver({ materials: materialMap, costs: costMap, recipes: recipeMap }) }

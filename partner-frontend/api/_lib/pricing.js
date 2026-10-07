@@ -15,10 +15,29 @@
  *
  * WHERE THE BASE COST COMES FROM, always in the serving kitchen, never another:
  *   raw_material, non_food   the purchase cost (costs, below)
- *   semi_finished, finished  the recipe: Σ component quantity × component cost
- *                            ÷ yield_quantity, recursing into made components
+ *   semi_finished, finished  the recipe, recursing into made components
  * No cost in this kitchen → the material is unavailable here (§6.4). Never fall
  * back to another kitchen's price.
+ *
+ * A RECIPE IS A RATIO BY WEIGHT (decision 0022, migration 20). Each line's
+ * quantity is the ingredient's SHARE of the mix, the shares adding up to 1, and
+ * yield_quantity is the fraction of the mix that comes out. So a recipe is
+ * costed per kilogram, whatever the product is sold in:
+ *
+ *   cost of 1 kg of output = Σ share × cost of 1 kg of ingredient ÷ yield
+ *
+ * and each material's cost per kilogram comes from its unit:
+ *   kg             its cost, as it is
+ *   liter          its cost: a litre is taken as 1,000 g
+ *   nos, packets   bought → none: nothing says what a piece weighs, so it
+ *                  cannot be in a recipe (save_recipe refuses it too)
+ *                  made   → its recipe's cost per kg
+ * A made material sold by the piece costs its per-kg cost × the recipe's
+ * piece_weight_grams ÷ 1000.
+ *
+ * The internal app's Recipes page previews the same sum from
+ * frontend/src/lib/recipeCost.js. The two apps share no code: change the rule
+ * in both, or the preview and the price a franchise pays will disagree.
  *
  * PRECISION, the same everywhere a price is frozen (05-create-fofo-orders-and-carts.sql):
  * unit figures to 4 places, each LINE rounded to the paisa, lines added up.
@@ -30,6 +49,9 @@
 import { add, dec, div, mul, percent, round, toFixed, toNumber } from './decimal.js'
 
 const MADE = new Set(['semi_finished', 'finished'])
+// Counted, not weighed. Everything else (kg, liter) has a cost per kilogram.
+const COUNTED = new Set(['nos', 'packets'])
+const GRAMS_PER_KG = '1000'
 
 // A BOM can predate the loop guard, so the read defends itself too (spec §5).
 const MAX_RECIPE_DEPTH = 10
@@ -37,15 +59,19 @@ const MAX_RECIPE_DEPTH = 10
 /**
  * Base costs for every material that can be costed in one kitchen.
  *
- *   materials  Map id → { id, name, material_type }  every material a recipe
- *              may mention, not just the sellable ones
+ *   materials  Map id → { id, name, material_type, unit }  every material a
+ *              recipe may mention, not just the sellable ones
  *   costs      Map id → purchase cost string, GST-inclusive, already rounded
  *              to 4 places in SQL (the weighted average of batches with stock
  *              left, else the most recent batch)
- *   recipes    Map material id → { yieldQuantity, items: [{ componentId, quantity }] }
- *              active recipes only
+ *   recipes    Map material id → { yieldQuantity, pieceWeightGrams,
+ *              items: [{ componentId, quantity }] }, active recipes only.
+ *              quantity is a share of the mix; yieldQuantity a fraction.
  *
- * Returns a function: id → { cost: BigInt } | { cost: null, reason }.
+ * Returns a function: id → { cost, perKg } | { cost: null, reason }. `cost` is
+ * for one of the material's own unit, which is what a price is built on.
+ * `perKg` is what a recipe that uses it reads, and is null for something that
+ * can be sold but not weighed.
  */
 export function costResolver({ materials, costs, recipes }) {
   const memo = new Map()
@@ -55,12 +81,13 @@ export function costResolver({ materials, costs, recipes }) {
     const material = materials.get(id)
     if (!material) return { cost: null, reason: 'unknown material' }
 
+    const counted = COUNTED.has(material.unit)
     let result
     if (!MADE.has(material.material_type)) {
       const cost = costs.get(id)
       result = cost === undefined || cost === null
         ? { cost: null, reason: `no purchase of ${material.name} in this kitchen` }
-        : { cost: dec(cost) }
+        : { cost: dec(cost), perKg: counted ? null : dec(cost) }
     } else {
       const recipe = recipes.get(id)
       if (!recipe || !recipe.items.length) {
@@ -77,9 +104,22 @@ export function costResolver({ materials, costs, recipes }) {
             result = { cost: null, reason: component.reason }
             break
           }
-          total = add(total, mul(item.quantity, component.cost))
+          if (component.perKg === null) {
+            result = { cost: null, reason: `${materials.get(item.componentId).name} is bought by the piece and cannot be weighed into a recipe` }
+            break
+          }
+          total = add(total, mul(item.quantity, component.perKg))
         }
-        result ??= { cost: round(div(total, recipe.yieldQuantity), 4) }
+        if (!result) {
+          const perKg = round(div(total, recipe.yieldQuantity), 4)
+          if (!counted) {
+            result = { cost: perKg, perKg }
+          } else if (!recipe.pieceWeightGrams) {
+            result = { cost: null, reason: `the recipe for ${material.name} does not say what one piece weighs` }
+          } else {
+            result = { cost: round(div(mul(perKg, recipe.pieceWeightGrams), GRAMS_PER_KG), 4), perKg }
+          }
+        }
       }
     }
     // A loop answer depends on the path it was reached by; do not memoise it.

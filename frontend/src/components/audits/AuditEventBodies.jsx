@@ -252,6 +252,82 @@ const CatalogBody = ({ event, description }) => {
   )
 }
 
+/* -------------------------------- recipes --------------------------------- */
+
+// A recipe is a ratio: each ingredient's share of the mix, and how much of the
+// mix comes out (decision 0022). So the change is shown as shares, side by side.
+const RecipeBody = ({ description }) => {
+  const { before, after } = description.recipe || {}
+  const recipe = after || before || {}
+  const share = (value) => (value === undefined || value === null ? '—' : `${(Number(value) * 100).toFixed(2)}%`)
+  const names = [...new Set([...(before?.items || []), ...(after?.items || [])].map((item) => item.name))]
+  const shareOf = (side, name) => side?.items?.find((item) => item.name === name)?.share
+  const figures = [
+    { label: 'Yield', from: before?.yield, to: after?.yield },
+    { label: 'Weight of one piece (g)', from: before?.piece_weight_grams, to: after?.piece_weight_grams },
+    { label: 'Notes', from: before?.notes, to: after?.notes },
+  ]
+
+  return (
+    <>
+      <Section title="Product">
+        <KeyValueList
+          rows={[
+            { label: 'Name', value: displayValue(recipe.name) },
+            { label: 'Code', value: displayValue(recipe.code) },
+            { label: 'Counted in', value: displayValue(recipe.unit) },
+          ]}
+        />
+      </Section>
+
+      <Section title="Ingredients" hint="Each ingredient's share of the mix by weight">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-sm min-w-[26rem]">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left py-2 px-3 font-semibold text-foreground">Ingredient</th>
+                <th className="text-right py-2 px-3 font-semibold text-foreground">Before</th>
+                <th className="text-right py-2 px-3 font-semibold text-foreground">After</th>
+              </tr>
+            </thead>
+            <tbody>
+              {names.map((name) => {
+                const from = shareOf(before, name)
+                const to = shareOf(after, name)
+                return (
+                  <tr key={name} className={`border-t border-border/60 ${from !== to ? 'bg-accent/5' : ''}`}>
+                    <td className="py-2 px-3 text-foreground">{name}</td>
+                    <td className="py-2 px-3 text-right text-muted-foreground">{share(from)}</td>
+                    <td className="py-2 px-3 text-right text-foreground">{share(to)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section title="Yield and piece weight">
+        <KeyValueList
+          rows={figures.map((row) => ({
+            label: row.label,
+            value: before && after && row.from !== row.to
+              ? `${displayValue(row.from)} → ${displayValue(row.to)}`
+              : displayValue(after ? row.to : row.from),
+          }))}
+        />
+      </Section>
+
+      {!after && (
+        <Note tone="warn">
+          With no recipe this product has no cost, so it and anything made from it cannot be sold to a franchise
+          until a recipe is saved again.
+        </Note>
+      )}
+    </>
+  )
+}
+
 /* ---------------------------- requisitions -------------------------------- */
 
 const RequisitionCreatedBody = ({ event, description }) => {
@@ -780,6 +856,8 @@ const BODIES = {
   'catalog:update': CatalogBody,
   'catalog:deactivate': CatalogBody,
   'catalog:reactivate': CatalogBody,
+  'catalog:recipe_saved': RecipeBody,
+  'catalog:recipe_removed': RecipeBody,
   'requisition:requisition_created': RequisitionCreatedBody,
   'requisition:requisition_updated': RequisitionUpdatedBody,
   'reversal:requisition_items_deleted': ItemsRemovedBody,

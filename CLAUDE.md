@@ -33,6 +33,7 @@ look like bugs and are not.** Check the index in
 | an outlet's ownership model, or FOCO portal codes | [0019 — portal codes follow the ownership model](docs/decisions/0019-foco-portal-codes-follow-the-ownership-model.md) |
 | the FOFO cart, checkout, or credit redeemed at checkout | [0020 — the cart is per outlet and locked while paying](docs/decisions/0020-the-fofo-cart-is-shared-per-outlet-and-locked-while-paying.md) |
 | a FOFO invoice PDF, or the seller's details | [0021 — invoice PDFs and the seller](docs/decisions/0021-invoice-pdfs-are-drawn-in-the-browser-and-the-seller-is-configuration.md) |
+| a recipe, the Recipes page, or the cost of a made product | [0022 — a recipe is shares and a yield](docs/decisions/0022-a-recipe-is-shares-of-the-mix-and-a-yield-fraction.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

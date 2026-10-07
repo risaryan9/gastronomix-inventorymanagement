@@ -86,6 +86,18 @@ export const ACTION_META = {
     glyph: '⟳',
     why: 'Bringing a retired material back reverses an earlier decision, so both directions are recorded.',
   },
+  'catalog:recipe_saved': {
+    label: 'Recipe Saved',
+    family: FAMILY.CATALOG,
+    glyph: '⚖',
+    why: 'A recipe decides what a made product costs, and that cost is what a franchise price is built on. Changing an ingredient share or the yield changes the price of everything made from it.',
+  },
+  'catalog:recipe_removed': {
+    label: 'Recipe Removed',
+    family: FAMILY.CATALOG,
+    glyph: '⊘',
+    why: 'Without a recipe a made product has no cost, so it and everything made from it stop being sellable to franchises. Logged as critical.',
+  },
 
   /* ------------------------- requisitions & stock out ------------------------ */
 
@@ -258,7 +270,7 @@ const SELECT_COLUMNS = `
 const INVENTORY_CATALOG_OR_FILTER = [
   'and(category.eq.inventory_in,action.in.(stock_in_received,inventory_increment,inter_cloud_transfer_received))',
   'and(category.eq.inventory_out,action.eq.inventory_decrement)',
-  'and(category.eq.catalog,action.in.(create,update,deactivate,reactivate))',
+  'and(category.eq.catalog,action.in.(create,update,deactivate,reactivate,recipe_saved,recipe_removed))',
 ].join(',')
 
 export const AUDIT_FETCH_LIMIT = 500
@@ -999,6 +1011,26 @@ export const describeEvent = (event, lookups) => {
       primary: { value: 'Confirmed', tone: 'positive' },
       totalReturned: returned,
       searchText: [outlet].filter(Boolean).join(' '),
+    }
+  }
+
+  // A recipe event carries the recipe itself, before and after (migration 20):
+  // { name, code, unit, yield, piece_weight_grams, items: [{ name, code, share }] }.
+  if (event.category === 'catalog' && event.entity_type === 'recipe') {
+    const payload = newValues || oldValues || {}
+    const removed = event.action === 'recipe_removed'
+    const items = payload.items || []
+    return {
+      ...base,
+      contextLine: `${payload.name || 'Product'} · ${payload.code || '—'}`,
+      detail: removed
+        ? `${items.length} ingredient${items.length === 1 ? '' : 's'} removed`
+        : `${items.length} ingredient${items.length === 1 ? '' : 's'} · yield ${payload.yield}`,
+      primary: removed
+        ? { value: 'Removed', tone: 'negative' }
+        : { value: oldValues ? 'Changed' : 'New recipe', tone: 'accent' },
+      recipe: { before: oldValues, after: newValues },
+      searchText: [payload.name, payload.code, ...items.map((item) => item.name)].filter(Boolean).join(' '),
     }
   }
 

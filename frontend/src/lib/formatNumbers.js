@@ -33,3 +33,13 @@ export const formatDay = (value) => {
     timeZone: 'UTC',
   })
 }
+
+const exactCurrency = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+// To the paisa, for unit costs: ₹4.24 a piece must not read as ₹4.
+export const moneyExact = (value) => exactCurrency.format(value || 0)

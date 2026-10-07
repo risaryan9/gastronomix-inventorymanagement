@@ -25,6 +25,8 @@ const ACTION_KEYS = [
   'catalog:update',
   'catalog:deactivate',
   'catalog:reactivate',
+  'catalog:recipe_saved',
+  'catalog:recipe_removed',
 ]
 
 const FAMILY_OPTIONS = [

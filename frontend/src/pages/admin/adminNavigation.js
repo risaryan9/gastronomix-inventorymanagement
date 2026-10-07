@@ -6,6 +6,7 @@
 
 import { ADMIN_BASE_PATH, adminSectionPath } from './adminPaths'
 import Materials from '../purchase-manager/Materials'
+import Recipes from '../purchase-manager/Recipes'
 import AdminCloudKitchenOverview from './AdminCloudKitchenOverview'
 import AdminKitchenWiseOverview from './AdminKitchenWiseOverview'
 import AdminUsers from './AdminUsers'
@@ -53,6 +54,7 @@ export const ADMIN_NAV = [
     label: 'Operations',
     children: [
       { id: 'materials', label: 'Materials', Component: Materials, props: { isAdminMode: true } },
+      { id: 'recipes', label: 'Recipes', Component: Recipes, props: { isAdminMode: true } },
       { id: 'vendors', label: 'Vendor Management', Component: AdminVendorManagement },
       { id: 'service-kits', label: 'Service Kits', Component: AdminServiceKits },
       { id: 'dispatch-brands', label: 'Dispatch Brands', Component: AdminBrandDispatch },
