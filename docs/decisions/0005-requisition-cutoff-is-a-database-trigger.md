@@ -1,7 +1,7 @@
 # 0005. The requisition cutoff is a database trigger; the frontend is a courtesy
 
 Date: 2026-09-03 (recorded); decided 2026-08
-Status: Accepted
+Status: Accepted; the window was amended by [0025](0025-supervisors-order-tomorrow-from-9pm.md) on 2026-10-15
 
 ## Context
 
@@ -28,6 +28,11 @@ cannot be submitted. The database is what refuses the write, and its message is
 what the user sees.
 
 ### The window is computed in UTC
+
+> **Amended by [0025](0025-supervisors-order-tomorrow-from-9pm.md).** The
+> window now opens at 21:00 IST the night before, and a requisition raised
+> between 21:00 and 05:30 is dated the next day. The arithmetic is still UTC,
+> for the reason below. What follows describes the original 05:30 window.
 
 `request_date` comes from `business_today()`, the UTC date
 ([0002](0002-business-day-is-the-utc-date.md)), so the window is 05:30 IST to
@@ -57,8 +62,9 @@ change and would bury the decision inside data nobody reads.
 
 ## Consequences
 
-- The brand list exists in two places and must stay in step: the trigger and
-  `CUTOFF_BRANDS`.
+- The brand list exists in two places and must stay in step:
+  `public.requisition_cutoff_applies()` (the trigger's copy moved there in
+  0025) and `CUTOFF_BRANDS`.
 - Editing an existing requisition is not blocked — see `docs/REQUISITION_CUTOFF.md`.
 - Changing the cutoff arithmetic to IST would reintroduce the 00:00–05:29 case.
 

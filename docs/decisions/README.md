@@ -82,7 +82,7 @@ against each other.
 | [0002](0002-business-day-is-the-utc-date.md) | **The business day is the UTC date** — deliberate, and reverted once already | any date column, anything "today" | Accepted |
 | [0003](0003-inventory-value-is-gst-inclusive.md) | Stock is valued GST-inclusive; a deactivated material is not stock | any screen reporting an inventory figure | Accepted |
 | [0004](0004-audit-writes-are-server-side-only.md) | Audit events are written only by server-side functions | audit writes, any `SECURITY DEFINER` function's grants | Accepted |
-| [0005](0005-requisition-cutoff-is-a-database-trigger.md) | The requisition cutoff is a database trigger; the frontend is a courtesy | the cutoff, requisition creation | Accepted |
+| [0005](0005-requisition-cutoff-is-a-database-trigger.md) | The requisition cutoff is a database trigger; the frontend is a courtesy | the cutoff, requisition creation | Accepted; window amended by 0025 |
 | [0006](0006-requisitionable-materials.md) | Whether an outlet can requisition a material is three questions, not one | the requisition picker, the material catalog | Accepted |
 | [0007](0007-pdf-money-goes-through-pdfcurrency.md) | Money in a PDF goes through `pdfCurrency` — jsPDF cannot print ₹ | any jsPDF export | Accepted |
 | [0008](0008-no-browser-alerts-or-confirms.md) | No `window.alert` or `window.confirm` — toasts and one dialog | any user-facing message or prompt | Accepted |
@@ -102,6 +102,7 @@ against each other.
 | [0022](0022-a-recipe-is-shares-of-the-mix-and-a-yield-fraction.md) | A recipe is stored as each ingredient's share of the mix by weight plus a yield fraction, never the batch; pieces carry a piece weight; a litre is 1,000 g; purchase managers save through `save_recipe` | `recipes`, `recipe_items`, the Recipes page, the cost roll-up in both apps | Accepted |
 | [0023](0023-the-staff-pass-is-a-bearer-token-issued-for-the-login-key.md) | Key-login staff reach FOFO with a staff pass: the server checks the key once at login and issues a 7-day bearer token (as long as the key login), re-checked against the user on every request; it says who is calling, not which orders they may touch | any `/api/staff` endpoint, a staff FOFO screen, key login, `authenticate_user_by_key` | Accepted |
 | [0024](0024-a-franchise-sale-is-a-kitchen-stock-out.md) | Stock sold to a franchise leaves as a kitchen stock-out (`self_stock_out`, reason `franchise-order`, `fofo_order_id` set, no outlet), because `stock_out` allows only a requisition or a kitchen stock-out; find sales by `fofo_order_id`, and never offer the reason in the stock-out form | `fofo.accept_order`, `stock_out` reasons, any report that sums kitchen stock-outs | Accepted |
+| [0025](0025-supervisors-order-tomorrow-from-9pm.md) | NK/EC supervisors can raise tomorrow's requisition from 21:00 IST; it is dated tomorrow by `requisition_date_for()`. Only `request_date` moves, never the business day; Boom Pizza and the purchase manager stay on today | the requisition window, `save_allocation_request`, anything that splits requisitions into today and earlier | Accepted |
 
 Records 0002–0009 were backfilled on 2026-09-03 from commit messages and code
 comments that already carried the reasoning. Where a date is given as

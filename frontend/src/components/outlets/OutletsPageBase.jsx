@@ -2,20 +2,23 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { getSession } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
-import { fetchOutletAllocationRequests, fetchTodayAllocationStatus, getLocalDateString } from '../../lib/allocationRequests'
+import { fetchOutletAllocationRequests, fetchTodayAllocationStatus } from '../../lib/allocationRequests'
 import nippuKodiLogo from '../../assets/nippu-kodi-logo.png'
 import elChaapoLogo from '../../assets/el-chaapo-logo.png'
 import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
+import { getBusinessDate } from '../../lib/businessDate'
 import {
   cutoffAppliesTo,
   evaluateCutoff,
   fetchKitchenCutoff,
   formatIstTime,
   formatMinutesLeft,
-  WINDOW_OPENS_IST,
+  formatRequisitionDate,
+  getRequisitionDate,
+  NEXT_DAY_OPENS_IST,
 } from '../../lib/requisitionCutoff'
 
 const BRANDS = [
@@ -109,6 +112,15 @@ const OutletsPageBase = ({ role }) => {
   const requestingRef = useRef(false)
   const historyPageSize = 5
 
+  // The date this screen's requisitions are for: the business day, except for
+  // a Nippu Kodi or El Chaapo supervisor from 21:00 IST, who is ordering for
+  // tomorrow (decision 0025). save_allocation_request dates the row the same
+  // way; this only decides which requisition the screen shows and edits.
+  // Not getBusinessDate() — that stays on today for everything else.
+  const requisitionDate = getRequisitionDate({ role, brandCode: selectedBrand, now: clockTick })
+  const orderingForNextDay = requisitionDate !== getBusinessDate(clockTick)
+  const requisitionDayLabel = orderingForNextDay ? formatRequisitionDate(requisitionDate) : 'Today'
+
   useEffect(() => {
     const session = getSession()
     if (session?.cloud_kitchen_id) {
@@ -137,13 +149,15 @@ const OutletsPageBase = ({ role }) => {
     return () => { cancelled = true }
   }, [cloudKitchenId])
 
-  // A minute is fine: the countdown is read, not raced against.
+  // A minute is fine: the countdown is read, not raced against. It also moves
+  // requisitionDate over at 21:00, so it runs even without a cutoff to show.
   useEffect(() => {
-    if (!cutoffIst) return undefined
     const timer = setInterval(() => setClockTick(new Date()), 60000)
     return () => clearInterval(timer)
-  }, [cutoffIst])
+  }, [])
 
+  // requisitionDate is a dependency so the "Request sent" badges follow the
+  // date over at 21:00 and 05:30 on a screen left open.
   useEffect(() => {
     if (selectedBrand && cloudKitchenId) {
       fetchOutlets()
@@ -152,7 +166,7 @@ const OutletsPageBase = ({ role }) => {
       setAllOutlets([])
       setSearchTerm('')
     }
-  }, [selectedBrand, cloudKitchenId])
+  }, [selectedBrand, cloudKitchenId, requisitionDate])
 
   useEffect(() => {
     if (!searchTerm.trim()) {
@@ -249,7 +263,8 @@ const OutletsPageBase = ({ role }) => {
 
       const statusMap = await fetchTodayAllocationStatus({
         cloudKitchenId,
-        outletIds: fetchedOutlets.map(o => o.id)
+        outletIds: fetchedOutlets.map(o => o.id),
+        date: requisitionDate
       })
       setTodayAllocationStatus(statusMap)
     } catch (err) {
@@ -271,7 +286,7 @@ const OutletsPageBase = ({ role }) => {
 
   const openAllocateFlow = async (outlet) => {
     setActiveOutlet(outlet)
-    const today = getLocalDateString()
+    const today = requisitionDate
 
     try {
       const { data: requests, error } = await supabase
@@ -309,7 +324,7 @@ const OutletsPageBase = ({ role }) => {
       if (!existingRequest && requisitionsClosed) {
         setAlert({
           type: 'warning',
-          message: `Requisitions closed at ${formatIstTime(cutoffState.cutoffIst)} IST. The next window opens at ${formatIstTime(WINDOW_OPENS_IST)} IST.`
+          message: `Requisitions for today closed at ${formatIstTime(cutoffState.cutoffIst)} IST. Tomorrow's open at ${formatIstTime(NEXT_DAY_OPENS_IST)} IST tonight.`
         })
         setActiveOutlet(null)
         return
@@ -532,7 +547,8 @@ const OutletsPageBase = ({ role }) => {
   const refreshStatusForActiveBrand = async () => {
     const statusMap = await fetchTodayAllocationStatus({
       cloudKitchenId,
-      outletIds: allOutlets.map(o => o.id)
+      outletIds: allOutlets.map(o => o.id),
+      date: requisitionDate
     })
     setTodayAllocationStatus(statusMap)
   }
@@ -718,12 +734,16 @@ const OutletsPageBase = ({ role }) => {
                 <p className="text-sm font-semibold text-foreground">
                   {requisitionsClosed
                     ? `Requisitions are closed for today`
-                    : `Requisitions close at ${formatIstTime(cutoffState.cutoffIst)} IST`}
+                    : orderingForNextDay
+                      ? `Ordering for ${formatRequisitionDate(requisitionDate)}`
+                      : `Requisitions close at ${formatIstTime(cutoffState.cutoffIst)} IST`}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {requisitionsClosed
-                    ? `Today's window ended at ${formatIstTime(cutoffState.cutoffIst)} IST. The next one opens at ${formatIstTime(WINDOW_OPENS_IST)} IST. A requisition already raised today can still be edited until the kitchen packs it.`
-                    : `${formatMinutesLeft(cutoffState.minutesLeft) || 'Closing now'} · today's window runs from ${formatIstTime(WINDOW_OPENS_IST)} to ${formatIstTime(cutoffState.cutoffIst)} IST.`}
+                    ? `Today's window ended at ${formatIstTime(cutoffState.cutoffIst)} IST. Tomorrow's opens at ${formatIstTime(NEXT_DAY_OPENS_IST)} IST tonight. A requisition already raised for today can still be edited until the kitchen packs it.`
+                    : orderingForNextDay
+                      ? `${formatMinutesLeft(cutoffState.minutesLeft) || 'Closing now'} · requisitions raised now are for ${formatRequisitionDate(requisitionDate)}, open until ${formatIstTime(cutoffState.cutoffIst)} IST that morning.`
+                      : `${formatMinutesLeft(cutoffState.minutesLeft) || 'Closing now'} · this window opened at ${formatIstTime(NEXT_DAY_OPENS_IST)} IST last night and closes at ${formatIstTime(cutoffState.cutoffIst)} IST.`}
                 </p>
               </div>
             )}
@@ -758,8 +778,8 @@ const OutletsPageBase = ({ role }) => {
                           <p className="text-xs lg:text-sm text-muted-foreground font-mono">{outlet.code}</p>
                         </div>
                         <div className="flex items-center gap-2 ml-3">
-                          {status?.isPacked && <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">Today: Packed</span>}
-                          {!status?.isPacked && status?.hasRequest && <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">Today: Request sent</span>}
+                          {status?.isPacked && <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 text-[10px] font-semibold">{requisitionDayLabel}: Packed</span>}
+                          {!status?.isPacked && status?.hasRequest && <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-700 text-[10px] font-semibold">{requisitionDayLabel}: Request sent</span>}
                           <button
                             type="button"
                             onClick={(e) => {
@@ -791,7 +811,7 @@ const OutletsPageBase = ({ role }) => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center p-4">
           <div className="bg-card border-2 border-border rounded-xl p-6 max-w-md w-full">
             <h3 className="text-lg font-bold text-yellow-500 mb-2">Request already packed</h3>
-            <p className="text-sm text-foreground mb-4">Today's allocation request for {activeOutlet?.name} has already been packed and cannot be edited again.</p>
+            <p className="text-sm text-foreground mb-4">{orderingForNextDay ? `The allocation request for ${formatRequisitionDate(requisitionDate)}` : "Today's allocation request"} for {activeOutlet?.name} has already been packed and cannot be edited again.</p>
             <button onClick={() => setShowPackedModal(false)} className="w-full bg-yellow-500 text-white font-bold px-4 py-3 rounded-xl">OK</button>
           </div>
         </div>
@@ -914,7 +934,12 @@ const OutletsPageBase = ({ role }) => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4">
           <div className="bg-card border-2 border-border rounded-t-2xl lg:rounded-xl p-5 lg:p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl lg:text-2xl font-bold text-foreground">{editingRequest ? 'Edit Allocation Request' : 'Create Allocation Request'}</h2>
+              <div>
+                <h2 className="text-xl lg:text-2xl font-bold text-foreground">{editingRequest ? 'Edit Allocation Request' : 'Create Allocation Request'}</h2>
+                {orderingForNextDay && (
+                  <p className="text-sm font-semibold text-accent mt-0.5">For {formatRequisitionDate(requisitionDate)}</p>
+                )}
+              </div>
               <button onClick={closeAllocateModal} className="p-2 -mr-2 text-muted-foreground hover:text-foreground" disabled={requesting}>
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>

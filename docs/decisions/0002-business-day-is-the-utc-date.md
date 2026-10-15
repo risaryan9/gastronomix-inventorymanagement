@@ -53,6 +53,11 @@ cannot drift apart.
 - The requisition cutoff ([0005](0005-requisition-cutoff-is-a-database-trigger.md))
   does its arithmetic in UTC for the same reason, and gets the 00:00–05:29 IST
   case right for free.
+- [0025](0025-supervisors-order-tomorrow-from-9pm.md) dates an NK/EC
+  supervisor's requisition raised between 21:00 and 05:30 IST with the *next*
+  business day. That moves `request_date` only; it is not a change to this
+  rule, and `business_today()` / `getBusinessDate()` must not be shifted to
+  implement it.
 - The honest version of this rule is "the business day starts at 06:00 IST"; UTC
   approximates it at 05:30. Making it exact is a legitimate improvement — but it
   is a change to both definitions, in one migration, not a tweak to either.

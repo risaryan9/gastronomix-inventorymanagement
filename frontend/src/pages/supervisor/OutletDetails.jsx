@@ -9,7 +9,7 @@ import boomPizzaLogo from '../../assets/boom-pizza-logo.png'
 import useAutoScrollOnAdd from '../../hooks/useAutoScrollOnAdd'
 import useBodyScrollLock from '../../hooks/useBodyScrollLock'
 import { getAnchoredDropdownStyle } from '../../utils/dropdownPosition'
-import { getBusinessDate } from '../../lib/businessDate'
+import { getRequisitionDate } from '../../lib/requisitionCutoff'
 
 const OutletDetails = () => {
   const { outletId } = useParams()
@@ -118,17 +118,22 @@ const OutletDetails = () => {
     }
   }
 
+  // "Today" here means the date a requisition raised now is for: the business
+  // day, or tomorrow for an NK/EC supervisor from 21:00 IST (decision 0025).
+  // Read at render, so it is current as of the last re-render.
+  const requisitionDate = getRequisitionDate({ role: dashboardRole, outletCode: outlet?.code })
+
   // Check if there's an existing allocation request for today
   // - existingTodayRequest: today's request that is not packed (can be edited)
   // - packedTodayRequest: today's request that has already been packed (no new requests allowed)
   const existingTodayRequest = allocationRequests.find(request => {
-    const today = getBusinessDate()
+    const today = requisitionDate
     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
     return requestDate === today && !request.is_packed
   })
 
   const packedTodayRequest = allocationRequests.find(request => {
-    const today = getBusinessDate()
+    const today = requisitionDate
     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
     return requestDate === today && request.is_packed
   })
@@ -575,7 +580,7 @@ const OutletDetails = () => {
 
                   {/* Edit Button - only show if not packed and is today's request */}
                   {!request.is_packed && (() => {
-                    const today = getBusinessDate()
+                    const today = requisitionDate
                     const requestDate = new Date(request.request_date).toISOString().split('T')[0]
                     if (requestDate === today) {
                       return (

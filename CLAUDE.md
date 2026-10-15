@@ -16,7 +16,7 @@ look like bugs and are not.** Check the index in
 | a date column, or anything meaning "today" | [0002 — the business day is the UTC date](docs/decisions/0002-business-day-is-the-utc-date.md) |
 | a screen that reports an inventory value | [0003 — GST-inclusive valuation](docs/decisions/0003-inventory-value-is-gst-inclusive.md) |
 | audit writes, or a `SECURITY DEFINER` function's grants | [0004 — audit writes are server-side only](docs/decisions/0004-audit-writes-are-server-side-only.md) |
-| requisition creation or the daily cutoff | [0005 — the cutoff is a trigger](docs/decisions/0005-requisition-cutoff-is-a-database-trigger.md) |
+| requisition creation or the daily cutoff | [0005 — the cutoff is a trigger](docs/decisions/0005-requisition-cutoff-is-a-database-trigger.md), amended by 0025 |
 | the requisition picker or the material catalog | [0006 — requisitionable materials](docs/decisions/0006-requisitionable-materials.md) |
 | a jsPDF export | [0007 — PDF money](docs/decisions/0007-pdf-money-goes-through-pdfcurrency.md) |
 | a user-facing message or prompt | [0008 — no browser alerts](docs/decisions/0008-no-browser-alerts-or-confirms.md) |
@@ -36,6 +36,7 @@ look like bugs and are not.** Check the index in
 | a recipe, the Recipes page, or the cost of a made product | [0022 — a recipe is shares and a yield](docs/decisions/0022-a-recipe-is-shares-of-the-mix-and-a-yield-fraction.md) |
 | a staff FOFO screen or endpoint, or key login | [0023 — the staff pass](docs/decisions/0023-the-staff-pass-is-a-bearer-token-issued-for-the-login-key.md) |
 | accepting a FOFO order, a stock-out reason, or a report that sums kitchen stock-outs | [0024 — a franchise sale is a kitchen stock-out](docs/decisions/0024-a-franchise-sale-is-a-kitchen-stock-out.md) |
+| the requisition window, or anything that lists "today's" requisitions | [0025 — supervisors order tomorrow from 21:00](docs/decisions/0025-supervisors-order-tomorrow-from-9pm.md) |
 
 The two that most often get "fixed" back into bugs: **the business day is UTC on
 purpose** (0002), and **`REVOKE … FROM PUBLIC` does not make a function internal

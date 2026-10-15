@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import {
   CUTOFF_BRANDS,
-  WINDOW_OPENS_IST,
+  NEXT_DAY_OPENS_IST,
   fetchKitchenCutoff,
   formatIstTime,
   updateKitchenCutoff,
@@ -85,8 +85,8 @@ const RequisitionCutoffCard = ({ kitchenId, kitchenName }) => {
             {loading ? '…' : saved ? `${formatIstTime(saved)} IST` : 'Not set'}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            {brands} supervisors can raise requisitions between{' '}
-            {formatIstTime(WINDOW_OPENS_IST)} and {loading || !saved ? 'the cutoff' : formatIstTime(saved)} IST.
+            {brands} supervisors can raise a day's requisition from{' '}
+            {formatIstTime(NEXT_DAY_OPENS_IST)} IST the night before until {loading || !saved ? 'the cutoff' : formatIstTime(saved)} IST.
             Boom Pizza is not affected, and the purchase manager can still raise one at any time.
           </p>
         </div>
@@ -104,6 +104,7 @@ const RequisitionCutoffCard = ({ kitchenId, kitchenName }) => {
               type="time"
               value={draft}
               min="05:31"
+              max="20:59"
               disabled={loading || saving}
               onChange={(e) => setDraft(e.target.value)}
               className="px-3 py-2 bg-input border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"

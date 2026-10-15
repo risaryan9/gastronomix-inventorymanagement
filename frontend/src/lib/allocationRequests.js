@@ -49,17 +49,22 @@ export const fetchOutletAllocationRequests = async ({ outletId, page = 1, pageSi
   return { data: data || [], count: count || 0 }
 }
 
-export const fetchTodayAllocationStatus = async ({ cloudKitchenId, outletIds }) => {
+/**
+ * Each outlet's requisition status for one date — the business day unless the
+ * caller passes another. A supervisor after 21:00 IST passes tomorrow's, from
+ * getRequisitionDate() in lib/requisitionCutoff.js (decision 0025).
+ */
+export const fetchTodayAllocationStatus = async ({ cloudKitchenId, outletIds, date }) => {
   if (!cloudKitchenId || !outletIds?.length) {
     return {}
   }
 
-  const today = getLocalDateString()
+  const requestDate = date || getLocalDateString()
   const { data, error } = await supabase
     .from('allocation_requests')
     .select('id, outlet_id, is_packed, request_date')
     .eq('cloud_kitchen_id', cloudKitchenId)
-    .eq('request_date', today)
+    .eq('request_date', requestDate)
     .in('outlet_id', outletIds)
 
   if (error) throw error

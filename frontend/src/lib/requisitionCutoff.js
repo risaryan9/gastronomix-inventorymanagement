@@ -12,16 +12,29 @@
 // advisory. The database is what actually refuses the write, and its message
 // is what the user sees when it does.
 //
-// TIMEZONE. The business day is the UTC date (see businessDate.js), so the
-// window is [00:00 UTC, cutoff_ist - 05:30) on the current UTC day. Working in
-// UTC keeps the 00:00-05:29 IST case — which belongs to the *previous*
-// business day — from needing a special case: 02:00 IST is 20:30 UTC
-// yesterday, and 20:30 is already past any cutoff.
+// THE WINDOW (decision 0025). The window for business day D runs from 21:00
+// IST the night before to the kitchen's cutoff on D. A requisition raised in
+// the night part of it is dated D, the day it is for. In UTC, where the
+// business day lives (businessDate.js), that is one test with no midnight
+// special case: from 15:30 UTC (21:00 IST) to the end of the UTC day (05:30
+// IST) a cutoff-bound supervisor is ordering for the next UTC date. 22:00 IST
+// is 16:30 UTC and 02:00 IST is 20:30 UTC: the same UTC day, both past 15:30.
+//
+// Between the cutoff and 21:00 IST, nothing is open.
+//
+// ONLY THE REQUISITION DATE MOVES. getBusinessDate() is not shifted, and must
+// not be: the supervisor's checkout and closing screens run on it. Use
+// getRequisitionDate() for "which requisition is this screen about", and
+// getBusinessDate() for everything else.
+//
+// The database states the same rule in public.requisition_date_for()
+// (migrations/open-tomorrows-requisition-window-at-9pm.sql). Change both.
 //
 // See docs/REQUISITION_CUTOFF.md for the whole feature, including why Boom
 // Pizza is exempt and why editing is not blocked.
 
 import { supabase } from './supabase'
+import { getBusinessDate } from './businessDate'
 
 /** Brands the cutoff applies to. Mirrors c_locked_brands in the trigger. */
 export const CUTOFF_BRANDS = ['NK', 'EC']
@@ -57,8 +70,31 @@ export const istToUtcMinutes = (istValue) => {
   return minutes - IST_OFFSET_MINUTES
 }
 
-/** The business day opens at 05:30 IST, which is 00:00 UTC. */
+/**
+ * The business day opens at 05:30 IST, which is 00:00 UTC. No longer when a
+ * supervisor's window opens (that is NEXT_DAY_OPENS_IST), but still the
+ * earliest a cutoff may be set.
+ */
 export const WINDOW_OPENS_IST = '05:30'
+
+/**
+ * Tomorrow's window opens at 21:00 IST, 15:30 UTC. Mirrors TIME '15:30' in
+ * public.requisition_date_for(). The cutoff must be earlier than this; the
+ * database CHECK cloud_kitchens_requisition_cutoff_before_next_window says so.
+ */
+export const NEXT_DAY_OPENS_IST = '21:00'
+
+const isNextDayWindow = (now) => {
+  const nowUtcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+  return nowUtcMinutes >= istToUtcMinutes(NEXT_DAY_OPENS_IST)
+}
+
+/** 'YYYY-MM-DD' + 1 day, on the calendar, without touching a timezone. */
+const nextDate = (yyyyMmDd) => {
+  const date = new Date(`${yyyyMmDd}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
 
 /**
  * Whether the cutoff applies to this outlet at all.
@@ -74,22 +110,53 @@ export const cutoffAppliesTo = ({ role, outletCode, brandCode }) => {
 }
 
 /**
+ * The date a requisition raised now would carry, as YYYY-MM-DD: the business
+ * day, or the next one for a cutoff-bound supervisor from 21:00 IST. Mirrors
+ * public.requisition_date_for(), which is what actually dates the row.
+ */
+export const getRequisitionDate = ({ role, outletCode, brandCode, now = new Date() }) => {
+  const today = getBusinessDate(now)
+  if (!cutoffAppliesTo({ role, outletCode, brandCode })) return today
+  return isNextDayWindow(now) ? nextDate(today) : today
+}
+
+/** '2026-10-16' -> 'Fri, 16 Oct'. Read as a calendar date, never shifted. */
+export const formatRequisitionDate = (yyyyMmDd) =>
+  new Date(`${yyyyMmDd}T00:00:00Z`).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  })
+
+/**
  * Where the current moment sits relative to the window.
  *
- * `now` is injectable so this can be reasoned about without waiting for a
- * particular time of day.
+ *   05:30 IST – cutoff    open, for today
+ *   cutoff – 21:00 IST    closed
+ *   21:00 – 05:30 IST     open, for the next business day (`forNextDay`)
+ *
+ * `minutesLeft` counts to the cutoff the open window ends at, which at night
+ * is tomorrow morning's. `now` is injectable so this can be reasoned about
+ * without waiting for a particular time of day.
  */
 export const evaluateCutoff = (cutoffIst, now = new Date()) => {
   const cutoffUtcMinutes = istToUtcMinutes(cutoffIst || DEFAULT_CUTOFF_IST)
-  if (cutoffUtcMinutes === null) return { open: true, minutesLeft: null, cutoffIst }
+  if (cutoffUtcMinutes === null) return { open: true, forNextDay: false, minutesLeft: null, cutoffIst }
 
   const nowUtcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
-  const open = nowUtcMinutes < cutoffUtcMinutes
+  const forNextDay = isNextDayWindow(now)
+  const open = forNextDay || nowUtcMinutes < cutoffUtcMinutes
+
+  let minutesLeft = 0
+  if (forNextDay) minutesLeft = cutoffUtcMinutes + 24 * 60 - nowUtcMinutes
+  else if (open) minutesLeft = cutoffUtcMinutes - nowUtcMinutes
 
   return {
     open,
+    forNextDay,
     cutoffIst: cutoffIst || DEFAULT_CUTOFF_IST,
-    minutesLeft: open ? cutoffUtcMinutes - nowUtcMinutes : 0,
+    minutesLeft,
   }
 }
 
@@ -122,10 +189,14 @@ export const fetchKitchenCutoff = async (cloudKitchenId) => {
 export const updateKitchenCutoff = async (cloudKitchenId, cutoffIst) => {
   const minutes = parseTimeToMinutes(cutoffIst)
   const opensAt = parseTimeToMinutes(WINDOW_OPENS_IST)
+  const nextOpensAt = parseTimeToMinutes(NEXT_DAY_OPENS_IST)
+  // The database CHECKs say the same things; catching them here turns a
+  // constraint name into a sentence.
   if (minutes === null || minutes <= opensAt) {
-    // The database CHECK says the same thing; catching it here turns a
-    // constraint name into a sentence.
     throw new Error(`The cutoff must be later than ${formatIstTime(WINDOW_OPENS_IST)} IST, when the business day opens.`)
+  }
+  if (minutes >= nextOpensAt) {
+    throw new Error(`The cutoff must be earlier than ${formatIstTime(NEXT_DAY_OPENS_IST)} IST, when the next day's window opens.`)
   }
 
   const { error } = await supabase

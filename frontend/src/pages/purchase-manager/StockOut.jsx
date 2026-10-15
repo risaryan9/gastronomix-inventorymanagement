@@ -2736,8 +2736,11 @@ const StockOut = () => {
   // getBusinessDate exists to remove.
   const businessToday = getBusinessDate()
 
+  // Today's, or later. From 21:00 IST a Nippu Kodi / El Chaapo supervisor's
+  // requisition is dated tomorrow (decision 0025); it belongs up here with
+  // today's work, not under "Previous days". Its row shows its date.
   const isRequestDateToday = (request) =>
-    toBusinessDateString(request.request_date) === businessToday
+    toBusinessDateString(request.request_date) >= businessToday
 
   // Segment 1: Today's requests (pending + packed for today), search applied, pending first then packed
   const todayRequests = allocationRequests
@@ -3028,7 +3031,7 @@ const StockOut = () => {
                   Today&apos;s requests
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Pending and packed allocation requests for today. Empty if none.
+                  Pending and packed allocation requests for today, and any already raised for tomorrow after 9 PM. Empty if none.
                 </p>
               </div>
               <div className="min-h-[80px]">
