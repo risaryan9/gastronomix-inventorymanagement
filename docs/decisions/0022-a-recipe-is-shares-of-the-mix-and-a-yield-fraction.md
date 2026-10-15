@@ -51,6 +51,9 @@ recipe: cost per piece is cost per kg × that ÷ 1000.
 **Purchase managers and admins both save recipes**, through `save_recipe` and
 `remove_recipe`, which take the acting user's id and check its role. RLS on the
 tables stays admin-only.
+Since 2026-10-15 the Recipes page is shown on the admin dashboard only; the
+purchase manager dashboard no longer links to it. `save_recipe` still accepts a
+purchase manager, so the exposure under Consequences is unchanged.
 
 ## Alternatives
 

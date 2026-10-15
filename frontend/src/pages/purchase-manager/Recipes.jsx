@@ -20,11 +20,12 @@
 // such an ingredient is left out of the picker, and the database refuses it.
 //
 // THE COSTS SHOWN ARE A PREVIEW for one kitchen (lib/recipeCost.js). Costs
-// differ by kitchen because stock does. A purchase manager sees their own
-// kitchen; an admin chooses one.
+// differ by kitchen because stock does. In admin mode the kitchen is chosen;
+// otherwise it is the signed-in user's own.
 //
-// Used by the purchase manager dashboard, and by the admin dashboard with
-// `isAdminMode`.
+// Shown only on the admin dashboard (with `isAdminMode`). It was on the
+// purchase manager dashboard too until 2026-10-15; the non-admin path is kept
+// because save_recipe still accepts purchase managers (decision 0022).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
