@@ -27,8 +27,10 @@
 //
 // VIEW AND DOWNLOAD (lib/recipeSheet.js). A saved recipe can be written out for
 // an amount of product, "make 10 kg", which works back through the yield to
-// the weight of each ingredient. The amount set in the View window is kept per
-// product for the session, and the CSV and PDF buttons on the row use it too.
+// the weight of each ingredient, and downloaded at that amount. The amount is
+// kept per product for the session. The list itself carries no buttons:
+// clicking a row opens View (edit, remove and the downloads are in there), or
+// the editor for a product with no recipe yet.
 //
 // Shown only on the admin dashboard (with `isAdminMode`). It was on the
 // purchase manager dashboard too until 2026-10-15; the non-admin path is kept
@@ -352,7 +354,7 @@ const Recipes = ({ isAdminMode = false }) => {
       confirmLabel: 'Remove recipe',
       tone: 'danger',
     })
-    if (!confirmed) return
+    if (!confirmed) return false
     try {
       setSaving(true)
       const { error: removeError } = await supabase.rpc('remove_recipe', {
@@ -362,9 +364,11 @@ const Recipes = ({ isAdminMode = false }) => {
       if (removeError) throw removeError
       toast.success('Recipe removed', `${product.name} no longer has a recipe.`)
       await load()
+      return true
     } catch (err) {
       console.error('Error removing recipe:', err)
       toast.error('Could not remove the recipe', err.message)
+      return false
     } finally {
       setSaving(false)
     }
@@ -531,79 +535,47 @@ const Recipes = ({ isAdminMode = false }) => {
                         {kitchen.name}
                       </th>
                     ))}
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((product) => {
                     const recipe = recipes.get(product.id)
+                    // The row is the button: a recipe opens in View, which
+                    // holds edit, remove and the downloads; no recipe opens
+                    // the editor to add one.
+                    const open = () => (recipe ? setViewing(product) : openEditor(product))
                     return (
-                      <tr key={product.id} className="border-b border-border/70 hover:bg-background/50 transition-colors align-top">
+                      <tr
+                        key={product.id}
+                        onClick={open}
+                        className="border-b border-border/70 hover:bg-background/50 transition-colors align-top cursor-pointer"
+                      >
                         <td className="px-4 py-3 text-sm">
-                          <div className="font-semibold text-foreground">{product.name}</div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); open() }}
+                            className="text-left font-semibold text-foreground hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                          >
+                            {product.name}
+                          </button>
                           <div className="text-[11px] text-muted-foreground font-mono">{product.code} · {product.unit}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{TYPE_LABEL[product.material_type]}</td>
                         <td className="px-4 py-3 text-sm">
                           {recipe ? (
-                            <div>
-                              <div className="text-foreground">
-                                {recipe.items.length} ingredient{recipe.items.length === 1 ? '' : 's'} · yield {recipe.yield}
-                                {recipe.pieceWeightGrams ? ` · ${grams(recipe.pieceWeightGrams)} a piece` : ''}
-                              </div>
-                              <div className="text-[11px] text-muted-foreground max-w-md">
-                                {recipe.items
-                                  .map((item) => `${materialMap.get(item.componentId)?.name || 'Inactive material'} ${percent(item.share)}`)
-                                  .join(', ')}
-                              </div>
+                            <div className="text-foreground whitespace-nowrap">
+                              {recipe.items.length} ingredient{recipe.items.length === 1 ? '' : 's'} · yield {recipe.yield}
+                              {recipe.pieceWeightGrams ? ` · ${grams(recipe.pieceWeightGrams)} a piece` : ''}
                             </div>
                           ) : (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
-                              No recipe
+                              No recipe · click to add
                             </span>
                           )}
                         </td>
                         {visibleKitchens.map((kitchen) => (
                           <td key={kitchen.id} className="px-4 py-3 text-sm">{costCell(product, kitchen.id)}</td>
                         ))}
-                        <td className="px-4 py-3 text-sm">
-                          <div className="flex flex-wrap gap-2">
-                            {recipe && (
-                              <>
-                                <button onClick={() => setViewing(product)} className={neutralButton}>View</button>
-                                <button
-                                  onClick={() => download(product, 'csv')}
-                                  title={`CSV for ${amountLabel(amountFor(product.id), recipe)}`}
-                                  className={neutralButton}
-                                >
-                                  CSV
-                                </button>
-                                <button
-                                  onClick={() => download(product, 'pdf')}
-                                  title={`PDF for ${amountLabel(amountFor(product.id), recipe)}`}
-                                  className={neutralButton}
-                                >
-                                  PDF
-                                </button>
-                              </>
-                            )}
-                            <button
-                              onClick={() => openEditor(product)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors"
-                            >
-                              {recipe ? 'Edit recipe' : 'Add recipe'}
-                            </button>
-                            {recipe && (
-                              <button
-                                onClick={() => remove(product)}
-                                disabled={saving}
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-destructive/10 text-destructive border border-destructive/40 hover:bg-destructive/20 hover:border-destructive/60 transition-colors disabled:opacity-50"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </td>
                       </tr>
                     )
                   })}
@@ -965,6 +937,13 @@ const Recipes = ({ isAdminMode = false }) => {
                   Include costs in downloads
                 </label>
                 <div className="flex flex-wrap gap-2 sm:ml-auto">
+                  <button
+                    onClick={async () => { const product = viewing; if (await remove(product)) setViewing(null) }}
+                    disabled={saving}
+                    className={`${smallButton} bg-destructive/10 text-destructive border-destructive/40 hover:bg-destructive/20`}
+                  >
+                    Remove recipe
+                  </button>
                   <button
                     onClick={() => { const product = viewing; setViewing(null); openEditor(product) }}
                     className={`${smallButton} bg-accent/10 text-accent border-accent/40 hover:bg-accent/20`}
