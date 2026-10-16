@@ -68,6 +68,13 @@ const grams = (value) => `${(value || 0).toLocaleString('en-IN', { maximumFracti
 const gramsPerKgOfMix = (share) => String(Number((Number(share) * 1000).toFixed(5)))
 
 const emptyRow = () => ({ key: crypto.randomUUID(), componentId: '', grams: '' })
+const isBlank = (row) => !row.componentId && row.grams === ''
+
+// The ingredient list always ends in one blank line, so the next ingredient is
+// typed straight in rather than added with a button first. Filling that line in
+// opens a new one below it. Blank lines are never saved (see `save`).
+const withTrailingBlank = (rows) =>
+  rows.length && isBlank(rows[rows.length - 1]) ? rows : [...rows, emptyRow()]
 
 const Recipes = ({ isAdminMode = false }) => {
   const toast = useToast()
@@ -195,9 +202,9 @@ const Recipes = ({ isAdminMode = false }) => {
   const openEditor = (product) => {
     const recipe = recipes.get(product.id)
     setEditing(product)
-    setRows(recipe
+    setRows(withTrailingBlank(recipe
       ? recipe.items.map((item) => ({ key: crypto.randomUUID(), componentId: item.componentId, grams: gramsPerKgOfMix(item.share) }))
-      : [emptyRow()])
+      : []))
     setYieldFraction(recipe ? String(recipe.yield) : '')
     setPieceWeight(recipe?.pieceWeightGrams ? String(recipe.pieceWeightGrams) : '')
     setFormError('')
@@ -206,7 +213,10 @@ const Recipes = ({ isAdminMode = false }) => {
   const closeEditor = () => { if (!saving) setEditing(null) }
 
   const updateRow = (key, patch) =>
-    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+    setRows((current) => withTrailingBlank(current.map((row) => (row.key === key ? { ...row, ...patch } : row))))
+
+  const removeRow = (key) =>
+    setRows((current) => withTrailingBlank(current.filter((row) => row.key !== key)))
 
   // What can go into this product: anything weighed or made, except the
   // product itself, anything that already contains it, and anything already on
@@ -493,16 +503,9 @@ const Recipes = ({ isAdminMode = false }) => {
                   )}
 
                   <div>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-baseline justify-between gap-3 mb-3">
                       <h3 className="text-lg font-bold text-foreground">Ingredients</h3>
-                      <button
-                        type="button"
-                        onClick={() => setRows((current) => [...current, emptyRow()])}
-                        disabled={saving}
-                        className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors disabled:opacity-50"
-                      >
-                        + Add ingredient
-                      </button>
+                      <p className="text-[11px] text-muted-foreground">Fill in the last line and a new one opens below it.</p>
                     </div>
 
                     <div className="space-y-2">
@@ -514,7 +517,7 @@ const Recipes = ({ isAdminMode = false }) => {
                         <span className="text-right">In this batch</span>
                         <span />
                       </div>
-                      {preview.lines.map((line) => (
+                      {preview.lines.map((line, index) => (
                         <div key={line.key} className="bg-muted/30 border border-border rounded-lg p-3 lg:p-2">
                           <div className="grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem_7rem_2rem] gap-3 items-center">
                             <div className="col-span-2 lg:col-span-1">
@@ -542,26 +545,24 @@ const Recipes = ({ isAdminMode = false }) => {
                             <span className="text-sm text-right text-foreground">{line.share > 0 ? percent(line.share) : '—'}</span>
                             <span className="text-sm text-right text-muted-foreground">{line.perKg === null ? '—' : moneyExact(line.perKg)}</span>
                             <span className="text-sm text-right text-foreground">{line.batchCost === null ? '—' : moneyExact(line.batchCost)}</span>
-                            <button
-                              type="button"
-                              onClick={() => setRows((current) => current.filter((row) => row.key !== line.key))}
-                              disabled={saving}
-                              aria-label="Remove ingredient"
-                              className="justify-self-end text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
+                            {/* The trailing blank line has nothing to remove. */}
+                            {index === preview.lines.length - 1 && isBlank(line) ? <span /> : (
+                              <button
+                                type="button"
+                                onClick={() => removeRow(line.key)}
+                                disabled={saving}
+                                aria-label="Remove ingredient"
+                                className="justify-self-end text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
                           </div>
                           {line.reason && <p className="mt-1.5 text-[11px] text-amber-300">No cost: {line.reason}.</p>}
                         </div>
                       ))}
-                      {rows.length === 0 && (
-                        <div className="bg-muted/30 border border-border rounded-lg p-4 text-center text-sm text-muted-foreground">
-                          No ingredients yet. Click “+ Add ingredient” to start.
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -583,7 +584,7 @@ const Recipes = ({ isAdminMode = false }) => {
                         className={inputClass}
                       />
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        A fraction: how much of the mix comes out.
+                        A fraction: how much of the mix comes out. Enter 1 if nothing is lost, as in a marinade.
                         {Number(yieldFraction) > 0 && ` ${percent(Number(yieldFraction))}, so 1,000 g of mix makes ${grams(Number(yieldFraction) * 1000)}.`}
                       </p>
                       {Number(yieldFraction) > 1 && Number(yieldFraction) <= 10 && (
