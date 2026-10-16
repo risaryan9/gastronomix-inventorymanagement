@@ -34,7 +34,7 @@ run first.
 | 20 | `20-save-recipes-as-shares-of-the-mix.sql` | applied (confirmed live 2026-10-07) — recipes are saved as each ingredient's share of the mix plus a yield fraction (decision 0022): `recipes.piece_weight_grams`, `save_recipe`, `remove_recipe`, both callable by the internal app | 02 |
 | 21 | `21-add-staff-passes.sql` | applied 2026-10-07 — the staff pass (decision 0023): `staff_passes`, `staff_pass_attempts`, `issue_staff_pass` (quiet key check, throttled), `resolve_staff_pass` (ends a pass whose user was deactivated, moved, or had their key changed), `end_staff_pass`. Purchase managers and kitchen executives only | 03 |
 | 22 | `22-add-order-packing.sql` | applied 2026-10-07 — `orders.packed_by`, and `fofo.mark_order_packed`: a kitchen executive marks an accepted order packed. Moves the status only, no stock and no money, and writes an audit event. **Apply before deploying the server code that came with it**: the staff order detail reads `packed_by` | 03, 05, 10, 16 |
-| 23 | `23-let-save-recipe-pass-safeupdate.sql` | **not yet applied** — fixes `save_recipe` (20) failing from the app with "UPDATE requires a WHERE clause" (21000): API connections load `safeupdate`, and one UPDATE on the temp table had no WHERE. Same function, one line changed | 20 |
+| 23 | `23-let-save-recipe-pass-safeupdate.sql` | applied 2026-10-16 — fixes `save_recipe` (20) failing from the app with "UPDATE requires a WHERE clause" (21000): API connections load `safeupdate`, and one UPDATE on the temp table had no WHERE. Same function, one line changed | 20 |
 
 01 and 02 are all Phase 1 of the build plan needs. Two rules that apply to every
 file here: do **not** add `fofo` to Supabase's exposed schemas, and check any
