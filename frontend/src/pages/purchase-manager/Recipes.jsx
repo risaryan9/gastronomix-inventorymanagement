@@ -19,9 +19,16 @@
 // own recipe. A product can never contain itself, directly or down a chain:
 // such an ingredient is left out of the picker, and the database refuses it.
 //
-// THE COSTS SHOWN ARE A PREVIEW for one kitchen (lib/recipeCost.js). Costs
-// differ by kitchen because stock does. In admin mode the kitchen is chosen;
-// otherwise it is the signed-in user's own.
+// THE COSTS SHOWN ARE A PREVIEW per kitchen (lib/recipeCost.js). Costs differ
+// by kitchen because stock does, so the list has a cost column for each, and
+// the kitchen chips above it hide and show those columns. In admin mode that is
+// every active kitchen; otherwise only the signed-in user's own. The editor
+// previews in one kitchen at a time, chosen inside it.
+//
+// VIEW AND DOWNLOAD (lib/recipeSheet.js). A saved recipe can be written out for
+// an amount of product, "make 10 kg", which works back through the yield to
+// the weight of each ingredient. The amount set in the View window is kept per
+// product for the session, and the CSV and PDF buttons on the row use it too.
 //
 // Shown only on the admin dashboard (with `isAdminMode`). It was on the
 // purchase manager dashboard too until 2026-10-15; the non-admin path is kept
@@ -41,15 +48,32 @@ import {
   recipeCostResolver,
   wouldContainItself,
 } from '../../lib/recipeCost'
+import {
+  DEFAULT_AMOUNT,
+  MATERIAL_TYPE_LABEL as TYPE_LABEL,
+  amountLabel,
+  amountUnits,
+  downloadRecipeCsv,
+  downloadRecipePdf,
+  formatWeight,
+  scaleRecipe,
+  sheetCosts,
+} from '../../lib/recipeSheet'
 import SearchableSelect from '../../components/SearchableSelect'
 import { useToast } from '../../context/toastContext'
 import { useConfirm } from '../../context/confirmContext'
 
-const TYPE_LABEL = {
-  raw_material: 'Raw material',
-  semi_finished: 'Semi-finished',
-  finished: 'Finished',
-  non_food: 'Non-food',
+const UNIT_LABEL = { kg: 'kg', g: 'g', pcs: 'pieces' }
+
+// Which kitchen columns are hidden is remembered per browser. Storage can be
+// unavailable (private windows), so it is a convenience and nothing more.
+const HIDDEN_KITCHENS_KEY = 'recipes.hiddenKitchens'
+const readHiddenKitchens = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KITCHENS_KEY) || '[]'))
+  } catch {
+    return new Set()
+  }
 }
 
 const FILTERS = [
@@ -84,8 +108,8 @@ const Recipes = ({ isAdminMode = false }) => {
   const [materials, setMaterials] = useState([])
   const [recipes, setRecipes] = useState(new Map())
   const [kitchens, setKitchens] = useState([])
-  const [kitchenId, setKitchenId] = useState(isAdminMode ? '' : session?.cloud_kitchen_id || '')
-  const [costs, setCosts] = useState(new Map())
+  const [hiddenKitchens, setHiddenKitchens] = useState(readHiddenKitchens)
+  const [costsByKitchen, setCostsByKitchen] = useState(new Map()) // kitchen id → Map material id → cost
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -97,6 +121,11 @@ const Recipes = ({ isAdminMode = false }) => {
   const [pieceWeight, setPieceWeight] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [previewKitchenId, setPreviewKitchenId] = useState('')
+
+  const [viewing, setViewing] = useState(null) // the product in the View window
+  const [amounts, setAmounts] = useState({}) // product id → { quantity, unit }
+  const [includeCosts, setIncludeCosts] = useState(true)
 
   const load = useCallback(async () => {
     try {
@@ -153,39 +182,61 @@ const Recipes = ({ isAdminMode = false }) => {
 
   useEffect(() => { load() }, [load])
 
-  // Admins have no kitchen of their own, so they choose whose costs to see.
+  // Admins see every active kitchen; anyone else only their own.
   useEffect(() => {
-    if (!isAdminMode) return
-    supabase
+    const ownKitchenId = session?.cloud_kitchen_id
+    if (!isAdminMode && !ownKitchenId) return
+    let query = supabase
       .from('cloud_kitchens')
       .select('id, name, code')
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('name')
-      .then(({ data, error: kitchensError }) => {
-        if (kitchensError) return
-        setKitchens(data || [])
-        setKitchenId((current) => current || data?.[0]?.id || '')
-      })
-  }, [isAdminMode])
+    if (!isAdminMode) query = query.eq('id', ownKitchenId)
+    query.then(({ data, error: kitchensError }) => {
+      if (kitchensError) {
+        console.error('Error loading kitchens:', kitchensError)
+        if (!isAdminMode) setKitchens([{ id: ownKitchenId, name: 'Your kitchen', code: '' }])
+        return
+      }
+      setKitchens(data || [])
+    })
+  }, [isAdminMode, session?.cloud_kitchen_id])
 
+  // Every kitchen's costs at once, since the list shows them side by side.
   useEffect(() => {
     let cancelled = false
-    if (!kitchenId) { setCosts(new Map()); return undefined }
-    fetchKitchenCosts(kitchenId)
-      .then((next) => { if (!cancelled) setCosts(next) })
-      .catch((err) => {
-        console.error('Error loading kitchen costs:', err)
-        if (!cancelled) setCosts(new Map())
-      })
+    if (!kitchens.length) { setCostsByKitchen(new Map()); return undefined }
+    Promise.all(kitchens.map((kitchen) =>
+      fetchKitchenCosts(kitchen.id)
+        .then((costs) => [kitchen.id, costs])
+        .catch((err) => {
+          console.error(`Error loading costs for ${kitchen.name}:`, err)
+          return [kitchen.id, new Map()]
+        })
+    )).then((entries) => { if (!cancelled) setCostsByKitchen(new Map(entries)) })
     return () => { cancelled = true }
-  }, [kitchenId])
+  }, [kitchens])
+
+  const toggleKitchen = (id) => setHiddenKitchens((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    try { localStorage.setItem(HIDDEN_KITCHENS_KEY, JSON.stringify([...next])) } catch { /* a convenience only */ }
+    return next
+  })
+
+  const visibleKitchens = useMemo(() => kitchens.filter((k) => !hiddenKitchens.has(k.id)), [kitchens, hiddenKitchens])
 
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials])
-  const resolve = useMemo(
-    () => recipeCostResolver({ materials: materialMap, costs, recipes }),
-    [materialMap, costs, recipes]
+  const resolvers = useMemo(
+    () => new Map(kitchens.map((kitchen) => [
+      kitchen.id,
+      recipeCostResolver({ materials: materialMap, costs: costsByKitchen.get(kitchen.id) || new Map(), recipes }),
+    ])),
+    [kitchens, materialMap, costsByKitchen, recipes]
   )
+  const costsLoaded = costsByKitchen.size > 0
 
   const products = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -208,6 +259,8 @@ const Recipes = ({ isAdminMode = false }) => {
     setYieldFraction(recipe ? String(recipe.yield) : '')
     setPieceWeight(recipe?.pieceWeightGrams ? String(recipe.pieceWeightGrams) : '')
     setFormError('')
+    setPreviewKitchenId((current) =>
+      kitchens.some((k) => k.id === current) ? current : (visibleKitchens[0] || kitchens[0])?.id || '')
   }
 
   const closeEditor = () => { if (!saving) setEditing(null) }
@@ -238,13 +291,17 @@ const Recipes = ({ isAdminMode = false }) => {
       }))
   }, [editing, rows, materials, recipes])
 
+  const previewResolve = useMemo(
+    () => resolvers.get(previewKitchenId) || recipeCostResolver({ materials: materialMap, costs: new Map(), recipes }),
+    [resolvers, previewKitchenId, materialMap, recipes]
+  )
   const preview = useMemo(() => previewRecipe({
     rows,
     yieldFraction,
     pieceWeightGrams: pieceWeight,
     counted: isCounted(editing),
-    resolve,
-  }), [rows, yieldFraction, pieceWeight, editing, resolve])
+    resolve: previewResolve,
+  }), [rows, yieldFraction, pieceWeight, editing, previewResolve])
 
   const save = async (event) => {
     event.preventDefault()
@@ -315,12 +372,47 @@ const Recipes = ({ isAdminMode = false }) => {
 
   /* -------------------------------- render -------------------------------- */
 
-  const costCell = (product) => {
+  /* ----------------------------- view & export ---------------------------- */
+
+  const amountFor = (productId) => amounts[productId] || DEFAULT_AMOUNT
+  const setAmount = (productId, patch) =>
+    setAmounts((current) => ({ ...current, [productId]: { ...(current[productId] || DEFAULT_AMOUNT), ...patch } }))
+
+  // The recipe written out for the product's current amount, with each
+  // visible kitchen's cost of it. Null when the amount is not usable.
+  const sheetFor = (product, withCosts = includeCosts) => {
+    const recipe = recipes.get(product.id)
+    const amount = amountFor(product.id)
+    const scaled = recipe ? scaleRecipe({ recipe, materials: materialMap, amount }) : null
+    if (!scaled) return null
+    return {
+      product,
+      recipe,
+      amount,
+      scaled,
+      costs: withCosts ? sheetCosts({ product, outputGrams: scaled.outputGrams, kitchens: visibleKitchens, resolvers }) : null,
+    }
+  }
+
+  const download = (product, format) => {
+    const sheet = sheetFor(product)
+    if (!sheet) return toast.error('Enter an amount to make', 'The amount must be more than 0.')
+    try {
+      if (format === 'pdf') downloadRecipePdf(sheet)
+      else downloadRecipeCsv(sheet)
+    } catch (err) {
+      console.error(`Error writing the recipe ${format}:`, err)
+      toast.error(`Could not download the ${format.toUpperCase()}`, err.message)
+    }
+  }
+
+  const costCell = (product, kitchenId) => {
     if (!recipes.has(product.id)) return <span className="text-muted-foreground">—</span>
-    if (!kitchenId) return <span className="text-muted-foreground">Choose a kitchen</span>
-    const cost = resolve(product.id)
+    if (!costsLoaded) return <span className="text-muted-foreground">…</span>
+    const cost = resolvers.get(kitchenId)?.(product.id)
+    if (!cost) return <span className="text-muted-foreground">—</span>
     if (cost.cost === null) {
-      return <span className="text-xs text-amber-300">Cannot be costed here: {cost.reason}</span>
+      return <span className="text-xs text-amber-300">Cannot be costed: {cost.reason}</span>
     }
     return (
       <div>
@@ -334,6 +426,11 @@ const Recipes = ({ isAdminMode = false }) => {
 
   const editingCounted = isCounted(editing)
   const editingHasRecipe = editing ? recipes.has(editing.id) : false
+  const viewSheet = viewing ? sheetFor(viewing, true) : null
+  const viewRecipe = viewing ? recipes.get(viewing.id) : null
+  const viewAmount = viewing ? amountFor(viewing.id) : DEFAULT_AMOUNT
+  const smallButton = 'px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-50'
+  const neutralButton = `${smallButton} bg-muted/40 text-foreground border-border hover:bg-muted/70`
 
   return (
     <div className="p-2 sm:p-4 lg:p-6">
@@ -371,21 +468,32 @@ const Recipes = ({ isAdminMode = false }) => {
               </button>
             ))}
           </div>
-          {isAdminMode && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              Costs in
-              <select
-                value={kitchenId}
-                onChange={(e) => setKitchenId(e.target.value)}
-                className="bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {kitchens.map((kitchen) => (
-                  <option key={kitchen.id} value={kitchen.id}>{kitchen.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
+
+        {kitchens.length > 1 && (
+          <div className="bg-card border border-border rounded-2xl px-4 py-3 mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground mr-1">Cost columns</span>
+            {kitchens.map((kitchen) => {
+              const shown = !hiddenKitchens.has(kitchen.id)
+              return (
+                <button
+                  key={kitchen.id}
+                  type="button"
+                  onClick={() => toggleKitchen(kitchen.id)}
+                  aria-pressed={shown}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border transition-colors ${
+                    shown
+                      ? 'bg-accent/15 text-accent border-accent/60'
+                      : 'bg-muted/30 text-muted-foreground border-border hover:text-foreground line-through decoration-1'
+                  }`}
+                >
+                  <span aria-hidden="true">{shown ? '✓' : '+'}</span>
+                  {kitchen.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 bg-destructive/15 border border-destructive rounded-xl px-4 py-3 text-sm text-destructive-foreground">
@@ -395,8 +503,8 @@ const Recipes = ({ isAdminMode = false }) => {
 
         {!loading && (
           <p className="mb-3 text-xs text-muted-foreground">
-            {recipes.size} of {madeCount} made products have a recipe. Costs are a preview for{' '}
-            {isAdminMode ? 'the kitchen chosen above' : 'your kitchen'} and include GST paid to vendors.
+            {recipes.size} of {madeCount} made products have a recipe. Costs are a preview from each kitchen&apos;s
+            stock and include GST paid to vendors.
           </p>
         )}
 
@@ -412,11 +520,18 @@ const Recipes = ({ isAdminMode = false }) => {
               <table className="w-full">
                 <thead className="bg-background/60 border-b border-border">
                   <tr>
-                    {['Product', 'Type', 'Recipe', 'Cost to make', 'Actions'].map((heading) => (
+                    {['Product', 'Type', 'Recipe'].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         {heading}
                       </th>
                     ))}
+                    {visibleKitchens.map((kitchen) => (
+                      <th key={kitchen.id} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+                        <span className="block text-[10px] font-semibold normal-case tracking-normal">Cost to make in</span>
+                        {kitchen.name}
+                      </th>
+                    ))}
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -448,9 +563,30 @@ const Recipes = ({ isAdminMode = false }) => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm">{costCell(product)}</td>
+                        {visibleKitchens.map((kitchen) => (
+                          <td key={kitchen.id} className="px-4 py-3 text-sm">{costCell(product, kitchen.id)}</td>
+                        ))}
                         <td className="px-4 py-3 text-sm">
                           <div className="flex flex-wrap gap-2">
+                            {recipe && (
+                              <>
+                                <button onClick={() => setViewing(product)} className={neutralButton}>View</button>
+                                <button
+                                  onClick={() => download(product, 'csv')}
+                                  title={`CSV for ${amountLabel(amountFor(product.id), recipe)}`}
+                                  className={neutralButton}
+                                >
+                                  CSV
+                                </button>
+                                <button
+                                  onClick={() => download(product, 'pdf')}
+                                  title={`PDF for ${amountLabel(amountFor(product.id), recipe)}`}
+                                  className={neutralButton}
+                                >
+                                  PDF
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => openEditor(product)}
                               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/40 hover:bg-accent/20 hover:border-accent/60 transition-colors"
@@ -507,6 +643,20 @@ const Recipes = ({ isAdminMode = false }) => {
                       <h3 className="text-lg font-bold text-foreground">Ingredients</h3>
                       <p className="text-[11px] text-muted-foreground">Fill in the last line and a new one opens below it.</p>
                     </div>
+                    {kitchens.length > 1 && (
+                      <label className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                        Costs previewed in
+                        <select
+                          value={previewKitchenId}
+                          onChange={(e) => setPreviewKitchenId(e.target.value)}
+                          className="bg-input border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        >
+                          {kitchens.map((kitchen) => (
+                            <option key={kitchen.id} value={kitchen.id}>{kitchen.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
 
                     <div className="space-y-2">
                       <div className="hidden lg:grid grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem_7rem_2rem] gap-3 px-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -660,6 +810,170 @@ const Recipes = ({ isAdminMode = false }) => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {viewing && viewRecipe && (
+          <div
+            className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/60 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget) setViewing(null) }}
+          >
+            <div className="bg-card/95 backdrop-blur-md border-2 border-border rounded-t-2xl lg:rounded-2xl shadow-2xl shadow-black/50 w-full max-w-6xl h-[94vh] lg:h-[90vh] flex flex-col">
+              <div className="p-5 lg:p-6 border-b border-border flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-accent">Recipe</p>
+                  <h2 className="text-xl lg:text-3xl font-bold text-foreground break-words">{viewing.name}</h2>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {viewing.code} · {TYPE_LABEL[viewing.material_type]} · counted in {viewing.unit}
+                  </p>
+                </div>
+                <button onClick={() => setViewing(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 lg:p-6 space-y-5">
+                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                  <div>
+                    <label htmlFor="recipe-amount" className="block text-sm font-semibold text-foreground mb-1">Make</label>
+                    <div className="flex gap-2">
+                      <input
+                        id="recipe-amount"
+                        type="number"
+                        min="0"
+                        step="any"
+                        inputMode="decimal"
+                        value={viewAmount.quantity}
+                        onChange={(e) => setAmount(viewing.id, { quantity: e.target.value })}
+                        className={`${inputClass} w-32 text-right text-base font-semibold`}
+                      />
+                      <select
+                        value={viewAmount.unit}
+                        onChange={(e) => setAmount(viewing.id, { unit: e.target.value })}
+                        aria-label="Unit"
+                        className="bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {amountUnits(viewing, viewRecipe).map((unit) => (
+                          <option key={unit} value={unit}>{UNIT_LABEL[unit]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">Of finished product. The yield is allowed for.</p>
+                  </div>
+                  <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
+                    {[
+                      { label: 'Makes', value: viewSheet ? amountLabel(viewAmount, viewRecipe) : '—' },
+                      { label: 'Mix to weigh', value: viewSheet ? formatWeight(viewSheet.scaled.mixGrams) : '—', strong: true },
+                      { label: 'Yield', value: `${viewRecipe.yield} (${percent(viewRecipe.yield)})` },
+                      { label: 'Ingredients', value: viewRecipe.items.length },
+                    ].map((figure) => (
+                      <div key={figure.label} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{figure.label}</dt>
+                        <dd className={`text-base ${figure.strong ? 'font-black text-accent' : 'font-semibold text-foreground'}`}>{figure.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+
+                {!viewSheet ? (
+                  <div className="rounded-lg border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                    Enter an amount above 0 to see the weights.
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded-xl border border-border">
+                      <table className="w-full">
+                        <thead className="bg-background/60 border-b border-border">
+                          <tr>
+                            {['#', 'Material', 'Code', 'Share of mix', 'Quantity'].map((heading, index) => (
+                              <th
+                                key={heading}
+                                className={`px-4 py-3 text-xs font-bold uppercase tracking-wide text-muted-foreground ${index >= 3 ? 'text-right' : 'text-left'}`}
+                              >
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewSheet.scaled.lines.map((line) => (
+                            <tr key={line.id} className="border-b border-border/70">
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{line.position}</td>
+                              <td className="px-4 py-3 text-sm">
+                                <div className="font-semibold text-foreground">{line.name}</div>
+                                {line.made && <div className="text-[11px] text-muted-foreground">{line.type}, made from its own recipe</div>}
+                              </td>
+                              <td className="px-4 py-3 text-xs font-mono text-muted-foreground">{line.code}</td>
+                              <td className="px-4 py-3 text-sm text-right text-muted-foreground">{percent(line.share)}</td>
+                              <td className="px-4 py-3 text-base text-right font-bold text-foreground whitespace-nowrap">{formatWeight(line.grams, line.unit)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-background/60">
+                          <tr>
+                            <td />
+                            <td className="px-4 py-3 text-sm font-bold text-foreground">Total mix</td>
+                            <td />
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-muted-foreground">100.00%</td>
+                            <td className="px-4 py-3 text-base text-right font-black text-accent whitespace-nowrap">{formatWeight(viewSheet.scaled.mixGrams)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {visibleKitchens.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground mb-2">Cost of {amountLabel(viewAmount, viewRecipe)}</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {viewSheet.costs.map((entry) => (
+                            <div key={entry.kitchen.id} className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{entry.kitchen.name}</div>
+                              {entry.reason ? (
+                                <div className="text-xs text-amber-300 mt-1">Cannot be costed: {entry.reason}</div>
+                              ) : (
+                                <>
+                                  <div className="text-lg font-black text-foreground">{moneyExact(entry.total)}</div>
+                                  <div className="text-[11px] text-muted-foreground">
+                                    {moneyExact(entry.perKg)} / kg{entry.perPiece !== null ? ` · ${moneyExact(entry.perPiece)} a piece` : ''}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-2">
+                          GST paid to vendors included. Kitchens hidden from the list are left out here and in the downloads.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="p-4 lg:px-6 border-t border-border flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={includeCosts}
+                    onChange={(e) => setIncludeCosts(e.target.checked)}
+                    className="accent-[rgb(225,187,7)]"
+                  />
+                  Include costs in downloads
+                </label>
+                <div className="flex flex-wrap gap-2 sm:ml-auto">
+                  <button
+                    onClick={() => { const product = viewing; setViewing(null); openEditor(product) }}
+                    className={`${smallButton} bg-accent/10 text-accent border-accent/40 hover:bg-accent/20`}
+                  >
+                    Edit recipe
+                  </button>
+                  <button onClick={() => download(viewing, 'csv')} disabled={!viewSheet} className={neutralButton}>Download CSV</button>
+                  <button onClick={() => download(viewing, 'pdf')} disabled={!viewSheet} className={neutralButton}>Download PDF</button>
+                </div>
               </div>
             </div>
           </div>
