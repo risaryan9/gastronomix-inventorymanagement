@@ -25,6 +25,9 @@
 // which the partner server works out. A sheet handed to a cook can leave them
 // off.
 //
+// NOTES go in as written: formatted in the PDF, plain text in the CSV
+// (lib/richText.js).
+//
 // Money in the PDF goes through pdfMoney, since jsPDF cannot print ₹ (decision
 // 0007). The CSV keeps ₹ and starts with a byte-order mark so Excel reads it as
 // UTF-8.
@@ -33,6 +36,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { pdfMoney, PDF_CURRENCY } from './pdfCurrency'
 import { isCounted, isMade } from './recipeCost'
+import { drawNotesPdf, hasNotes, notesPlainText } from './richText'
 
 export const MATERIAL_TYPE_LABEL = {
   raw_material: 'Raw material',
@@ -156,6 +160,7 @@ export function recipeCsv({ product, recipe, amount, scaled, costs }) {
     ['Makes', amountLabel(amount, recipe)],
     ['Mix to weigh (g)', scaled.mixGrams.toFixed(2)],
     ['Yield', yieldLabel(recipe.yield)],
+    ...(hasNotes(recipe.notes) ? [['Notes', notesPlainText(recipe.notes)]] : []),
     [],
     ['#', 'Material', 'Code', 'Type', 'Share of mix (%)', 'Quantity', 'Unit', 'Quantity (kg or L)'],
     ...scaled.lines.map((line) => [
@@ -297,6 +302,28 @@ export function downloadRecipePdf({ product, recipe, amount, scaled, costs }) {
     didDrawPage: footer,
   })
   y = doc.lastAutoTable.finalY + 8
+
+  if (hasNotes(recipe.notes)) {
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const newPage = () => { doc.addPage(); footer(); return 16 }
+    if (y + 20 > pageHeight - 16) y = newPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...MUTED)
+    doc.text('NOTES', margin, y)
+    doc.setDrawColor(...ACCENT)
+    doc.setLineWidth(0.6)
+    doc.line(margin, y + 1.5, margin + 12, y + 1.5)
+    y = drawNotesPdf(doc, recipe.notes, {
+      x: margin,
+      y: y + 4,
+      width: pageWidth - margin * 2,
+      bottom: pageHeight - 16,
+      newPage,
+      ink: INK,
+      muted: MUTED,
+    }) + 6
+  }
 
   if (costs) {
     autoTable(doc, {

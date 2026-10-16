@@ -32,6 +32,9 @@
 // clicking a row opens View (edit, remove and the downloads are in there), or
 // the editor for a product with no recipe yet.
 //
+// NOTES are formatted text (components/RichTextEditor.jsx), kept as HTML in
+// recipes.notes and cleaned every time they are shown (lib/richText.js).
+//
 // Shown only on the admin dashboard (with `isAdminMode`). It was on the
 // purchase manager dashboard too until 2026-10-15; the non-admin path is kept
 // because save_recipe still accepts purchase managers (decision 0022).
@@ -62,6 +65,9 @@ import {
   sheetCosts,
 } from '../../lib/recipeSheet'
 import SearchableSelect from '../../components/SearchableSelect'
+import RichTextEditor from '../../components/RichTextEditor'
+import RichTextView from '../../components/RichTextView'
+import { hasNotes, notesPlainText, sanitizeNotesHtml } from '../../lib/richText'
 import { useToast } from '../../context/toastContext'
 import { useConfirm } from '../../context/confirmContext'
 
@@ -121,6 +127,7 @@ const Recipes = ({ isAdminMode = false }) => {
   const [rows, setRows] = useState([])
   const [yieldFraction, setYieldFraction] = useState('')
   const [pieceWeight, setPieceWeight] = useState('')
+  const [notes, setNotes] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [previewKitchenId, setPreviewKitchenId] = useState('')
@@ -146,7 +153,7 @@ const Recipes = ({ isAdminMode = false }) => {
         fetchAllRows(() =>
           supabase
             .from('recipes')
-            .select('id, material_id, yield_quantity, piece_weight_grams, updated_at')
+            .select('id, material_id, yield_quantity, piece_weight_grams, notes, updated_at')
             .eq('is_active', true)
             .is('deleted_at', null)
             .order('id')
@@ -166,6 +173,7 @@ const Recipes = ({ isAdminMode = false }) => {
         yield: Number(recipe.yield_quantity),
         pieceWeightGrams: recipe.piece_weight_grams === null ? null : Number(recipe.piece_weight_grams),
         updatedAt: recipe.updated_at,
+        notes: recipe.notes || '',
         materialId: recipe.material_id,
         items: [],
       }]))
@@ -260,6 +268,7 @@ const Recipes = ({ isAdminMode = false }) => {
       : []))
     setYieldFraction(recipe ? String(recipe.yield) : '')
     setPieceWeight(recipe?.pieceWeightGrams ? String(recipe.pieceWeightGrams) : '')
+    setNotes(recipe?.notes || '')
     setFormError('')
     setPreviewKitchenId((current) =>
       kitchens.some((k) => k.id === current) ? current : (visibleKitchens[0] || kitchens[0])?.id || '')
@@ -330,6 +339,8 @@ const Recipes = ({ isAdminMode = false }) => {
         p_items: filled.map((row) => ({ component_material_id: row.componentId, grams: Number(row.grams) })),
         p_yield: yieldValue,
         p_piece_weight_grams: counted ? Number(pieceWeight) : null,
+        // Cleaned here to keep the stored copy tidy; it is cleaned again when shown.
+        p_notes: hasNotes(notes) ? sanitizeNotesHtml(notes) : null,
       })
       if (saveError) throw saveError
       toast.success('Recipe saved', `${editing.name}: ${filled.length} ingredient${filled.length === 1 ? '' : 's'}, yield ${yieldValue}.`)
@@ -524,7 +535,7 @@ const Recipes = ({ isAdminMode = false }) => {
               <table className="w-full">
                 <thead className="bg-background/60 border-b border-border">
                   <tr>
-                    {['Product', 'Type', 'Recipe'].map((heading) => (
+                    {['Product', 'Type', 'Recipe', 'Notes'].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         {heading}
                       </th>
@@ -572,6 +583,11 @@ const Recipes = ({ isAdminMode = false }) => {
                               No recipe · click to add
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {recipe && hasNotes(recipe.notes)
+                            ? <p className="line-clamp-2 max-w-xs whitespace-pre-line">{notesPlainText(recipe.notes)}</p>
+                            : '—'}
                         </td>
                         {visibleKitchens.map((kitchen) => (
                           <td key={kitchen.id} className="px-4 py-3 text-sm">{costCell(product, kitchen.id)}</td>
@@ -758,6 +774,14 @@ const Recipes = ({ isAdminMode = false }) => {
                     </p>
                   )}
 
+                  <div className="border-t border-border pt-4">
+                    <h3 className="text-lg font-bold text-foreground mb-1">Notes</h3>
+                    <p className="text-[11px] text-muted-foreground mb-2">
+                      Method, holding times, anything the kitchen should know. Shown in View and the PDF as written.
+                    </p>
+                    <RichTextEditor key={editing.id} value={notes} onChange={setNotes} disabled={saving} />
+                  </div>
+
                   {formError && (
                     <div className="bg-destructive/15 border border-destructive rounded-lg px-4 py-3 text-sm text-destructive-foreground">
                       {formError}
@@ -896,6 +920,13 @@ const Recipes = ({ isAdminMode = false }) => {
                         </tfoot>
                       </table>
                     </div>
+
+                    {hasNotes(viewRecipe.notes) && (
+                      <div className="rounded-xl border border-border bg-muted/20 px-5 py-4">
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest text-accent mb-2">Notes</h3>
+                        <RichTextView html={viewRecipe.notes} className="text-sm text-foreground" />
+                      </div>
+                    )}
 
                     {visibleKitchens.length > 0 && (
                       <div>
