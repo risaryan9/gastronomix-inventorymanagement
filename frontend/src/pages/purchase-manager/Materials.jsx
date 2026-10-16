@@ -378,18 +378,18 @@ const Materials = ({ isAdminMode = false }) => {
     }
 
     try {
-      const query = supabase
+      // Every row counts, inactive and deleted ones included: `code` is unique
+      // across the whole table, so a number held by a deactivated material is
+      // still taken. Matching on the code's prefix, not on type or category,
+      // also covers a material whose type or category changed after its code
+      // was given.
+      const codePrefix = materialType === 'raw_material'
+        ? `${prefix}-${categoryShort}-`
+        : `${prefix}-`
+      const { data: categoryMaterials, error } = await supabase
         .from('raw_materials')
         .select('code')
-        .eq('material_type', materialType)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-
-      if (materialType === 'raw_material') {
-        query.eq('category', category)
-      }
-
-      const { data: categoryMaterials, error } = await query
+        .like('code', `${codePrefix}%`)
 
       if (error) throw error
 
