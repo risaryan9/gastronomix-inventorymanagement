@@ -1,5 +1,6 @@
 // A formatted-text editor with a toolbar: headings, bold, italic, underline,
-// strike, highlight in the palette's colours, lists, quotes and dividers.
+// strike, text colour and highlight from the palettes, lists, quotes and
+// dividers.
 // Used for recipe notes. Its output is HTML, cleaned by lib/richText.js on the
 // way out and shown with RichTextView. The usual shortcuts work too (Ctrl+B,
 // Ctrl+I, Ctrl+U, Ctrl+Shift+H for highlight, "# " for a heading, "- " for a
@@ -12,7 +13,8 @@
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
-import { HIGHLIGHT_COLORS, sanitizeNotesHtml } from '../lib/richText'
+import { Color, TextStyle } from '@tiptap/extension-text-style'
+import { HIGHLIGHT_COLORS, TEXT_COLORS, sanitizeNotesHtml } from '../lib/richText'
 
 const ToolbarButton = ({ active, disabled, onClick, label, children }) => (
   <button
@@ -43,6 +45,8 @@ const RichTextEditor = ({ value, onChange, disabled = false, placeholder = 'Writ
         link: false,
       }),
       Highlight.configure({ multicolor: true }),
+      TextStyle,
+      Color,
     ],
     content: sanitizeNotesHtml(value),
     editable: !disabled,
@@ -67,6 +71,7 @@ const RichTextEditor = ({ value, onChange, disabled = false, placeholder = 'Writ
       italic: current.isActive('italic'),
       underline: current.isActive('underline'),
       strike: current.isActive('strike'),
+      color: (current.getAttributes('textStyle').color || '').toLowerCase() || null,
       highlight: HIGHLIGHT_COLORS.find((color) => current.isActive('highlight', { color: color.value }))?.value || null,
       bulletList: current.isActive('bulletList'),
       orderedList: current.isActive('orderedList'),
@@ -100,6 +105,28 @@ const RichTextEditor = ({ value, onChange, disabled = false, placeholder = 'Writ
         </ToolbarButton>
         <ToolbarButton label="Strikethrough" active={state.strike} disabled={off} onClick={() => chain().toggleStrike().run()}>
           <span className="line-through">S</span>
+        </ToolbarButton>
+        <Divider />
+        {TEXT_COLORS.map((color) => (
+          <button
+            key={color.value}
+            type="button"
+            title={`${color.name} text`}
+            aria-label={`${color.name} text`}
+            aria-pressed={state.color === color.value}
+            disabled={off}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => (state.color === color.value ? chain().unsetColor().run() : chain().setColor(color.value).run())}
+            className={`h-8 w-7 rounded-md flex flex-col items-center justify-center transition-colors disabled:opacity-40 ${
+              state.color === color.value ? 'bg-muted' : 'hover:bg-muted/70'
+            }`}
+          >
+            <span className="text-sm font-black leading-none" style={{ color: color.value }}>A</span>
+            <span className="mt-0.5 h-1 w-4 rounded-sm" style={{ backgroundColor: color.value }} />
+          </button>
+        ))}
+        <ToolbarButton label="Default text colour" disabled={off || !state.color} onClick={() => chain().unsetColor().run()}>
+          <span className="text-sm font-black underline decoration-2">A</span>
         </ToolbarButton>
         <Divider />
         {HIGHLIGHT_COLORS.map((color) => (

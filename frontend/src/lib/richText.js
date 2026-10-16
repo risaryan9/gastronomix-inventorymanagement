@@ -4,13 +4,14 @@
 //
 // STORED AS HTML in a plain text column (recipes.notes), the editor's own
 // output. Only a small set of formatting is allowed, the toolbar's: headings
-// 1–3, paragraphs, bold, italic, underline, strike, highlight in a few colours,
-// bullet and numbered lists, quotes and dividers.
+// 1–3, paragraphs, bold, italic, underline, strike, text colour and highlight
+// from small palettes, bullet and numbered lists, quotes and dividers.
 //
 // NOTES ARE UNTRUSTED. Anyone holding the internal app's public key can save a
 // recipe through save_recipe (decision 0022), so what comes back from the
 // database is never put on the page as it is. sanitizeNotesHtml keeps only the
-// tags above, no attributes except a highlight colour from the palette, and is
+// tags above, no attributes except a palette colour on a highlight or a text
+// colour span, and is
 // applied when notes are SAVED and again every time they are SHOWN. The second
 // is the one that protects; the first keeps the stored copy tidy.
 //
@@ -31,10 +32,40 @@ export const HIGHLIGHT_COLORS = [
 const DEFAULT_HIGHLIGHT = HIGHLIGHT_COLORS[0].value
 const PALETTE = new Set(HIGHLIGHT_COLORS.map((color) => color.value))
 
-const ALLOWED_TAGS = ['p', 'br', 'h1', 'h2', 'h3', 'strong', 'b', 'em', 'i', 'u', 's', 'mark', 'ul', 'ol', 'li', 'blockquote', 'hr']
+// Text colours have to read on the dark screen and on the PDF's white page,
+// so they are mid-tones, not the brightest or darkest of each.
+export const TEXT_COLORS = [
+  { name: 'Red', value: '#ef4444' },
+  { name: 'Orange', value: '#ea580c' },
+  { name: 'Green', value: '#16a34a' },
+  { name: 'Blue', value: '#3b82f6' },
+  { name: 'Purple', value: '#a855f7' },
+]
+const TEXT_PALETTE = new Set(TEXT_COLORS.map((color) => color.value))
+
+// A colour as lower-case #rrggbb, from #rgb, #rrggbb or rgb(r, g, b).
+const normalizeColor = (value) => {
+  const text = String(value || '').trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(text)) return text
+  if (/^#[0-9a-f]{3}$/.test(text)) return `#${[...text.slice(1)].map((c) => c + c).join('')}`
+  const rgb = text.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/)
+  if (rgb) return `#${rgb.slice(1, 4).map((n) => Math.min(Number(n), 255).toString(16).padStart(2, '0')).join('')}`
+  return ''
+}
+
+// The text colour in an inline style, if it is one of ours. `color` only:
+// not background-color.
+const paletteTextColor = (style) => {
+  const match = String(style || '').match(/(?:^|;)\s*color\s*:\s*([^;]+)/i)
+  const color = normalizeColor(match?.[1])
+  return TEXT_PALETTE.has(color) ? color : ''
+}
+
+const ALLOWED_TAGS = ['p', 'br', 'h1', 'h2', 'h3', 'strong', 'b', 'em', 'i', 'u', 's', 'mark', 'span', 'ul', 'ol', 'li', 'blockquote', 'hr']
 
 // A highlight keeps its colour only if it is one of ours, written back as a
-// bare background-color. Every other style attribute goes.
+// bare background-color; a span keeps a text colour only if it is one of ours.
+// Every other style attribute goes.
 const keepPaletteHighlight = (node) => {
   if (!node.hasAttribute) return
   if (node.tagName === 'MARK') {
@@ -42,6 +73,11 @@ const keepPaletteHighlight = (node) => {
     const kept = PALETTE.has(color) ? color : DEFAULT_HIGHLIGHT
     node.setAttribute('data-color', kept)
     node.setAttribute('style', `background-color: ${kept}`)
+  } else if (node.tagName === 'SPAN') {
+    const color = paletteTextColor(node.getAttribute('style'))
+    node.removeAttribute('data-color')
+    if (color) node.setAttribute('style', `color: ${color}`)
+    else node.removeAttribute('style')
   } else {
     node.removeAttribute('style')
     node.removeAttribute('data-color')
@@ -72,7 +108,7 @@ const parse = (html) => new DOMParser().parseFromString(`<body>${sanitizeNotesHt
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'HR'])
 
 // Inline content of one element as runs: { text, bold, italic, underline,
-// strike, highlight } or { br: true }.
+// strike, highlight, color } or { br: true }.
 const inlineRuns = (element, marks = {}) => {
   const runs = []
   for (const node of element.childNodes) {
@@ -89,6 +125,7 @@ const inlineRuns = (element, marks = {}) => {
     if (tag === 'U') next.underline = true
     if (tag === 'S') next.strike = true
     if (tag === 'MARK') next.highlight = node.getAttribute('data-color') || DEFAULT_HIGHLIGHT
+    if (tag === 'SPAN') next.color = paletteTextColor(node.getAttribute('style')) || next.color
     runs.push(...inlineRuns(node, next))
   }
   return runs
@@ -274,9 +311,9 @@ export function drawNotesPdf(doc, html, { x, y, width, bottom, newPage, ink = [2
           doc.rect(item.x, y + 0.3, item.width, lineHeight - 0.4, 'F')
         }
         doc.setFont('helvetica', heading ? (run.italic ? 'bolditalic' : 'bold') : fontStyle(run))
-        doc.setTextColor(...(block.quote && !run.highlight ? muted : ink))
+        doc.setTextColor(...(run.color ? hexToRgb(run.color) : block.quote && !run.highlight ? muted : ink))
         doc.text(item.text, item.x, baseline)
-        doc.setDrawColor(...ink)
+        doc.setDrawColor(...(run.color ? hexToRgb(run.color) : ink))
         doc.setLineWidth(0.2)
         if (run.underline) doc.line(item.x, baseline + 0.6, item.x + item.width, baseline + 0.6)
         if (run.strike) doc.line(item.x, baseline - size * PT * 0.3, item.x + item.width, baseline - size * PT * 0.3)
